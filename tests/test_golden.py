@@ -24,11 +24,13 @@ class TestDeterminism:
         j1 = json.loads(manifest_to_json(m1))
         j2 = json.loads(manifest_to_json(m2))
 
-        # generated_at and scan_id will differ — normalize them
+        # generated_at, scan_id, and manifest_checksum will differ — normalize them
         j1["meta"]["generated_at"] = ""
         j2["meta"]["generated_at"] = ""
         j1["meta"]["scan_id"] = ""
         j2["meta"]["scan_id"] = ""
+        j1["manifest_checksum"] = ""
+        j2["manifest_checksum"] = ""
 
         assert j1 == j2
 

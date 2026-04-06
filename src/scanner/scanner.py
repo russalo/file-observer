@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
+from fnmatch import fnmatch
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable
@@ -193,10 +194,21 @@ class RoutingSummary:
 
 
 @dataclass
+class DeltaRecord:
+    previous_scan_id: str
+    added: list[str]
+    modified: list[str]
+    unchanged: list[str]
+    removed: list[str]
+
+
+@dataclass
 class ScanManifest:
     meta: ScanMeta
     stats: ScanStats
     routing_summary: RoutingSummary
+    delta: DeltaRecord | None
+    manifest_checksum: str
     files: list[FileRecord]
 
 
@@ -207,6 +219,8 @@ class ScannerConfig:
     enable_specialists: bool = False
     exclude_hidden: bool = False
     format: str = "json"
+    ignore_file: str | None = None
+    previous_manifest: str | None = None
 
 
 class Scanner:
@@ -214,6 +228,41 @@ class Scanner:
         self.source_dir = source_dir.resolve()
         self.config = config or ScannerConfig()
         self._magic = magic.Magic(mime=True) if magic else None
+        self._ignore_patterns = self._load_ignore_patterns()
+
+    def _load_ignore_patterns(self) -> list[str]:
+        patterns: list[str] = []
+        # Check explicit --ignore-file first, then default .scannerignore
+        ignore_path: Path | None = None
+        if self.config.ignore_file:
+            ignore_path = Path(self.config.ignore_file)
+        else:
+            default = self.source_dir / ".scannerignore"
+            if default.is_file():
+                ignore_path = default
+        if ignore_path and ignore_path.is_file():
+            for line in ignore_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+        return patterns
+
+    def _is_ignored(self, rel_path: Path) -> bool:
+        rel_str = str(rel_path).replace("\\", "/")
+        for pattern in self._ignore_patterns:
+            # Directory pattern (ends with /)
+            if pattern.endswith("/"):
+                dir_pattern = pattern.rstrip("/")
+                if any(fnmatch(part, dir_pattern) for part in rel_path.parts[:-1]):
+                    return True
+                if fnmatch(rel_path.parts[0], dir_pattern) if rel_path.parts else False:
+                    return True
+            # File pattern
+            if fnmatch(rel_path.name, pattern):
+                return True
+            if fnmatch(rel_str, pattern):
+                return True
+        return False
 
     def scan(self) -> ScanManifest:
         records: list[FileRecord] = []
@@ -228,13 +277,19 @@ class Scanner:
         )
         stats = self._compute_stats(records)
         routing = self._compute_routing_summary(records)
+        delta = self._compute_delta(records)
 
-        return ScanManifest(
+        # Build manifest without checksum first, then compute it
+        manifest = ScanManifest(
             meta=meta,
             stats=stats,
             routing_summary=routing,
+            delta=delta,
+            manifest_checksum="",
             files=records,
         )
+        manifest.manifest_checksum = compute_manifest_checksum(manifest)
+        return manifest
 
     def _compute_stats(self, records: list[FileRecord]) -> ScanStats:
         supported = sum(
@@ -260,12 +315,52 @@ class Scanner:
             requires_specialist_tool=sum(1 for r in records if r.requires_specialist_tool),
         )
 
+    def _compute_delta(self, records: list[FileRecord]) -> DeltaRecord | None:
+        if not self.config.previous_manifest:
+            return None
+        prev_path = Path(self.config.previous_manifest)
+        if not prev_path.is_file():
+            return None
+        try:
+            prev_data = json.loads(prev_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+        prev_scan_id = prev_data.get("meta", {}).get("scan_id", "")
+        prev_files: dict[str, str] = {}
+        for f in prev_data.get("files", []):
+            prev_files[f["path"]] = f.get("checksum_sha256", "")
+
+        current_files: dict[str, str] = {r.path: r.checksum_sha256 for r in records}
+
+        added = sorted(p for p in current_files if p not in prev_files)
+        removed = sorted(p for p in prev_files if p not in current_files)
+        modified = sorted(
+            p for p in current_files
+            if p in prev_files and current_files[p] != prev_files[p]
+        )
+        unchanged = sorted(
+            p for p in current_files
+            if p in prev_files and current_files[p] == prev_files[p]
+        )
+
+        return DeltaRecord(
+            previous_scan_id=prev_scan_id,
+            added=added,
+            modified=modified,
+            unchanged=unchanged,
+            removed=removed,
+        )
+
     def iter_files(self, root: Path) -> Iterable[Path]:
         for path in sorted(root.rglob("*")):
             if path.is_file():
+                rel = path.relative_to(root)
                 if self.config.exclude_hidden and any(
-                    part.startswith(".") for part in path.relative_to(root).parts
+                    part.startswith(".") for part in rel.parts
                 ):
+                    continue
+                if self._ignore_patterns and self._is_ignored(rel):
                     continue
                 yield path
 
@@ -674,17 +769,27 @@ def _dc_encoder(obj: Any) -> Any:
     raise TypeError(f"Unsupported type: {type(obj)!r}")
 
 
+def compute_manifest_checksum(manifest: ScanManifest) -> str:
+    """Compute SHA-256 of the manifest content, excluding the checksum field itself."""
+    d = asdict(manifest)
+    d["manifest_checksum"] = ""
+    canonical = json.dumps(d, sort_keys=True, ensure_ascii=False)
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def manifest_to_json(manifest: ScanManifest) -> str:
     return json.dumps(manifest, default=_dc_encoder, indent=2, ensure_ascii=False)
 
 
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
-    # Header line with meta, stats, routing_summary
-    header = {
+    # Header line with meta, stats, routing_summary, delta, manifest_checksum
+    header: dict[str, Any] = {
         "meta": asdict(manifest.meta),
         "stats": asdict(manifest.stats),
         "routing_summary": asdict(manifest.routing_summary),
+        "delta": asdict(manifest.delta) if manifest.delta else None,
+        "manifest_checksum": manifest.manifest_checksum,
     }
     lines.append(json.dumps(header, ensure_ascii=False))
     # One line per file record
@@ -705,6 +810,8 @@ def main() -> None:
     parser.add_argument("--exclude-hidden", action="store_true", help="Exclude hidden files and directories")
     parser.add_argument("--preview-max", type=int, default=1000, help="Max characters for content preview (default: 1000)")
     parser.add_argument("--format", choices=["json", "jsonl"], default="json", help="Output format (default: json)")
+    parser.add_argument("--ignore-file", default=None, help="Path to ignore file (default: .scannerignore in source dir)")
+    parser.add_argument("--previous-manifest", default=None, help="Path to previous manifest for delta comparison")
     args = parser.parse_args()
 
     config = ScannerConfig(
@@ -712,6 +819,8 @@ def main() -> None:
         exclude_hidden=args.exclude_hidden,
         preview_max_chars=args.preview_max,
         format=args.format,
+        ignore_file=args.ignore_file,
+        previous_manifest=args.previous_manifest,
     )
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()

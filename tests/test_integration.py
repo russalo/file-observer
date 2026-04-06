@@ -88,6 +88,8 @@ class TestJsonSerialization:
         assert "meta" in data
         assert "stats" in data
         assert "routing_summary" in data
+        assert "delta" in data
+        assert "manifest_checksum" in data
         assert "files" in data
         assert "generated_at" in data["meta"]
 
@@ -296,6 +298,8 @@ class TestJsonlOutput:
         assert "meta" in header
         assert "stats" in header
         assert "routing_summary" in header
+        assert "delta" in header
+        assert "manifest_checksum" in header
 
     def test_jsonl_records_match_json(self, manifest: ScanManifest) -> None:
         import json

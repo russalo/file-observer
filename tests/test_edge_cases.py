@@ -13,6 +13,7 @@ from scanner.scanner import (
     FrontmatterRecord,
     StructuralRecord,
     manifest_to_json,
+    compute_manifest_checksum,
 )
 
 
@@ -329,3 +330,225 @@ class TestEmptyDirectory:
         assert manifest.meta.generated_at
         assert manifest.meta.source_dir
         assert manifest.stats.total_files == 0
+
+
+# ---------------------------------------------------------------------------
+# .scannerignore
+# ---------------------------------------------------------------------------
+
+class TestScannerIgnore:
+    def test_ignore_by_extension(self, tmp_path: Path) -> None:
+        (tmp_path / "keep.txt").write_text("hello")
+        (tmp_path / "skip.log").write_text("noise")
+        (tmp_path / ".scannerignore").write_text("*.log\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "keep.txt" in paths
+        assert "skip.log" not in paths
+
+    def test_ignore_directory(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.txt").write_text("code")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "dep.txt").write_text("dep")
+        (tmp_path / ".scannerignore").write_text("node_modules/\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "app.txt" in paths
+        assert "dep.txt" not in paths
+
+    def test_ignore_comments_and_blanks(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.log").write_text("b")
+        (tmp_path / ".scannerignore").write_text("# comment\n\n*.log\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "a.txt" in paths
+        assert "b.log" not in paths
+
+    def test_ignore_file_not_in_manifest(self, tmp_path: Path) -> None:
+        """The .scannerignore file itself should appear in the manifest (it's a regular file)."""
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / ".scannerignore").write_text("*.log\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert ".scannerignore" in paths
+
+    def test_explicit_ignore_file_path(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.tmp").write_text("b")
+        ignore = tmp_path / "custom.ignore"
+        ignore.write_text("*.tmp\n")
+        config = ScannerConfig(ignore_file=str(ignore))
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "a.txt" in paths
+        assert "b.tmp" not in paths
+
+    def test_ignore_coexists_with_exclude_hidden(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / ".hidden").write_text("h")
+        (tmp_path / "b.log").write_text("b")
+        (tmp_path / ".scannerignore").write_text("*.log\n")
+        config = ScannerConfig(exclude_hidden=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "a.txt" in paths
+        assert ".hidden" not in paths
+        assert "b.log" not in paths
+
+    def test_no_ignore_file_scans_everything(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.log").write_text("b")
+        scanner = Scanner(source_dir=tmp_path)
+        assert len(scanner.scan().files) == 2
+
+
+# ---------------------------------------------------------------------------
+# Delta / incremental scanning
+# ---------------------------------------------------------------------------
+
+class TestDeltaScanning:
+    def test_no_previous_manifest_returns_null_delta(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        scanner = Scanner(source_dir=tmp_path)
+        manifest = scanner.scan()
+        assert manifest.delta is None
+
+    def _save_prev(self, manifest, tmp_path: Path) -> Path:
+        """Write manifest outside the scan dir so it doesn't appear in next scan."""
+        out_dir = tmp_path / "_out"
+        out_dir.mkdir(exist_ok=True)
+        prev = out_dir / "prev.json"
+        prev.write_text(manifest_to_json(manifest), encoding="utf-8")
+        return prev
+
+    def test_unchanged_files(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert m2.delta.unchanged == ["a.txt"]
+        assert m2.delta.added == []
+        assert m2.delta.modified == []
+        assert m2.delta.removed == []
+
+    def test_added_file(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        (src / "b.txt").write_text("world")
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert "b.txt" in m2.delta.added
+        assert "a.txt" in m2.delta.unchanged
+
+    def test_modified_file(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        f = src / "a.txt"
+        f.write_text("version1")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        f.write_text("version2")
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert "a.txt" in m2.delta.modified
+
+    def test_removed_file(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        (src / "b.txt").write_text("world")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        (src / "b.txt").unlink()
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert "b.txt" in m2.delta.removed
+        assert "a.txt" in m2.delta.unchanged
+
+    def test_delta_has_previous_scan_id(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert m2.delta.previous_scan_id == m1.meta.scan_id
+
+    def test_malformed_previous_manifest(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        prev = tmp_path / "prev.json"
+        prev.write_text("not json", encoding="utf-8")
+        config = ScannerConfig(previous_manifest=str(prev))
+        scanner = Scanner(source_dir=src, config=config)
+        manifest = scanner.scan()
+        assert manifest.delta is None
+
+    def test_delta_lists_sorted(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        for name in ["c.txt", "a.txt", "b.txt"]:
+            (src / name).write_text(name)
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        for name in ["c.txt", "a.txt", "b.txt"]:
+            (src / name).write_text(name + " changed")
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert m2.delta.modified == sorted(m2.delta.modified)
+
+
+# ---------------------------------------------------------------------------
+# Manifest checksum
+# ---------------------------------------------------------------------------
+
+class TestManifestChecksum:
+    def test_checksum_present(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        scanner = Scanner(source_dir=tmp_path)
+        manifest = scanner.scan()
+        assert manifest.manifest_checksum
+        assert len(manifest.manifest_checksum) == 64  # SHA-256 hex
+
+    def test_checksum_verifiable(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        scanner = Scanner(source_dir=tmp_path)
+        manifest = scanner.scan()
+        recomputed = compute_manifest_checksum(manifest)
+        assert manifest.manifest_checksum == recomputed
+
+    def test_checksum_changes_with_content(self, tmp_path: Path) -> None:
+        f = tmp_path / "a.txt"
+        f.write_text("v1")
+        c1 = Scanner(source_dir=tmp_path).scan().manifest_checksum
+        f.write_text("v2")
+        c2 = Scanner(source_dir=tmp_path).scan().manifest_checksum
+        assert c1 != c2
