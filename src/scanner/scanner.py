@@ -239,7 +239,7 @@ class Scanner:
     def _compute_stats(self, records: list[FileRecord]) -> ScanStats:
         supported = sum(
             1 for r in records
-            if not any(e.code == ERR_UNSUPPORTED_EXTENSION for e in r.errors)
+            if r.extension in SUPPORTED_EXTENSIONS
         )
         total = len(records)
         return ScanStats(
