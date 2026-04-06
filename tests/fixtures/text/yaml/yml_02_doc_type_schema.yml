@@ -1,0 +1,60 @@
+schemas:
+  project-info:
+    required:
+      - job_number
+      - client
+      - city
+      - work_type
+    optional:
+      - contract_value
+      - district
+      - start_date
+      - superintendent
+
+  change-order:
+    required:
+      - job_number
+      - co_number
+      - date
+      - description
+      - amount_requested
+      - status
+    optional:
+      - amount_approved
+      - category
+      - gc_contact
+      - reason_codes
+
+  rfi:
+    required:
+      - job_number
+      - rfi_id
+      - date_submitted
+      - subject
+      - status
+    optional:
+      - days_to_respond
+      - late
+      - resolution
+
+  progress-billing:
+    required:
+      - job_number
+      - invoice_number
+      - billing_period
+      - amount_billed
+      - status
+    optional:
+      - date_paid
+      - days_to_payment
+      - compliance_effort
+
+  preliminary-notice:
+    required:
+      - job_number
+      - client
+      - date_served
+      - contract_value
+    optional:
+      - status
+      - lien_eligible

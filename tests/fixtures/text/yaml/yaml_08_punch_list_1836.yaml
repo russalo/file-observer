@@ -1,0 +1,37 @@
+job_number: 1836
+date_created: "2025-03-19"
+compiled_by: "R. Garza"
+reviewed_by: "Gilbert Santos"
+items:
+  - id: 1
+    location: "Bldg A water meter"
+    description: "Meter box lid cracked - replace"
+    responsible: CP
+    status: open
+  - id: 2
+    location: "Fire service vault"
+    description: "Decorative lid scratched during paving - South Bay Foundry reorder"
+    responsible: "CP / SBF"
+    status: in-progress
+  - id: 3
+    location: "MH#4 frame"
+    description: "Frame set 3/4-inch high - grind flush"
+    responsible: CP
+    status: open
+  - id: 6
+    location: "Closeout package"
+    description: "RPDA test cert from Dave Pastor"
+    responsible: "Dave Pastor"
+    status: complete
+    completed_date: "2025-04-01"
+  - id: 7
+    location: "City of Ontario"
+    description: "As-built redlines not submitted"
+    responsible: "CP / Engineer"
+    status: open
+    due_date: "2025-04-30"
+summary:
+  total: 10
+  open: 7
+  in_progress: 1
+  complete: 2

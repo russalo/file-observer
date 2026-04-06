@@ -1,0 +1,34 @@
+job_number: 1836
+client: "C.W. Driver LLC"
+rfis:
+  - id: RFI-001
+    date_submitted: "2023-05-15"
+    subject: "MH#3 invert elevation per revised grading plan"
+    status: closed
+    days_to_respond: 5
+    late: false
+  - id: RFI-002
+    date_submitted: "2023-06-02"
+    subject: "Water service / storm drain conflict at Sta 14+50"
+    status: closed
+    days_to_respond: 12
+    late: true
+  - id: RFI-004
+    date_submitted: "2023-09-05"
+    subject: "Fire service vault lid - decorative or standard"
+    status: closed
+    days_to_respond: 14
+    late: true
+    notes: "Decorative lid required - South Bay Foundry item"
+  - id: RFI-007
+    date_submitted: "2024-02-28"
+    subject: "CVWD approved meter size for fire sprinkler"
+    status: closed
+    days_to_respond: 15
+    late: true
+summary:
+  total: 7
+  open: 0
+  closed: 7
+  late_count: 3
+  avg_response_days: 8.4

@@ -1,0 +1,43 @@
+{
+  "vendors": [
+    {
+      "name": "Ferguson Waterworks",
+      "category": "pipe-and-fittings",
+      "account_rep": "Bob Hernandez",
+      "phone_sales": "909-555-0300",
+      "phone_will_call": "909-555-0301",
+      "payment_terms": "net-30",
+      "approved_districts": ["CVWD", "WVWD", "SAWCO"],
+      "notes": "Primary pipe supplier. CVWD approved."
+    },
+    {
+      "name": "South Bay Foundry",
+      "category": "manhole-frames-covers",
+      "phone": "310-555-0800",
+      "lead_time_standard": "2-3 weeks",
+      "lead_time_decorative": "4-6 weeks",
+      "notes": "Used for decorative MH lids. Jobs 1836, 1880."
+    },
+    {
+      "name": "Houston Harris Pipeline Services",
+      "category": "cctv-inspection",
+      "phone": "909-555-0700",
+      "scheduling_lead_time": "5 days",
+      "notes": "CCTV video inspection. Schedule before backfill."
+    },
+    {
+      "name": "Dave Pastor Backflow Testing",
+      "category": "backflow-testing",
+      "phone": "909-555-0500",
+      "certifications": ["CVWD", "WVWD", "EVMWD"],
+      "scheduling_lead_time": "3-5 days"
+    },
+    {
+      "name": "Holliday Rock",
+      "category": "aggregate-material",
+      "account_contact": "Roko Grbic",
+      "phone": "909-555-0600",
+      "materials": ["Class 2 Base", "Crushed Rock", "Import Fill"]
+    }
+  ]
+}

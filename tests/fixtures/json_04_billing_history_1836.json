@@ -1,0 +1,45 @@
+{
+  "job_number": 1836,
+  "client": "C.W. Driver LLC",
+  "contract_value": 485000.00,
+  "payment_terms": "net-30",
+  "invoices": [
+    {
+      "invoice_number": "INV-16500-01",
+      "period": "2023-10",
+      "date_submitted": "2023-11-01",
+      "amount_billed": 65250.00,
+      "date_paid": "2023-12-06",
+      "days_to_payment": 35,
+      "status": "paid",
+      "compliance_effort": false
+    },
+    {
+      "invoice_number": "INV-16500-06",
+      "period": "2024-03",
+      "date_submitted": "2024-04-01",
+      "amount_billed": 42570.00,
+      "date_paid": null,
+      "days_to_payment": null,
+      "status": "overdue",
+      "compliance_effort": true,
+      "compliance_notes": "Contacted Mirian V. x3, Gilbert Santos x1. No resolution as of 2024-05-20."
+    },
+    {
+      "invoice_number": "INV-16500-07",
+      "period": "2024-04",
+      "date_submitted": "2024-05-01",
+      "amount_billed": 55890.00,
+      "date_paid": null,
+      "days_to_payment": null,
+      "status": "overdue",
+      "compliance_effort": true
+    }
+  ],
+  "payment_analytics": {
+    "avg_days_to_payment_paid": 46.2,
+    "total_overdue": 98460.00,
+    "slow_pay_flag": true,
+    "lien_notice_threshold_date": "2024-06-01"
+  }
+}

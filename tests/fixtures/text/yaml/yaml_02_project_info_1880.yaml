@@ -1,0 +1,23 @@
+job_number: 1880
+client: "The Previti Group"
+description: "JPA South Storm Drain Improvements - Fontana CA"
+work_type:
+  - storm-drain
+  - water
+city: Fontana
+state: CA
+district: WVWD
+contract_value: 485000.00
+start_date: "2025-10-10"
+status: active
+contacts:
+  superintendent: "R. Garza"
+  project_manager: "John Pfister"
+permits:
+  city_of_fontana: pending
+  wvwd: pending
+  cal_osha: "Active - expires 07-25-2026"
+usa_ticket:
+  number: "A252820064"
+  expiration: "2025-11-12"
+  alert: "Expired - renew"

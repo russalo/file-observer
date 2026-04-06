@@ -1,0 +1,57 @@
+scanner:
+  name: cp-file-scanner
+  version: "1.0"
+  root_path: "./JOBS"
+
+  scan_options:
+    max_depth: 6
+    follow_symlinks: false
+    skip_hidden: true
+    skip_extensions:
+      - .db3
+      - .vx
+      - .ver
+      - .lnk
+      - .ini
+
+  output:
+    format: json
+    include_metadata: true
+    include_content_preview: true
+    preview_max_chars: 500
+
+  classification:
+    enabled: true
+    use_filename_heuristics: true
+    use_folder_path: true
+    fallback_doc_type: "unknown"
+
+  filename_patterns:
+    change-order:
+      - "change order"
+      - "CO-"
+      - "SCO"
+      - "RFCO"
+    rfi:
+      - "RFI"
+      - "request for information"
+    preliminary-notice:
+      - "prelim"
+      - "preliminary notice"
+    progress-billing:
+      - "inv"
+      - "invoice"
+      - "billing"
+      - "progress bill"
+    lien-release:
+      - "lien release"
+      - "waiver"
+      - "conditional"
+      - "unconditional"
+    insurance:
+      - "insurance"
+      - "certificate"
+      - "cert of ins"
+    permit:
+      - "permit"
+      - "cal-osha"

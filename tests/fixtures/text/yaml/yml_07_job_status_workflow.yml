@@ -1,0 +1,46 @@
+workflow:
+  name: job-lifecycle
+  states:
+    bid:
+      display: "Bid"
+      transitions:
+        - awarded
+        - lost
+      required_docs:
+        - bid-proposal
+        - insurance-cert
+
+    active:
+      display: "Active"
+      transitions:
+        - punch-list
+        - on-hold
+      required_docs:
+        - contract
+        - preliminary-notice
+        - cal-osha-notification
+        - usa-ticket
+
+    punch-list:
+      display: "Punch List"
+      transitions:
+        - closeout
+      required_docs:
+        - punch-list
+        - as-built-redlines
+
+    closeout:
+      display: "Closeout"
+      transitions:
+        - complete
+      required_docs:
+        - final-billing
+        - bacti-test-results
+        - conditional-lien-release
+        - unconditional-lien-release
+
+    complete:
+      display: "Complete"
+      terminal: true
+      required_docs:
+        - final-payment-receipt

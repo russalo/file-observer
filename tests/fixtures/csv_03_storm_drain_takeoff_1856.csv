@@ -1,0 +1,42 @@
+﻿Subject,Comments,Length,Length Unit,Area,Area Unit,Volume,Volume Unit,Count,Measurement,Measurement Unit,Depth,Depth Unit,Color,Height,Height Unit,Width,Width Unit,Space,Unit
+"18"" RCP Storm Drain (4)",,119.35,ft,,,,,,119.35,ft,,,,,,,,,
+"18"" RCP Storm Drain",34.91 ft,34.92,ft,0,,0,,0,34.92,ft,0.00,"ft' in""",#004080,0,,0,,,ft
+"18"" RCP Storm Drain",22.14 ft,22.14,ft,0,,0,,0,22.14,ft,0.00,"ft' in""",#004080,0,,0,,,ft
+"18"" RCP Storm Drain",22.39 ft,22.39,ft,0,,0,,0,22.39,ft,0.00,"ft' in""",#004080,0,,0,,,ft
+"18"" RCP Storm Drain",39.90 ft,39.90,ft,0,,0,,0,39.90,ft,0.00,"ft' in""",#004080,0,,0,,,ft
+"24"" RCP Storm Drain (2)",,561.37,ft,,,,,,561.37,ft,,,,,,,,,
+"24"" RCP Storm Drain",507.67 ft,507.67,ft,0,,0,,0,507.67,ft,0.00,"ft' in""",#FF8040,0,,0,,,ft
+"24"" RCP Storm Drain",53.70 ft,53.71,ft,0,,0,,0,53.71,ft,0.00,"ft' in""",#FF8040,0,,0,,,ft
+"30"" RCP Storm Drain  (1)",,53.14,ft,,,,,,53.14,ft,,,,,,,,,
+"30"" RCP Storm Drain ",53.14 ft,53.14,ft,0,,0,,0,53.14,ft,0.00,"ft' in""",#FFFF80,0,,0,,,ft
+"36"" RCP Storm Drain (3)",,651.22,ft,,,,,,651.22,ft,,,,,,,,,
+"36"" RCP Storm Drain",357.40 ft,357.40,ft,0,,0,,0,357.40,ft,0.00,"ft' in""",#FF0080,0,,0,,,ft
+"36"" RCP Storm Drain",75.36 ft,75.36,ft,0,,0,,0,75.36,ft,0.00,"ft' in""",#FF0080,0,,0,,,ft
+"36"" RCP Storm Drain",218.47 ft,218.47,ft,0,,0,,0,218.47,ft,0.00,"ft' in""",#FF0080,0,,0,,,ft
+"42"" RCP Storm Drain (1)",,248.07,ft,,,,,,248.07,ft,,,,,,,,,
+"42"" RCP Storm Drain",248.07 ft,248.07,ft,0,,0,,0,248.07,ft,0.00,"ft' in""",#00FFFF,0,,0,,,ft
+"96"" RCP Storm Drain  (2)",,863.09,ft,,,,,,863.09,ft,,,,,,,,,
+"96"" RCP Storm Drain ",570.03 ft,570.03,ft,0,,0,,0,570.03,ft,0.00,"ft' in""",#800000,0,,0,,,ft
+"96"" RCP Storm Drain ",293.05 ft,293.05,ft,0,,0,,0,293.05,ft,0.00,"ft' in""",#800000,0,,0,,,ft
+Concrete Bulkhead (1),,,,,,,,1,1,Count,,,,,,,,,
+Concrete Bulkhead,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#8080FF,0,,0,,,Count
+Concrete Catch Basin (4),,,,,,,,5,5,Count,,,,,,,,,
+Concrete Catch Basin,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#FF80FF,0,,0,,,Count
+Concrete Catch Basin,2,0,,0.00,,0,,2,2,Count,0.0000,"ft' in""",#FF80FF,0,,0,,,Count
+Concrete Catch Basin,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#FF80FF,0,,0,,,Count
+Concrete Catch Basin,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#FF80FF,0,,0,,,Count
+Concrete Collar  (1),,,,,,,,1,1,Count,,,,,,,,,
+Concrete Collar ,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#000040,0,,0,,,Count
+Install Cap at End of Line (2),,,,,,,,2,2,Count,,,,,,,,,
+Install Cap at End of Line,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#FF8000,0,,0,,,Count
+Install Cap at End of Line,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#FF8000,0,,0,,,Count
+Manhole Per Plan 3011 (1),,,,,,,,2,2,Count,,,,,,,,,
+Manhole Per Plan 3011,2,0,,0.00,,0,,2,2,Count,0.0000,"ft' in""",#800040,0,,0,,,Count
+Manhole Per Plan 3013 (1),,,,,,,,1,1,Count,,,,,,,,,
+Manhole Per Plan 3013,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#8080C0,0,,0,,,Count
+Manhole Plan No. 3012 (1),,,,,,,,2,2,Count,,,,,,,,,
+Manhole Plan No. 3012,2,0,,0.00,,0,,2,2,Count,0.0000,"ft' in""",#FF0000,0,,0,,,Count
+Manhole Shaft Plan No. 3014 (1),,,,,,,,1,1,Count,,,,,,,,,
+Manhole Shaft Plan No. 3014,1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#FF8000,0,,0,,,Count
+"Remove 36"" Grate Inlet (1)",,,,,,,,1,1,Count,,,,,,,,,
+"Remove 36"" Grate Inlet",1,0,,0.00,,0,,1,1,Count,0.0000,"ft' in""",#00FF80,0,,0,,,Count

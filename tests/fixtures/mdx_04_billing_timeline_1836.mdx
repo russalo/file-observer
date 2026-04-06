@@ -1,0 +1,25 @@
+---
+job: 1836
+doc_type: billing-timeline
+client: "C.W. Driver LLC"
+---
+
+# Billing Timeline - Job 1836
+
+<BillingTimeline
+  invoices={[
+    { inv: "INV-01", period: "Oct 2023", amount: 65250, daysToPayment: 35, status: "paid" },
+    { inv: "INV-02", period: "Nov 2023", amount: 61380, daysToPayment: 45, status: "paid" },
+    { inv: "INV-03", period: "Dec 2023", amount: 49500, daysToPayment: 56, status: "paid" },
+    { inv: "INV-04", period: "Jan 2024", amount: 55620, daysToPayment: 40, status: "paid" },
+    { inv: "INV-05", period: "Feb 2024", amount: 53010, daysToPayment: 55, status: "paid" },
+    { inv: "INV-06", period: "Mar 2024", amount: 42570, daysToPayment: null, status: "overdue" },
+    { inv: "INV-07", period: "Apr 2024", amount: 55890, daysToPayment: null, status: "overdue" },
+  ]}
+/>
+
+<PaymentAlert
+  type="slow-pay"
+  message="Average payment time 46.2 days on a net-30 contract. Two invoices currently 45+ days overdue."
+  action="Compliance effort in progress. Consider lien notice by 06-01-2024."
+/>

@@ -1,0 +1,39 @@
+clients:
+  cw-driver:
+    display_name: "C.W. Driver LLC"
+    slug: cw-driver
+    type: general-contractor
+    payment_terms: net-30
+    slow_pay: true
+    avg_payment_days: 46
+    jobs: [1836]
+    contacts:
+      - name: "Gilbert Santos"
+        role: project-manager
+      - name: "Mirian V."
+        role: accounts-payable
+        notes: "Slow to respond on billing issues"
+
+  cvwd:
+    display_name: "Cucamonga Valley Water District"
+    slug: cvwd
+    type: water-district
+    payment_terms: net-30
+    slow_pay: false
+    jobs: [1629, 1651, 1666, 1667, 1755, 1827, 1835, 1851, 1852, 1876, 1884]
+    notes: "COs over $10K require board approval - 60+ day turnaround"
+
+  lennar:
+    display_name: "Lennar Homes"
+    slug: lennar
+    type: developer
+    payment_terms: net-30
+    slow_pay: false
+    job_count: 19
+
+  all-american-asphalt:
+    display_name: "All American Asphalt"
+    slug: all-american-asphalt
+    type: general-contractor
+    payment_terms: net-30
+    job_count: 16

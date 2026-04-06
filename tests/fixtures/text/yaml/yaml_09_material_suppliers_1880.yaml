@@ -1,0 +1,30 @@
+job_number: 1880
+project: "JPA South Storm Drain - Fontana"
+materials:
+  - item: "24-inch RCP Storm Drain"
+    supplier: "Thompson Pipe Group"
+    quantity: 800
+    unit: LF
+    unit_cost: 62.00
+    ordered: "2025-10-28"
+    delivery_status: "First delivery complete - 10 joints"
+    notes: "APWA Std Plan 151-3"
+  - item: "Class 2 Aggregate Base"
+    supplier: "Holliday Rock"
+    quantity: 450
+    unit: tons
+    unit_cost: 28.50
+    delivery_status: pending
+  - item: "Crushed Rock - Pipe Bedding"
+    supplier: "Holliday Rock"
+    quantity: 120
+    unit: tons
+    unit_cost: 31.00
+    delivery_status: pending
+  - item: "48-inch Precast Manhole"
+    supplier: "Jensen Precast"
+    quantity: 4
+    unit: EA
+    unit_cost: 1850.00
+    ordered: "2025-10-15"
+    delivery_status: delivered

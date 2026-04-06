@@ -1,0 +1,45 @@
+---
+job: 1836
+client: "C.W. Driver LLC"
+type: project-dashboard
+status: active
+---
+
+# Job 1836 - Ontario Luxury Apartments
+
+<ProjectHeader
+  jobNumber={1836}
+  client="C.W. Driver LLC"
+  city="Ontario, CA"
+  contractValue={485000}
+  revisedValue={537800}
+  startDate="2023-08-01"
+  status="punch-list"
+/>
+
+## Financials
+
+<BillingSnapshot
+  originalContract={485000}
+  approvedCOs={52800}
+  revisedContract={537800}
+  billedToDate={472864}
+  percentComplete={88}
+  retainageHeld={47286}
+  outstanding={64936}
+/>
+
+## Active Issues
+
+<IssueList>
+  <Issue severity="high" tag="billing-dispute">
+    March and April invoices unpaid 45+ days. Compliance efforts documented.
+    Contact: Mirian V. at CW Driver accounting.
+  </Issue>
+  <Issue severity="medium" tag="punch-list">
+    7 open punch list items. As-built redlines due 04-30-2025.
+  </Issue>
+  <Issue severity="low" tag="permit">
+    CVWD final inspection not yet scheduled.
+  </Issue>
+</IssueList>

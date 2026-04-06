@@ -1,0 +1,11 @@
+Item,Description,Size,Material,Unit,Quantity,Unit Cost,Total Cost,Supplier,Notes
+1,PVC Water Main,12-inch,C-900 DR14,LF,1250,$28.50,$35625.00,Ferguson Waterworks,CVWD approved
+2,PVC Water Main,8-inch,C-900 DR14,LF,380,$18.75,$7125.00,Ferguson Waterworks,CVWD approved
+3,Gate Valve,12-inch,Resilient wedge,EA,4,$1850.00,$7400.00,Ferguson Waterworks,
+4,Gate Valve,8-inch,Resilient wedge,EA,6,$980.00,$5880.00,Ferguson Waterworks,
+5,Fire Hydrant Assembly,Standard,CVWD std,EA,3,$3200.00,$9600.00,South Bay Foundry,
+6,Tee,12x8-inch,Ductile iron,EA,2,$425.00,$850.00,Ferguson Waterworks,
+7,90-degree Bend,12-inch,Ductile iron,EA,3,$380.00,$1140.00,Ferguson Waterworks,
+8,Blow-off Assembly,2-inch,Brass,EA,2,$285.00,$570.00,Ferguson Waterworks,
+9,Air Vacuum Release Valve,1-inch,Bronze,EA,2,$320.00,$640.00,Ferguson Waterworks,
+10,Concrete Thrust Block,Various,,CY,18,$175.00,$3150.00,Local concrete,Per std detail

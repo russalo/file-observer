@@ -1,0 +1,32 @@
+company: "C.P. Construction Co., Inc."
+license: "792733"
+insurance:
+  general_liability:
+    carrier: "Markel Insurance"
+    policy: "ML-2025-92340"
+    effective: "2025-04-01"
+    expiration: "2026-04-01"
+    limit: 2000000
+    additional_insureds:
+      - "Cucamonga Valley Water District"
+      - "West Valley Water District"
+      - "City of Ontario"
+      - "City of Rialto"
+  workers_compensation:
+    carrier: "State Compensation Insurance Fund"
+    policy: "WC-2025-46320"
+    effective: "2025-04-01"
+    expiration: "2026-04-01"
+    coverage: statutory
+  auto:
+    carrier: "Markel Insurance"
+    policy: "AU-2025-33410"
+    effective: "2025-04-01"
+    expiration: "2026-04-01"
+    limit: 1000000
+cal_osha:
+  annual_permit_expiration: "2026-07-25"
+contractor_license:
+  number: "792733"
+  classification: A
+  expiration: "2027-07-31"

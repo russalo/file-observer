@@ -1,0 +1,42 @@
+watch_rules:
+  - rule: usa-ticket-expiring
+    description: "Flag USA tickets expiring within 14 days"
+    field: expiration_date
+    condition: "days_until < 14"
+    action: flag
+    reason_code: usa-ticket-expiring
+    severity: warning
+
+  - rule: usa-ticket-expired
+    description: "Flag expired USA tickets on active jobs"
+    field: expiration_date
+    condition: "days_until < 0 AND job_status == active"
+    action: flag
+    reason_code: usa-ticket-expired
+    severity: critical
+    human_in_loop: true
+
+  - rule: invoice-overdue
+    description: "Flag invoices past payment terms"
+    field: invoice_age_days
+    condition: "age > payment_terms_days"
+    action: flag
+    reason_code: payment-overdue
+    severity: warning
+
+  - rule: co-pending-60-days
+    description: "Flag change orders pending over 60 days"
+    field: days_open
+    condition: "days_open > 60 AND status == pending"
+    action: flag
+    reason_code: co-approval-delayed
+    severity: warning
+    human_in_loop: true
+
+  - rule: insurance-expiring
+    description: "Flag insurance certs expiring within 30 days"
+    field: policy_expiration
+    condition: "days_until < 30"
+    action: flag
+    reason_code: insurance-expiring
+    severity: warning

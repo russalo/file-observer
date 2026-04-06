@@ -1,0 +1,23 @@
+job_number: 1836
+client: "C.W. Driver LLC"
+owner: "Euclid Ontario Luxury Apartments LLC"
+description: "Offsite and onsite water, sewer, and fire service improvements - 320 N. Euclid Ave, Ontario CA"
+work_type:
+  - water
+  - sewer
+  - fire-service
+city: Ontario
+state: CA
+district: CVWD
+contract_value: 485000.00
+approved_cos: 52800.00
+revised_contract: 537800.00
+start_date: "2023-08-01"
+status: punch-list
+contacts:
+  superintendent: "R. Garza"
+  project_manager: "John Pfister"
+  gc_contact: "Gilbert Santos"
+  city_inspector: "M. Rodriguez"
+license: "792733"
+dir_number: "1000044821"

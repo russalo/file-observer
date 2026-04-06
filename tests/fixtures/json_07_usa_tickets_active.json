@@ -1,0 +1,43 @@
+{
+  "report_date": "2026-04-06",
+  "active_tickets": [
+    {
+      "ticket_number": "A260210399",
+      "job_number": 1883,
+      "client": "Hutton Development",
+      "address": "Lemon Ave, Ontario CA",
+      "called_in": "2026-01-21",
+      "legal_start": "2026-01-26",
+      "expiration": "2026-04-15",
+      "days_remaining": 9,
+      "alert": "RENEW - expires in 9 days"
+    },
+    {
+      "ticket_number": "A260300034",
+      "job_number": 1885,
+      "client": "MKP Construction",
+      "address": "Mission Trail Dr, Lake Elsinore",
+      "called_in": "2026-01-30",
+      "legal_start": "2026-02-04",
+      "expiration": "2026-03-05",
+      "days_remaining": -32,
+      "alert": "EXPIRED - renew immediately"
+    },
+    {
+      "ticket_number": "A252820064",
+      "job_number": 1880,
+      "client": "The Previti Group",
+      "address": "JPA South, Fontana CA",
+      "called_in": "2025-10-09",
+      "legal_start": "2025-10-14",
+      "expiration": "2025-11-12",
+      "days_remaining": -145,
+      "alert": "EXPIRED - verify if job is complete"
+    }
+  ],
+  "summary": {
+    "total_active": 3,
+    "expiring_within_14_days": 1,
+    "expired_unresolved": 2
+  }
+}

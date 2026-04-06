@@ -1,0 +1,31 @@
+job_number: 1836
+client: "C.W. Driver LLC"
+payment_terms: net-30
+slow_pay: true
+invoices:
+  - number: "INV-16500-01"
+    period: "2023-10"
+    amount: 65250.00
+    days_to_payment: 35
+    status: paid
+  - number: "INV-16500-02"
+    period: "2023-11"
+    amount: 61380.00
+    days_to_payment: 45
+    status: paid
+  - number: "INV-16500-06"
+    period: "2024-03"
+    amount: 42570.00
+    days_to_payment: null
+    status: overdue
+    compliance_effort: true
+  - number: "INV-16500-07"
+    period: "2024-04"
+    amount: 55890.00
+    days_to_payment: null
+    status: overdue
+    compliance_effort: true
+analytics:
+  avg_days_paid_invoices: 46.2
+  total_overdue: 98460.00
+  lien_threshold_date: "2024-06-01"

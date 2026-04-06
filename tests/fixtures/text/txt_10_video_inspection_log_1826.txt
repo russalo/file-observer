@@ -1,0 +1,17 @@
+; This file is stored in ANSI encoding
+
+[ClipInfo]
+CreationDate="1/23/2024 10:09:55 AM"
+OriginalClipName="16 Valve heading West-40+00.00-Date (SI_InspDate)-100924.mpg"
+DeviceType=2
+DeviceName="VM4-2-C7_OSD_MP"
+Compressor="MPEG1"
+Quality=-1
+VideoNorm="NTSC"
+hRes=320
+vRes=240
+VideoFormat=""
+CDLAB.Tech.CS.dll=1.0.2017.168
+Application="wincan_8"
+ClipRatio=1
+PictureRatio=1

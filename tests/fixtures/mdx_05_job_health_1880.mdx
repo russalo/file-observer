@@ -1,0 +1,34 @@
+---
+job: 1880
+doc_type: job-health
+client: "The Previti Group"
+as_of: "2025-11-14"
+---
+
+# Job Health Report - Job 1880 JPA South
+
+<HealthIndicators
+  schedule="green"
+  billing="green"
+  changeOrders="yellow"
+  compliance="red"
+  safety="green"
+/>
+
+<HealthDetail indicator="changeOrders" status="yellow">
+  Soft soil at sta 0+75 may require shoring. Monitoring. Potential CO if conditions worsen.
+</HealthDetail>
+
+<HealthDetail indicator="compliance" status="red">
+  USA ticket A252820064 expired 11-12-2025. Renewed as A253100891 on 11-13-2025.
+  Future: Set calendar reminder 7 days before expiration.
+</HealthDetail>
+
+<NextMilestones
+  items={[
+    { date: "2025-11-20", task: "Complete 24-inch RCP to sta 5+00" },
+    { date: "2025-11-25", task: "Set MH#2 and #3" },
+    { date: "2025-12-01", task: "Houston Harris CCTV video run 1" },
+    { date: "2025-12-15", task: "Submit progress billing #2" },
+  ]}
+/>

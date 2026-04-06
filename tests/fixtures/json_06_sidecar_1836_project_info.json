@@ -1,0 +1,28 @@
+{
+  "uuid": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "source_file": "Project Information Job 1836 04-04-2023.xlsx",
+  "job_number": 1836,
+  "ingest_date": "2026-04-06T08:00:00Z",
+  "source": "file-scan",
+  "last_run": "2026-04-06T08:15:00Z",
+  "processing_errors": 0,
+  "human_in_loop_required": false,
+  "doc_type_detected": "project-info",
+  "confidence": 0.97,
+  "derived_summary": "Project Information sheet for Job 1836, C.W. Driver LLC Ontario Luxury Apartments. Contract value $485,000. Water and sewer improvements at 320 N. Euclid Ave, Ontario CA. CVWD jurisdiction.",
+  "extracted_fields": {
+    "job_number": 1836,
+    "client": "C.W. Driver LLC",
+    "city": "Ontario",
+    "contract_value": 485000,
+    "work_type": ["water", "sewer"]
+  },
+  "linked_mentions": [],
+  "tags_inline": [],
+  "tags_promoted": {
+    "doc_type": "project-info",
+    "client": "cw-driver",
+    "project": "job-1836",
+    "status": "approved"
+  }
+}

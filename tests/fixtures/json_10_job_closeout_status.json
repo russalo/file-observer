@@ -1,0 +1,36 @@
+{
+  "report_date": "2026-04-06",
+  "jobs_in_closeout": [
+    {
+      "job_number": 1850,
+      "client": "Water Facilities Authority",
+      "completion_pct": 95,
+      "outstanding_items": [
+        "Unconditional final lien release (pending payment)",
+        "Final payment $28,450 overdue 30 days"
+      ],
+      "final_payment_status": "overdue"
+    },
+    {
+      "job_number": 1836,
+      "client": "C.W. Driver LLC",
+      "completion_pct": 88,
+      "outstanding_items": [
+        "7 open punch list items",
+        "As-built redlines due 04-30-2025",
+        "CVWD final inspection not scheduled",
+        "2 invoices overdue"
+      ],
+      "final_payment_status": "not-yet-final"
+    },
+    {
+      "job_number": 1884,
+      "client": "CVWD",
+      "completion_pct": 100,
+      "outstanding_items": [
+        "Unconditional final lien release pending"
+      ],
+      "final_payment_status": "final-pay-submitted"
+    }
+  ]
+}

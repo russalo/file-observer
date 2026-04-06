@@ -1,0 +1,36 @@
+{
+  "report_date": "2026-04-06",
+  "compliance_items": [
+    {
+      "job_number": 1836,
+      "type": "slow-pay",
+      "client": "C.W. Driver LLC",
+      "invoices_outstanding": ["INV-16500-06", "INV-16500-07"],
+      "total_outstanding": 98460.00,
+      "oldest_invoice_age_days": 50,
+      "contact_attempts": 5,
+      "lien_notice_eligible": true,
+      "status": "escalate"
+    },
+    {
+      "job_number": 1850,
+      "type": "slow-pay",
+      "client": "Water Facilities Authority",
+      "invoices_outstanding": ["INV-16788"],
+      "total_outstanding": 28450.00,
+      "oldest_invoice_age_days": 30,
+      "contact_attempts": 1,
+      "lien_notice_eligible": false,
+      "status": "follow-up"
+    },
+    {
+      "job_number": 1826,
+      "type": "disputed-co",
+      "client": "Security Paving",
+      "co_number": "CO-05",
+      "amount_disputed": 3200.00,
+      "claim_filed": "2024-01-15",
+      "status": "open-dispute"
+    }
+  ]
+}
