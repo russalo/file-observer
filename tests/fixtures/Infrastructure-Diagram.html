@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Russell's Infrastructure Mesh</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; padding: 20px; min-height: 100vh; }
+  h1 { text-align: center; font-size: 1.4em; color: #7eb8da; margin-bottom: 4px; }
+  .subtitle { text-align: center; font-size: 0.85em; color: #666; margin-bottom: 24px; }
+
+  .diagram { max-width: 1100px; margin: 0 auto; position: relative; }
+
+  /* Tailscale mesh backbone */
+  .mesh-label { text-align: center; font-size: 0.75em; color: #4a9eff; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 16px; padding: 6px 16px; border: 1px dashed #4a9eff33; border-radius: 20px; display: inline-block; position: relative; left: 50%; transform: translateX(-50%); }
+
+  .row { display: flex; justify-content: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+
+  .device { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 16px; width: 200px; position: relative; }
+  .device.primary { border-color: #4a9eff55; box-shadow: 0 0 20px #4a9eff11; }
+  .device.server { border-color: #22c55e33; }
+  .device.mobile { border-color: #f59e0b33; width: 160px; }
+  .device.cloud { border-color: #a855f733; }
+
+  .device-name { font-weight: 700; font-size: 1em; margin-bottom: 2px; }
+  .device-host { font-size: 0.75em; color: #888; font-family: monospace; }
+  .device-ip { font-size: 0.7em; color: #4a9eff; font-family: monospace; margin-top: 2px; }
+  .device-os { font-size: 0.7em; color: #666; margin-top: 4px; }
+  .device-role { font-size: 0.78em; color: #aaa; margin-top: 8px; line-height: 1.4; }
+
+  .services { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .svc { font-size: 0.65em; padding: 2px 7px; border-radius: 4px; background: #2a2d3a; color: #ccc; }
+  .svc.active { background: #22c55e22; color: #4ade80; border: 1px solid #22c55e44; }
+  .svc.planned { background: #f59e0b11; color: #f59e0b88; border: 1px dashed #f59e0b44; }
+  .svc.ai { background: #a855f722; color: #c084fc; border: 1px solid #a855f744; }
+
+  .badge { position: absolute; top: -8px; right: 12px; font-size: 0.6em; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+  .badge.exit-node { background: #ef444433; color: #f87171; border: 1px solid #ef444455; }
+  .badge.daily { background: #4a9eff22; color: #4a9eff; border: 1px solid #4a9eff44; }
+  .badge.headless { background: #22c55e22; color: #4ade80; border: 1px solid #22c55e44; }
+
+  /* Cloud services section */
+  .cloud-section { margin-top: 24px; padding: 16px; border: 1px dashed #a855f733; border-radius: 12px; background: #1a1d2788; }
+  .cloud-title { font-size: 0.75em; color: #a855f7; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .cloud-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .cloud-svc { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; padding: 10px 14px; text-align: center; min-width: 100px; }
+  .cloud-svc-name { font-size: 0.8em; font-weight: 600; }
+  .cloud-svc-detail { font-size: 0.65em; color: #888; margin-top: 2px; }
+  .cloud-svc .connection { font-size: 0.6em; color: #a855f7; margin-top: 4px; }
+
+  /* Shared storage */
+  .storage-section { margin-top: 24px; padding: 16px; border: 1px dashed #f59e0b33; border-radius: 12px; background: #1a1d2788; }
+  .storage-title { font-size: 0.75em; color: #f59e0b; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .storage-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .storage-item { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 8px; padding: 10px 14px; text-align: center; min-width: 140px; }
+  .storage-name { font-size: 0.8em; font-weight: 600; }
+  .storage-detail { font-size: 0.65em; color: #888; margin-top: 2px; }
+  .storage-nodes { font-size: 0.6em; color: #f59e0b; margin-top: 4px; }
+
+  /* Connection flow */
+  .flow-section { margin-top: 24px; padding: 16px; border: 1px solid #2a2d3a; border-radius: 12px; background: #1a1d2788; }
+  .flow-title { font-size: 0.75em; color: #7eb8da; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .flow { font-size: 0.8em; line-height: 2; color: #bbb; }
+  .flow-line { padding: 4px 0; }
+  .arrow { color: #4a9eff; margin: 0 6px; }
+  .node { color: #4ade80; font-weight: 600; }
+  .action { color: #888; font-style: italic; }
+  .status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .status.live { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+  .status.partial { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+  .status.planned { background: #666; }
+
+  /* Legend */
+  .legend { margin-top: 24px; display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; font-size: 0.7em; color: #888; }
+  .legend-item { display: flex; align-items: center; gap: 6px; }
+
+  /* Firewall note */
+  .firewall { margin-top: 16px; text-align: center; font-size: 0.75em; color: #ef4444; padding: 8px; border: 1px dashed #ef444433; border-radius: 8px; }
+  .firewall strong { color: #f87171; }
+</style>
+</head>
+<body>
+
+<h1>Russell's Infrastructure Mesh</h1>
+<div class="subtitle">CP Construction &mdash; Updated 2026-03-27</div>
+
+<div class="diagram">
+
+  <div style="text-align:center"><span class="mesh-label">Tailscale Mesh Network</span></div>
+
+  <!-- Primary machines row -->
+  <div class="row">
+    <div class="device primary">
+      <span class="badge daily">DAILY DRIVER</span>
+      <div class="device-name">Dell Laptop</div>
+      <div class="device-host">russ-dell-laptop</div>
+      <div class="device-ip">100.70.235.124</div>
+      <div class="device-os">Windows 11</div>
+      <div class="device-role">Command center. Cowork orchestration, SSH into all nodes.</div>
+      <div class="services">
+        <span class="svc active">Cowork</span>
+        <span class="svc active">Claude Desktop</span>
+        <span class="svc active">Obsidian</span>
+        <span class="svc active">Dropbox</span>
+        <span class="svc active">SSH Client</span>
+      </div>
+    </div>
+
+    <div class="device primary">
+      <div class="device-name">MacBook Pro M3 Max</div>
+      <div class="device-host">russells-macbook-pro</div>
+      <div class="device-ip">100.119.83.49</div>
+      <div class="device-os">macOS</div>
+      <div class="device-role">Primary dev machine. Heavy inference, Claude Code.</div>
+      <div class="services">
+        <span class="svc active">Claude Code</span>
+        <span class="svc active">Claude Desktop</span>
+        <span class="svc planned">Ollama</span>
+        <span class="svc active">Dropbox</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Server row -->
+  <div class="row">
+    <div class="device server">
+      <span class="badge headless">HEADLESS</span>
+      <div class="device-name">Mini PC</div>
+      <div class="device-host">mini</div>
+      <div class="device-ip">100.120.154.111</div>
+      <div class="device-os">Ubuntu Server 24.04</div>
+      <div class="device-role">Always-on automation. Scheduled tasks, Docker workloads.</div>
+      <div class="services">
+        <span class="svc active">Docker</span>
+        <span class="svc active">Python 3</span>
+        <span class="svc active">tmux</span>
+        <span class="svc planned">Claude Code</span>
+        <span class="svc planned">Dropbox</span>
+        <span class="svc planned">rclone</span>
+      </div>
+    </div>
+
+    <div class="device server">
+      <div class="device-name">Fedora Workstation</div>
+      <div class="device-host">bossdev</div>
+      <div class="device-ip">100.78.245.17</div>
+      <div class="device-os">Fedora Linux</div>
+      <div class="device-role">Persistent services. Docker, Postgres, LiteLLM, AI workloads.</div>
+      <div class="services">
+        <span class="svc active">Docker</span>
+        <span class="svc active">Claude Code</span>
+        <span class="svc active">Python 3</span>
+        <span class="svc active">tmux</span>
+        <span class="svc planned">Postgres/pgvector</span>
+        <span class="svc planned">LiteLLM</span>
+        <span class="svc planned">Dropbox</span>
+      </div>
+    </div>
+
+    <div class="device server">
+      <span class="badge exit-node">EXIT NODE</span>
+      <div class="device-name">KVM VPS</div>
+      <div class="device-host">srv334254</div>
+      <div class="device-ip">100.89.175.30</div>
+      <div class="device-os">Ubuntu 24.04</div>
+      <div class="device-role">Public relay, firewall bypass, offsite Git.</div>
+      <div class="services">
+        <span class="svc active">Claude Code</span>
+        <span class="svc active">Exit Node</span>
+        <span class="svc planned">Git Remote</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile -->
+  <div class="row">
+    <div class="device mobile">
+      <div class="device-name">iPhone</div>
+      <div class="device-host">iphone172</div>
+      <div class="device-ip">100.120.114.62</div>
+      <div class="device-os">iOS</div>
+      <div class="device-role">Dispatch into Cowork via Anthropic cloud.</div>
+      <div class="services">
+        <span class="svc active">Claude App</span>
+        <span class="svc active">Tailscale</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Firewall note -->
+  <div class="firewall">
+    <strong>Corporate Firewall</strong> blocks apt, npm, Ubuntu repos, and random sites.<br>
+    Bypass: <code>sudo tailscale set --exit-node=srv334254</code> on any machine.
+  </div>
+
+  <!-- Cloud Services -->
+  <div class="cloud-section">
+    <div class="cloud-title">Cloud Services (via MCP / API)</div>
+    <div class="cloud-row">
+      <div class="cloud-svc">
+        <div class="cloud-svc-name">Google Drive</div>
+        <div class="cloud-svc-detail">File search & fetch</div>
+        <div class="connection">MCP &rarr; Cowork</div>
+      </div>
+      <div class="cloud-svc">
+        <div class="cloud-svc-name">Gmail</div>
+        <div class="cloud-svc-detail">Read, search, draft</div>
+        <div class="connection">MCP &rarr; Cowork</div>
+      </div>
+      <div class="cloud-svc">
+        <div class="cloud-svc-name">Google Calendar</div>
+        <div class="cloud-svc-detail">Events, scheduling</div>
+        <div class="connection">MCP &rarr; Cowork</div>
+      </div>
+      <div class="cloud-svc">
+        <div class="cloud-svc-name">GitHub</div>
+        <div class="cloud-svc-detail">russalo — cp-project, Sentinel</div>
+        <div class="connection">Git &rarr; All machines</div>
+      </div>
+      <div class="cloud-svc">
+        <div class="cloud-svc-name">Anthropic Cloud</div>
+        <div class="cloud-svc-detail">Dispatch orchestration</div>
+        <div class="connection">iPhone &rarr; Cowork VM</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Shared Storage -->
+  <div class="storage-section">
+    <div class="storage-title">Shared Storage & Knowledge</div>
+    <div class="storage-row">
+      <div class="storage-item">
+        <div class="storage-name">Dropbox Business</div>
+        <div class="storage-detail">Job files, shared docs, Cowork working dir</div>
+        <div class="storage-nodes"><span class="status live"></span>Dell, MBP &nbsp; <span class="status planned"></span>Mini, BossDev (planned)</div>
+      </div>
+      <div class="storage-item">
+        <div class="storage-name">Obsidian Vault</div>
+        <div class="storage-detail">Knowledge pipeline, TASKS.md, AI-Workspace</div>
+        <div class="storage-nodes"><span class="status live"></span>Dell &nbsp; <span class="status planned"></span>Obsidian Git sync (planned)</div>
+      </div>
+      <div class="storage-item">
+        <div class="storage-name">Google Drive</div>
+        <div class="storage-detail">Docs, sheets, external shares</div>
+        <div class="storage-nodes"><span class="status planned"></span>rclone mount (planned)</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Key Flows -->
+  <div class="flow-section">
+    <div class="flow-title">Key Workflows</div>
+    <div class="flow">
+      <div class="flow-line"><span class="status live"></span><span class="node">Dell</span> <span class="arrow">&rarr;</span> SSH <span class="arrow">&rarr;</span> <span class="node">Mini</span> / <span class="node">BossDev</span> / <span class="node">VPS</span> <span class="action">&mdash; remote management</span></div>
+      <div class="flow-line"><span class="status live"></span><span class="node">iPhone</span> <span class="arrow">&rarr;</span> Anthropic Cloud <span class="arrow">&rarr;</span> Cowork VM on <span class="node">Dell</span> <span class="action">&mdash; mobile dispatch</span></div>
+      <div class="flow-line"><span class="status live"></span>Any machine <span class="arrow">&rarr;</span> <code>--exit-node=srv334254</code> <span class="arrow">&rarr;</span> <span class="node">VPS</span> <span class="arrow">&rarr;</span> Internet <span class="action">&mdash; firewall bypass</span></div>
+      <div class="flow-line"><span class="status partial"></span><span class="node">Cowork</span> <span class="arrow">&rarr;</span> MCP <span class="arrow">&rarr;</span> <span class="node">Mini</span> / <span class="node">BossDev</span> <span class="action">&mdash; remote task execution (planned)</span></div>
+      <div class="flow-line"><span class="status planned"></span><span class="node">Obsidian</span> <span class="arrow">&rarr;</span> Git <span class="arrow">&rarr;</span> All machines <span class="action">&mdash; knowledge sync (planned)</span></div>
+      <div class="flow-line"><span class="status planned"></span><span class="node">BossDev</span>: LiteLLM <span class="arrow">&rarr;</span> Claude API / Ollama <span class="action">&mdash; AI routing (planned)</span></div>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="legend">
+    <div class="legend-item"><span class="svc active" style="font-size:1em">Service</span> Live</div>
+    <div class="legend-item"><span class="svc planned" style="font-size:1em">Service</span> Planned</div>
+    <div class="legend-item"><span class="status live"></span> Working</div>
+    <div class="legend-item"><span class="status partial"></span> In Progress</div>
+    <div class="legend-item"><span class="status planned"></span> Planned</div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,162 @@
+# domains.yaml — How infrastructure maps to project domains
+#
+# This is the bridge layer. Nodes and services are defined once in nodes.yaml
+# and services.yaml. Here we answer: for project X, node Y plays role Z.
+#
+# The same node can appear in multiple domains with different roles.
+# When a node's role changes, update this file — not nodes.yaml.
+#
+# Domains: PKP, TrenchIQ, SEN
+#
+# Comment key:
+#   # KNOWN / ASSUMED / UNKNOWN: e.g. [example]
+
+domains:
+
+  PKP:
+    description: "Personal Knowledge Pipeline — AI-Workspace document ingestion, classification, and publishing"
+    repo: null           # KNOWN: not yet initialized — planned post Phase 4
+    phase: 3             # KNOWN: Phase 3 complete, Phase 4 next
+
+    execution:
+      node: delldev      # KNOWN: only machine running inbox_sorter.py — PyCharm run configs live here
+      trigger: manual    # KNOWN: Russell triggers scan + execute from PyCharm
+      can_run_headless: false  # KNOWN: --root arg not yet added; delldev + PyCharm required today
+
+    vault:
+      node: delldev      # KNOWN: Dropbox primary on delldev
+      path: 'C:\Users\russe\C P Construction Co Dropbox\Claude\AI-Workspace\'  # KNOWN
+      also_synced_to: [mbp]  # KNOWN: Dropbox on mbp
+
+    cowork_sessions:
+      primary_node: delldev   # ASSUMED: most sessions initiated from delldev
+      secondary_node: mbp     # KNOWN: MBP Claude instance did the doc review 2026-04-02
+
+    llm_inference:
+      current_use: none        # KNOWN: sorter is rule-based only, no LLM calls today
+      planned_use: enrichment  # ASSUMED: Phase 5 enrich scripts may call LLM for summarization/tagging
+      planned_provider: mbp    # ASSUMED: Ollama on mbp is the natural local LLM target
+
+    backup:
+      status: none   # KNOWN: rclone not configured; Dropbox-only is single point of failure
+
+    node_roles:
+      delldev:
+        roles: [execution_node, vault_host, cowork_primary, hitl_review]
+      mbp:
+        roles: [cowork_secondary, llm_inference_future, vault_mirror]
+      bossdev:
+        roles: [llm_proxy_future]  # ASSUMED: LiteLLM accessible for future enrich calls
+      origin-core:
+        roles: [scheduler_future]  # ASSUMED: planned for headless scheduled execute() runs
+
+    drop_readiness_threshold: unknown  # UNKNOWN: what is YOUR rule for when a file is ready to go in drop/?
+                                       #   e.g. "I have finished editing it and I want it in the vault"
+                                       #   This is behavioral — there is no technical answer, only your intent.
+
+  TrenchIQ:
+    description: "cp-project — Django/React/PostgreSQL EWO and job management web app"
+    github_repo: "russalo/cp-project"
+    phase: "Milestone 2 — Labor, Equipment, Materials models"  # KNOWN: CLAUDE.md
+
+    dev:
+      primary_node: delldev     # ASSUMED: PyCharm on delldev, GitHub Copilot active
+      ide: PyCharm
+      python_version: unknown   # UNKNOWN: what Python version is cp-project using? check pyproject.toml or .python-version
+      django_version: unknown   # UNKNOWN: check requirements.txt in russalo/cp-project
+
+    database:
+      engine: PostgreSQL        # KNOWN: CLAUDE.md
+      host_node: unknown        # UNKNOWN: where does Postgres actually run for local dev?
+                                #   e.g. "delldev local install", "Docker on bossdev", "Docker on delldev"
+      port: 5432                # ASSUMED: Postgres default
+      dev_db_name: unknown      # UNKNOWN: e.g. "cp_project_dev"
+
+    app_server:
+      host_node: unknown        # UNKNOWN: where does `python manage.py runserver` run?
+                                #   e.g. "delldev" (local), "Docker on bossdev via Tailscale"
+
+    docker:
+      host_node: bossdev        # ASSUMED: bossdev has Docker and is the natural container host
+      compose_file: unknown     # UNKNOWN: is there a docker-compose.yml in russalo/cp-project?
+
+    deploy_target:
+      node: unknown             # UNKNOWN: where would production deploy?
+                                #   e.g. "origin-core", "Render.com", "Railway", "self-hosted on bossdev"
+      method: unknown           # UNKNOWN: e.g. "Docker", "gunicorn + nginx", "PaaS"
+
+    node_roles:
+      delldev:
+        roles: [dev_primary, git_client, local_app_server]  # ASSUMED: delldev is dev environment
+      bossdev:
+        roles: [docker_host, db_candidate, staging_server]  # ASSUMED
+      origin-core:
+        roles: [deploy_candidate]  # ASSUMED: VPS is natural production target
+
+  SEN:
+    description: "Project Sentinel — AI-orchestrated fictional world engine with hybrid JSON/Markdown storage"
+    repo: unknown  # UNKNOWN: is there a GitHub repo for Sentinel yet? e.g. russalo/sentinel
+    phase: "Infrastructure planning"  # KNOWN: CLAUDE.md — MCP servers planned
+
+    world_state:
+      format: JSON              # KNOWN: CLAUDE.md
+      storage_node: unknown     # UNKNOWN: where does the JSON world state file live?
+                                #   e.g. "Dropbox/AI-Workspace/...", "bossdev local", "origin-core"
+      path: unknown
+
+    lore:
+      format: Markdown          # KNOWN: CLAUDE.md
+      storage_node: unknown     # UNKNOWN: where do the lore .md files live?
+      path: unknown
+
+    agents:
+      dm_agent:
+        host_node: unknown      # UNKNOWN: which node runs the DM agent process?
+        framework: unknown      # UNKNOWN: e.g. "Claude Code", "custom Python", "LangGraph"
+      fact_extractor:
+        host_node: unknown
+      lorekeeper:
+        host_node: unknown
+
+    mcp_servers:
+      host_node: unknown        # UNKNOWN: which node serves the MCP endpoints?
+                                #   CLAUDE.md says "planned on Fedora + VPS" — bossdev (Fedora) or origin-core (VPS)?
+      planned_servers: [filesystem_bridge, database_bridge]  # KNOWN: CLAUDE.md
+
+    dev_node: unknown           # UNKNOWN: where is Sentinel actively being developed?
+                                #   e.g. delldev, bossdev
+
+    node_roles:
+      bossdev:
+        roles: [candidate_agent_host, candidate_mcp_server]  # ASSUMED: Fedora + Docker suits this
+      origin-core:
+        roles: [candidate_mcp_endpoint]  # ASSUMED: VPS + Tailscale for accessible MCP endpoint
+      delldev:
+        roles: [dev_primary]    # ASSUMED: PyCharm on delldev likely dev environment
+
+  # ── Cross-Domain Shared Services ────────────────────────────────────────────
+  # These are infrastructure elements that serve multiple domains simultaneously.
+  # Not a domain themselves — just a reference for shared dependencies.
+
+  shared:
+    tailscale_mesh:
+      serves: [PKP, TrenchIQ, SEN]
+      critical: true  # All remote access and cross-node communication depends on this
+
+    dropbox_sync:
+      serves: [PKP, TrenchIQ_notes, SEN_lore]  # ASSUMED: Dropbox carries notes/docs for all domains
+      critical: true  # PKP vault lives here
+
+    ollama_mbp:
+      serves: [PKP_future_enrichment, SEN_agent_inference, personal_LLM]  # ASSUMED
+      current_domains_using: none  # KNOWN: no production LLM calls today
+
+    litellm_bossdev:
+      serves: unknown  # UNKNOWN: what is LiteLLM actually proxying to today?
+
+    github:
+      account: russalo
+      repos:
+        cp-project: TrenchIQ
+        ai-workspace-scripts: planned_for_PKP
+        sentinel: unknown  # UNKNOWN: does a Sentinel repo exist?

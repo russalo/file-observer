@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inbox Staging Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+
+  header {
+    background: #1a1d2e;
+    border-bottom: 1px solid #2d3148;
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  header h1 { font-size: 16px; font-weight: 600; color: #a5b4fc; letter-spacing: 0.05em; text-transform: uppercase; }
+  header .meta { font-size: 12px; color: #64748b; }
+
+  .stats-bar {
+    background: #13151f;
+    border-bottom: 1px solid #1e2235;
+    padding: 12px 24px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  .stat { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .stat .num { font-size: 22px; font-weight: 700; }
+  .stat .lbl { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+  .stat.total .num { color: #e2e8f0; }
+  .stat.pending .num { color: #94a3b8; }
+  .stat.needs .num { color: #f59e0b; }
+  .stat.gdrive .num { color: #34d399; }
+
+  .controls {
+    padding: 12px 24px;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    background: #0f1117;
+    border-bottom: 1px solid #1e2235;
+  }
+  .controls label { font-size: 12px; color: #64748b; margin-right: 4px; }
+  .filter-btn {
+    padding: 4px 12px;
+    border-radius: 20px;
+    border: 1px solid #2d3148;
+    background: #1a1d2e;
+    color: #94a3b8;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: #4f46e5; color: #a5b4fc; }
+  .filter-btn.active { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+
+  .search-box {
+    margin-left: auto;
+    padding: 4px 12px;
+    background: #1a1d2e;
+    border: 1px solid #2d3148;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 13px;
+    width: 220px;
+  }
+  .search-box:focus { outline: none; border-color: #4f46e5; }
+
+  .section-header {
+    padding: 10px 24px 6px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #475569;
+    border-top: 1px solid #1e2235;
+    margin-top: 4px;
+  }
+  .section-header.warn { color: #92400e; }
+  .section-header.gdrive { color: #065f46; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  thead th {
+    padding: 8px 12px;
+    text-align: left;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #475569;
+    background: #0d0f18;
+    border-bottom: 1px solid #1e2235;
+    position: sticky;
+    top: 53px;
+    z-index: 50;
+  }
+  tbody tr {
+    border-bottom: 1px solid #161928;
+    transition: background 0.1s;
+  }
+  tbody tr:hover { background: #141728; }
+  tbody tr.hidden { display: none; }
+  td { padding: 9px 12px; vertical-align: middle; }
+
+  .filename { font-weight: 500; color: #c7d2fe; max-width: 280px; word-break: break-word; line-height: 1.3; }
+  .filename .gdrive-badge { font-size: 10px; color: #34d399; margin-right: 4px; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .tag-SEN { background: #312e81; color: #a5b4fc; }
+  .tag-TIQ { background: #164e63; color: #67e8f9; }
+  .tag-PKP { background: #1e3a5f; color: #93c5fd; }
+  .tag-WORK { background: #14532d; color: #86efac; }
+  .tag-Personal { background: #4a1d96; color: #c4b5fd; }
+  .tag-Archive { background: #1e1b1b; color: #71717a; }
+  .tag-sub { background: #1e293b; color: #94a3b8; font-weight: 400; }
+  .tag-warn { background: #78350f; color: #fcd34d; }
+
+  .dest { color: #64748b; font-size: 12px; font-family: 'Consolas', monospace; }
+
+  .action-badge {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+  .action-pending { background: #1e293b; color: #64748b; }
+  .action-approve { background: #14532d; color: #4ade80; }
+  .action-both { background: #164e63; color: #67e8f9; }
+  .action-skip { background: #1e293b; color: #94a3b8; }
+  .action-obsolete { background: #451a03; color: #fb923c; }
+  .action-delete { background: #450a0a; color: #f87171; }
+  .action-purge { background: #3b0764; color: #e879f9; }
+  .action-review { background: #78350f; color: #fcd34d; }
+
+  .note { font-size: 11px; color: #475569; font-style: italic; }
+
+  .empty-msg { padding: 40px 24px; text-align: center; color: #334155; font-size: 14px; }
+
+  .instructions {
+    margin: 16px 24px;
+    padding: 12px 16px;
+    background: #1a1d2e;
+    border: 1px solid #2d3148;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.6;
+  }
+  .instructions strong { color: #94a3b8; }
+  .instructions code {
+    background: #0d0f18;
+    padding: 1px 6px;
+    border-radius: 4px;
+    color: #a5b4fc;
+    font-family: 'Consolas', monospace;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📥 Inbox Staging Dashboard</h1>
+  <span class="meta">AI-Workspace/inbox/STAGING.md &nbsp;·&nbsp; 2026-04-01</span>
+</header>
+
+<div class="stats-bar">
+  <div class="stat total"><span class="num" id="cnt-total">55</span><span class="lbl">Total</span></div>
+  <div class="stat pending"><span class="num" id="cnt-pending">0</span><span class="lbl">Pending</span></div>
+  <div class="stat needs"><span class="num" id="cnt-needs">0</span><span class="lbl">Needs Review</span></div>
+  <div class="stat gdrive"><span class="num" id="cnt-gdrive">0</span><span class="lbl">GDrive</span></div>
+</div>
+
+<div class="controls">
+  <label>Filter:</label>
+  <button class="filter-btn active" data-filter="all">All</button>
+  <button class="filter-btn" data-filter="SEN">SEN</button>
+  <button class="filter-btn" data-filter="TIQ">TIQ</button>
+  <button class="filter-btn" data-filter="PKP">PKP</button>
+  <button class="filter-btn" data-filter="WORK">WORK</button>
+  <button class="filter-btn" data-filter="Personal">Personal</button>
+  <button class="filter-btn" data-filter="needs-call">⚠️ Needs Call</button>
+  <button class="filter-btn" data-filter="gdrive">GDrive</button>
+  <input class="search-box" type="text" placeholder="Search filenames..." id="search-input">
+</div>
+
+<div class="instructions">
+  <strong>How to use:</strong> Filter and review classifications below. To update actions, edit <code>AI-Workspace/inbox/STAGING.md</code> directly — change <code>pending</code> to <code>approve</code>, <code>both</code>, <code>skip</code>, <code>obsolete</code>, <code>delete</code>, or <code>purge</code>. Then tell Claude <strong>"execute staging"</strong>.
+</div>
+
+<div id="table-container">
+
+<!-- PENDING REVIEW -->
+<div class="section-header">📋 Pending Review — Original Drop (37 files)</div>
+<table id="main-table">
+<thead>
+  <tr>
+    <th style="width:32%">Filename</th>
+    <th style="width:22%">Tags</th>
+    <th style="width:22%">Destination</th>
+    <th style="width:10%">Action</th>
+    <th>Note</th>
+  </tr>
+</thead>
+<tbody id="pending-body">
+</tbody>
+</table>
+
+<!-- NEEDS YOUR CALL -->
+<div class="section-header warn" id="needs-header">⚠️ Needs Your Call (8 files)</div>
+<table>
+<thead>
+  <tr>
+    <th style="width:32%">Filename</th>
+    <th style="width:22%">Tags</th>
+    <th style="width:22%">Destination</th>
+    <th style="width:10%">Action</th>
+    <th>Note</th>
+  </tr>
+</thead>
+<tbody id="needs-body">
+</tbody>
+</table>
+
+<!-- GOOGLE DRIVE IMPORTS -->
+<div class="section-header gdrive" id="gdrive-header">🟢 Imported from Google Drive (10 files)</div>
+<table>
+<thead>
+  <tr>
+    <th style="width:32%">Filename</th>
+    <th style="width:22%">Tags</th>
+    <th style="width:22%">Destination</th>
+    <th style="width:10%">Action</th>
+    <th>Note</th>
+  </tr>
+</thead>
+<tbody id="gdrive-body">
+</tbody>
+</table>
+
+</div>
+
+<script>
+const pendingFiles = [
+  { name: "Absolutely—this is the right move.md", tags: ["TIQ"], dest: "TIQ/docs", action: "pending", note: "TIQ dev environment context" },
+  { name: "Awesome FGa-ReactVite.md", tags: ["SEN","ART"], dest: "SEN/assets", action: "pending", note: "Sentinel art direction / UI library reference" },
+  { name: "Brainstorm Summary 2026-03-26.pdf", tags: ["SEN","LORE"], dest: "SEN/docs", action: "pending", note: "Sentinel lore or narrative content" },
+  { name: "CP_JobIndex_summary_2026-03-31.md", tags: ["WORK"], dest: "WORK/jobs", action: "pending", note: "CP Construction — general work doc" },
+  { name: "Calculate Vehicle Renewal Fees Results.pdf", tags: ["Personal"], dest: "personal", action: "pending", note: "Personal / vehicle admin" },
+  { name: "Full_Chat_Transcript_2026-03-22.txt", tags: ["PKP"], dest: "PKP/docs", action: "pending", note: "Infrastructure / AI stack reference" },
+  { name: "HYBRID_CONTEXT_PIPELINE.txt", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Sentinel architecture or design doc" },
+  { name: "Offsite Water Plan signed & approved for construction.pdf", tags: ["WORK","DOCTOOLS","PDF"], dest: "WORK/doctools", action: "pending", note: "⚠️ Should be [WORK][1881]" },
+  { name: "Pages from Offsite Water Plan...pdf", tags: ["WORK","DOCTOOLS","PDF"], dest: "WORK/doctools", action: "pending", note: "⚠️ Should be [WORK][1881]" },
+  { name: "Patreon%20or%20Ko-fi...pdf.pdf", tags: ["SEN","COMMUNITY"], dest: "SEN/docs", action: "pending", note: "Sentinel community or donor path" },
+  { name: "Project Sentinel — Architecture & Lore.md", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Sentinel architecture or design doc" },
+  { name: "Project-Level AI CLI Environment with LiteLLM and Tailscale.pdf", tags: ["PKP"], dest: "PKP/docs", action: "pending", note: "Infrastructure / AI stack reference" },
+  { name: "SAMPLE_MODULES.md", tags: ["SEN","LORE"], dest: "SEN/docs", action: "pending", note: "Sentinel lore or narrative content" },
+  { name: "SCHEMA_BOOTSTRAP.txt", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "⚠️ Should be [TIQ]" },
+  { name: "Sentinel Architecture Analysis 2026-03-26.pdf", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Sentinel architecture or design doc" },
+  { name: "Sentinel — Scene Transition.html", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "⚠️ Should be [SEN][UI]" },
+  { name: "Storyline-json chat summary.md", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Sentinel architecture or design doc" },
+  { name: "Text dump of what PS is.txt", tags: ["SEN","LORE"], dest: "SEN/docs", action: "pending", note: "Sentinel lore or narrative content" },
+  { name: "VISUAL CONTRIBUTOR PLAN.pdf", tags: ["SEN","OSS","ART"], dest: "SEN/docs", action: "pending", note: "Sentinel contributor or art direction" },
+  { name: "WinCan Inspection Explorer — CP Construction.html", tags: ["SEN","LORE"], dest: "SEN/docs", action: "pending", note: "⚠️ Should be [WORK][1881]" },
+  { name: "Yes, using the Memory Server and Sequential Thinking Server.txt", tags: ["PKP"], dest: "PKP/docs", action: "pending", note: "Infrastructure / AI stack reference" },
+  { name: "artifact-claude-chat-dump.zip", tags: ["Archive"], dest: "DELETE", action: "pending", note: "Chat transcript — archive or discard" },
+  { name: "civil_plan_relayer.py", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer tool" },
+  { name: "civil_plan_relayer_design.md", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer design doc" },
+  { name: "civil_plan_relayer_v3_configs.py", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer configs" },
+  { name: "dev-server-companion-reference.pdf", tags: ["PKP"], dest: "PKP/docs", action: "pending", note: "Dev environment or AI CLI setup" },
+  { name: "offsite_engineering_layer_configs.pdf", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer output" },
+  { name: "offsite_engineering_layer_report.json", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer output" },
+  { name: "offsite_relayered_v2.pdf", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer output" },
+  { name: "offsite_report_v2.json", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer output" },
+  { name: "pdf_reconstruction_status.md", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer status" },
+  { name: "project-ai-cli-setup-guide.pdf", tags: ["PKP"], dest: "PKP/docs", action: "pending", note: "Dev environment or AI CLI setup" },
+  { name: "project-sentinel-brainstorm-session.md", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Sentinel architecture or design doc" },
+  { name: "sentinel-architecture-analysis-summary.md", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Sentinel architecture or design doc" },
+  { name: "sentinel-full-demo.html", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "⚠️ Should be [SEN][UI]" },
+  { name: "sentinel-transition.html", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "⚠️ Should be [SEN][UI]" },
+  { name: "sentinel-transition.pdf", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Sentinel architecture" },
+  { name: "test scanned plan sheetmap.pdf", tags: ["WORK","DOCTOOLS"], dest: "WORK/doctools", action: "pending", note: "Civil plan relayer output" },
+];
+
+const needsFiles = [
+  { name: "CLAUDE.url", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: ".url files — regex bug, review manually" },
+  { name: "JLRLh8b5PQQkbXibnp979.url", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: ".url file" },
+  { name: "VISION.pdf", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: "Could not classify" },
+  { name: "files.zip", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: "Unknown zip contents" },
+  { name: "syXuDAMcaqGkbYTkuVsi6.url", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: ".url file" },
+  { name: "t_69c968e2f1ec8191ab7124aadf3c16d6.url", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: ".url file" },
+  { name: "test2_analysis.json", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: "Unknown JSON" },
+  { name: "v3_selectable_test_small.pdf", tags: ["UNCLASSIFIED"], dest: "REVIEW", action: "review", note: "Could not classify — plan sheet test?" },
+];
+
+const gdriveFiles = [
+  { name: "gdrive-SEN-minimum-viability-plan.md", tags: ["SEN","OSS"], dest: "SEN/docs", action: "pending", note: "GitHub readiness — v0.1 functional pillars" },
+  { name: "gdrive-SEN-github-readiness-v01.md", tags: ["SEN","OSS"], dest: "SEN/docs", action: "pending", note: "GitHub readiness — v0.1 baseline, README pitch" },
+  { name: "gdrive-SEN-hybrid-context-pipeline-arch.md", tags: ["SEN","ARCH"], dest: "SEN/docs", action: "pending", note: "Hybrid context pipeline architecture" },
+  { name: "gdrive-SEN-rpg-public-project-summary.md", tags: ["SEN","OSS","COMMUNITY"], dest: "SEN/docs", action: "pending", note: "Public project summary, MCP ecosystem" },
+  { name: "gdrive-SEN-log-2026-03-29-theology-infrastructure.md", tags: ["SEN","LOG"], dest: "cowork-sessions", action: "pending", note: "Session log — Theology of Infrastructure" },
+  { name: "gdrive-SEN-log-2026-03-29-digital-meaning.md", tags: ["SEN","LOG"], dest: "cowork-sessions", action: "pending", note: "Session log — Digital Mythology" },
+  { name: "gdrive-SEN-commvp-cln-2026-03-29.md", tags: ["SEN","LOG"], dest: "cowork-sessions", action: "pending", note: "CLN — ComMVP structure + naming convention" },
+  { name: "gdrive-SEN-community-funding-roadmap.md", tags: ["SEN","COMMUNITY"], dest: "SEN/docs", action: "pending", note: "4-phase funding pipeline — Patreon/Ko-fi → Steam" },
+  { name: "gdrive-PKP-vps-new-project-onboarding.md", tags: ["PKP"], dest: "PKP/docs", action: "pending", note: "VPS onboarding — Django/Postgres/Caddy/systemd" },
+  { name: "gdrive-WORK-1881-inspection-sections.md", tags: ["WORK","1881"], dest: "WORK/jobs", action: "pending", note: "Job 1881 — 57 SS + 31 SD inspection sections" },
+];
+
+const tagColors = {
+  SEN: 'tag-SEN', TIQ: 'tag-TIQ', PKP: 'tag-PKP', WORK: 'tag-WORK',
+  Personal: 'tag-Personal', Archive: 'tag-Archive', UNCLASSIFIED: 'tag-warn',
+};
+const subTags = ['ARCH','LORE','OSS','COMMUNITY','ART','LOG','DOCTOOLS','PDF','1881'];
+
+function buildTagHtml(tags) {
+  return tags.map(t => {
+    const cls = tagColors[t] || (subTags.includes(t) ? 'tag-sub' : 'tag-sub');
+    return `<span class="tag ${cls}">${t}</span>`;
+  }).join('');
+}
+
+function buildActionHtml(action) {
+  return `<span class="action-badge action-${action}">${action}</span>`;
+}
+
+function buildRow(file, isGdrive) {
+  const gdriveBadge = isGdrive ? '<span class="gdrive-badge">⬇</span>' : '';
+  const primaryTag = file.tags[0];
+  const dataFilter = isGdrive ? 'gdrive ' + primaryTag : (file.action === 'review' ? 'needs-call' : primaryTag);
+  return `<tr data-filter="${dataFilter}" data-name="${file.name.toLowerCase()}">
+    <td><div class="filename">${gdriveBadge}${file.name}</div></td>
+    <td><div class="tags">${buildTagHtml(file.tags)}</div></td>
+    <td><span class="dest">${file.dest}</span></td>
+    <td>${buildActionHtml(file.action)}</td>
+    <td><span class="note">${file.note}</span></td>
+  </tr>`;
+}
+
+document.getElementById('pending-body').innerHTML = pendingFiles.map(f => buildRow(f, false)).join('');
+document.getElementById('needs-body').innerHTML = needsFiles.map(f => buildRow(f, false)).join('');
+document.getElementById('gdrive-body').innerHTML = gdriveFiles.map(f => buildRow(f, true)).join('');
+
+// Stats
+const total = pendingFiles.length + needsFiles.length + gdriveFiles.length;
+document.getElementById('cnt-total').textContent = total;
+document.getElementById('cnt-pending').textContent = pendingFiles.length;
+document.getElementById('cnt-needs').textContent = needsFiles.length;
+document.getElementById('cnt-gdrive').textContent = gdriveFiles.length;
+
+// Filter
+const allRows = () => document.querySelectorAll('tbody tr');
+
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const filter = btn.dataset.filter;
+    allRows().forEach(row => {
+      if (filter === 'all') {
+        row.classList.remove('hidden');
+      } else {
+        const tags = row.dataset.filter || '';
+        row.classList.toggle('hidden', !tags.includes(filter));
+      }
+    });
+  });
+});
+
+// Search
+document.getElementById('search-input').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  allRows().forEach(row => {
+    row.classList.toggle('hidden', q && !row.dataset.name.includes(q));
+  });
+  if (q) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  }
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>How Git Sync Works — Two Locations</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; padding: 20px; min-height: 100vh; }
+  h1 { font-size: 1.2em; color: #7eb8da; margin-bottom: 4px; text-align: center; }
+  .subtitle { text-align: center; font-size: 0.78em; color: #666; margin-bottom: 24px; }
+
+  .scenario { background: #1a1d27; border: 1px solid #2a2d3a; border-radius: 12px; padding: 20px; margin-bottom: 20px; }
+  .scenario h2 { font-size: 0.95em; color: #7eb8da; margin-bottom: 16px; }
+  .scenario h3 { font-size: 0.8em; color: #f59e0b; margin: 16px 0 10px 0; }
+
+  .timeline { position: relative; padding-left: 0; }
+  .step { display: flex; gap: 16px; margin-bottom: 16px; align-items: flex-start; }
+  .step-num { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75em; font-weight: 700; flex-shrink: 0; }
+  .step-num.dell { background: #4a9eff22; color: #4a9eff; border: 2px solid #4a9eff; }
+  .step-num.github { background: #f59e0b22; color: #f59e0b; border: 2px solid #f59e0b; }
+  .step-num.phone { background: #22c55e22; color: #4ade80; border: 2px solid #22c55e; }
+  .step-num.boss { background: #c084fc22; color: #c084fc; border: 2px solid #c084fc; }
+
+  .step-content { flex: 1; }
+  .step-label { font-size: 0.7em; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+  .step-text { font-size: 0.85em; line-height: 1.5; }
+  .step-cmd { font-family: monospace; font-size: 0.78em; color: #4ade80; background: #12141c; padding: 4px 8px; border-radius: 4px; display: inline-block; margin-top: 4px; }
+
+  /* Visual diagram */
+  .diagram { display: flex; justify-content: center; align-items: center; gap: 0; margin: 20px 0; flex-wrap: wrap; }
+  .box { background: #12141c; border: 2px solid #2a2d3a; border-radius: 10px; padding: 12px 16px; text-align: center; min-width: 120px; }
+  .box.dell { border-color: #4a9eff; }
+  .box.github { border-color: #f59e0b; }
+  .box.phone { border-color: #22c55e; }
+  .box.boss { border-color: #c084fc; }
+  .box .name { font-size: 0.85em; font-weight: 700; }
+  .box .detail { font-size: 0.65em; color: #888; margin-top: 2px; }
+  .box.dell .name { color: #4a9eff; }
+  .box.github .name { color: #f59e0b; }
+  .box.phone .name { color: #4ade80; }
+  .box.boss .name { color: #c084fc; }
+
+  .arrow-container { display: flex; flex-direction: column; align-items: center; padding: 0 8px; }
+  .arrow { font-size: 1.2em; color: #555; }
+  .arrow-label { font-size: 0.6em; color: #666; }
+
+  /* File state visualization */
+  .file-state { background: #12141c; border: 1px solid #2a2d3a; border-radius: 8px; padding: 12px; margin: 10px 0; font-family: monospace; font-size: 0.75em; line-height: 1.8; }
+  .file-state .fname { color: #888; }
+  .file-state .added { color: #4ade80; }
+  .file-state .same { color: #555; }
+  .file-state .conflict { color: #f87171; }
+  .file-state .header { color: #f59e0b; font-weight: 600; margin-bottom: 4px; font-family: sans-serif; font-size: 0.9em; }
+
+  .note { font-size: 0.78em; color: #888; padding: 10px; border-left: 3px solid #4a9eff44; margin: 12px 0; line-height: 1.5; }
+  .note.warning { border-color: #f59e0b44; }
+  .note strong { color: #e0e0e0; }
+
+  .divider { border: none; border-top: 1px dashed #2a2d3a; margin: 24px 0; }
+</style>
+</head>
+<body>
+
+<h1>How Git Sync Works Between Devices</h1>
+<div class="subtitle">Think of GitHub as a shared mailbox. Each device drops off and picks up the latest version.</div>
+
+<!-- Overview Diagram -->
+<div class="diagram">
+  <div class="box dell">
+    <div class="name">Dell</div>
+    <div class="detail">C:\Users\russe\Obsidian\<br>knowledge-vault\</div>
+  </div>
+  <div class="arrow-container">
+    <div class="arrow">⟶</div>
+    <div class="arrow-label">git push</div>
+    <div class="arrow">⟵</div>
+    <div class="arrow-label">git pull</div>
+  </div>
+  <div class="box github">
+    <div class="name">GitHub</div>
+    <div class="detail">russalo/knowledge-vault<br>(private repo)</div>
+  </div>
+  <div class="arrow-container">
+    <div class="arrow">⟶</div>
+    <div class="arrow-label">git push</div>
+    <div class="arrow">⟵</div>
+    <div class="arrow-label">git pull</div>
+  </div>
+  <div class="box phone">
+    <div class="name">iPhone</div>
+    <div class="detail">~/Documents/<br>knowledge-vault/</div>
+  </div>
+</div>
+
+<div class="note">
+  <strong>Key concept:</strong> Each device has its own complete copy of all the files. GitHub is the middleman — the central copy that everyone syncs to. No device talks directly to another device. They all go through GitHub.
+</div>
+
+<hr class="divider">
+
+<!-- Scenario 1: Normal flow -->
+<div class="scenario">
+  <h2>Scenario 1: You edit a note on the Dell, then read it on your phone</h2>
+
+  <div class="timeline">
+    <div class="step">
+      <div class="step-num dell">1</div>
+      <div class="step-content">
+        <div class="step-label">Dell — Obsidian</div>
+        <div class="step-text">You open Obsidian, edit <code>PKP/TASKS.md</code> — add a new task.</div>
+      </div>
+    </div>
+
+    <div class="file-state">
+      <div class="header">What Dell's files look like now:</div>
+      <span class="fname">PKP/TASKS.md</span> — <span class="added">modified (new task added)</span><br>
+      <span class="fname">PKP/DECISIONS.md</span> — <span class="same">unchanged</span><br>
+      <span class="fname">TIQ/VISION.md</span> — <span class="same">unchanged</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num dell">2</div>
+      <div class="step-content">
+        <div class="step-label">Dell — Obsidian Git plugin (automatic)</div>
+        <div class="step-text">After 5 minutes, the plugin auto-commits and pushes your change to GitHub.</div>
+        <div class="step-cmd">git add . → git commit → git push</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num github">3</div>
+      <div class="step-content">
+        <div class="step-label">GitHub</div>
+        <div class="step-text">GitHub now has the updated <code>PKP/TASKS.md</code>. It stores the new version and the history of what changed.</div>
+      </div>
+    </div>
+
+    <div class="file-state">
+      <div class="header">GitHub's copy now matches the Dell's copy:</div>
+      <span class="fname">PKP/TASKS.md</span> — <span class="added">v2 (has your new task)</span><br>
+      <span class="fname">PKP/DECISIONS.md</span> — <span class="same">v1</span><br>
+      <span class="fname">TIQ/VISION.md</span> — <span class="same">v1</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num phone">4</div>
+      <div class="step-content">
+        <div class="step-label">iPhone — you tap "Vault Pull" shortcut</div>
+        <div class="step-text">Your phone asks GitHub: "What's new?" GitHub sends down the updated <code>PKP/TASKS.md</code>.</div>
+        <div class="step-cmd">lg2 pull</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num phone">5</div>
+      <div class="step-content">
+        <div class="step-label">iPhone — Obsidian</div>
+        <div class="step-text">Open Obsidian. Your new task is right there. Done.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>What happened:</strong> Dell → GitHub → iPhone. The file traveled through GitHub. At no point did the Dell and iPhone talk directly. That's the whole model.
+  </div>
+</div>
+
+<!-- Scenario 2: Phone captures, Dell sees it -->
+<div class="scenario">
+  <h2>Scenario 2: You capture a thought on your phone, then see it on the Dell</h2>
+
+  <div class="timeline">
+    <div class="step">
+      <div class="step-num phone">1</div>
+      <div class="step-content">
+        <div class="step-label">iPhone — Quick Capture shortcut</div>
+        <div class="step-text">You're on a job site. Tap "Quick Capture", type: <em>"Check if Mini needs UPS for power outages"</em></div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num phone">2</div>
+      <div class="step-content">
+        <div class="step-label">iPhone — Shortcut appends + syncs</div>
+        <div class="step-text">The shortcut appends a timestamped line to <code>PKP/INBOX.md</code>, commits, and pushes to GitHub. All in one tap.</div>
+        <div class="step-cmd">append to INBOX.md → lg2 add → lg2 commit → lg2 push</div>
+      </div>
+    </div>
+
+    <div class="file-state">
+      <div class="header">PKP/INBOX.md on GitHub now contains:</div>
+      <span class="same"># [PKP] Inbox</span><br>
+      <span class="same">Items awaiting triage.</span><br>
+      <span class="same">---</span><br>
+      <span class="added">- [2026-03-28 14:32] Check if Mini needs UPS for power outages</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num dell">3</div>
+      <div class="step-content">
+        <div class="step-label">Dell — Obsidian opens</div>
+        <div class="step-text">You open Obsidian on the Dell later. The Obsidian Git plugin auto-pulls on startup. Your captured thought is sitting in INBOX.md.</div>
+        <div class="step-cmd">git pull (automatic on startup)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>This is the bottleneck killer.</strong> Thought captured in 5 seconds on a job site. Available on the Dell, BossDev, or Mini when you sit down to triage. No Chat threads, no lost context.
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Scenario 3: Two devices, same file — the conflict -->
+<div class="scenario">
+  <h2>Scenario 3: What happens when two devices edit the same file?</h2>
+
+  <div class="timeline">
+    <div class="step">
+      <div class="step-num dell">1</div>
+      <div class="step-content">
+        <div class="step-label">Dell</div>
+        <div class="step-text">You add "Buy monitor cable" to <code>PKP/TASKS.md</code> on the Dell. Obsidian Git pushes it.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num phone">2</div>
+      <div class="step-content">
+        <div class="step-label">iPhone — forgot to pull first!</div>
+        <div class="step-text">Without pulling, you add "Call electrician" to <code>PKP/TASKS.md</code> on your phone. You tap "Vault Sync".</div>
+      </div>
+    </div>
+
+    <div class="file-state">
+      <div class="header">Now there's a conflict:</div>
+      <span class="fname">Dell version:</span> <span class="added">"...Buy monitor cable"</span><br>
+      <span class="fname">Phone version:</span> <span class="added">"...Call electrician"</span><br>
+      <span class="conflict">GitHub doesn't know which version is right!</span>
+    </div>
+
+    <div class="step">
+      <div class="step-num phone">3</div>
+      <div class="step-content">
+        <div class="step-label">iPhone — push fails</div>
+        <div class="step-text">Git says: <em>"Rejected — the remote has changes you don't have."</em> Your push doesn't go through. Nothing is lost.</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num dell">4</div>
+      <div class="step-content">
+        <div class="step-label">Fix it on the Dell</div>
+        <div class="step-text">Pull on the Dell. Git marks the conflict in the file. You open it, keep both lines, remove the conflict markers, commit, push. Done.</div>
+      </div>
+    </div>
+
+    <div class="file-state">
+      <div class="header">Resolved — both changes kept:</div>
+      <span class="added">- Buy monitor cable</span><br>
+      <span class="added">- Call electrician</span>
+    </div>
+  </div>
+
+  <div class="note warning">
+    <strong>How to avoid this:</strong> Always pull before editing. That one habit eliminates 99% of conflicts. The <code>.gitignore</code> file already excludes workspace files (the biggest conflict source). Real content conflicts only happen if you edit the same file on two devices without syncing in between.
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Scenario 4: BossDev / Mini (CLI) -->
+<div class="scenario">
+  <h2>Scenario 4: Claude Code on BossDev reads and writes to the vault</h2>
+
+  <div class="timeline">
+    <div class="step">
+      <div class="step-num boss">1</div>
+      <div class="step-content">
+        <div class="step-label">BossDev — SSH session</div>
+        <div class="step-text">You SSH into BossDev. Pull the latest vault.</div>
+        <div class="step-cmd">cd ~/knowledge-vault && git pull</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num boss">2</div>
+      <div class="step-content">
+        <div class="step-label">BossDev — Claude Code</div>
+        <div class="step-text">Run Claude Code in the vault directory. Ask it to triage <code>PKP/INBOX.md</code>, draft routing proposals, or update docs.</div>
+        <div class="step-cmd">cd ~/knowledge-vault && claude</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num boss">3</div>
+      <div class="step-content">
+        <div class="step-label">BossDev — push changes</div>
+        <div class="step-text">Claude Code made changes. Commit and push.</div>
+        <div class="step-cmd">git add . && git commit -m "triage: routed 5 inbox items" && git push</div>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num dell">4</div>
+      <div class="step-content">
+        <div class="step-label">Dell — next time Obsidian opens</div>
+        <div class="step-text">Auto-pull grabs the changes Claude Code made. You review them in Obsidian.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    <strong>This is the automation path.</strong> Eventually, a cron job on BossDev or Mini could do this automatically — pull vault, run triage, push results. You review on the Dell or phone.
+  </div>
+</div>
+
+<hr class="divider">
+
+<!-- Summary -->
+<div class="scenario">
+  <h2>The Rules</h2>
+  <div style="font-size:0.88em; line-height: 2;">
+    <strong style="color:#4ade80;">1.</strong> Always <strong>pull before editing</strong> on any device.<br>
+    <strong style="color:#4ade80;">2.</strong> Always <strong>push when done</strong> — don't leave unpushed changes overnight.<br>
+    <strong style="color:#4ade80;">3.</strong> <strong>One device at a time</strong> on the same file.<br>
+    <strong style="color:#4ade80;">4.</strong> If something goes wrong, <strong>fix it on the Dell</strong> — desktop tools are best for conflicts.<br>
+    <strong style="color:#4ade80;">5.</strong> Git never deletes without you asking. <strong>Your work is safe.</strong>
+  </div>
+</div>
+
+</body>
+</html>
