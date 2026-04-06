@@ -1,0 +1,40 @@
+{
+  "generated": "2026-04-06",
+  "total_jobs": 248,
+  "job_range": { "first": 1601, "last": 1886 },
+  "work_type_breakdown": {
+    "water": 103,
+    "water_and_sewer": 44,
+    "sewer": 29,
+    "storm_drain": 26,
+    "other": 20
+  },
+  "top_cities": [
+    { "city": "Rialto", "count": 30 },
+    { "city": "Rancho Cucamonga", "count": 27 },
+    { "city": "Ontario", "count": 24 },
+    { "city": "Upland", "count": 22 },
+    { "city": "Fontana", "count": 12 }
+  ],
+  "top_clients": [
+    { "client": "Lennar Homes", "count": 19 },
+    { "client": "Cucamonga Valley Water District", "count": 28 },
+    { "client": "All American Asphalt", "count": 16 },
+    { "client": "Veolia Water", "count": 11 },
+    { "client": "KB Home", "count": 6 }
+  ],
+  "document_stats": {
+    "total_files": 37200,
+    "by_extension": {
+      "pdf": 20832,
+      "xlsx": 5309,
+      "msg": 3214,
+      "txt": 860,
+      "docx": 565
+    },
+    "jobs_with_change_orders": 145,
+    "jobs_with_tm_folders": 95,
+    "jobs_with_rfi_folders": 44,
+    "jobs_with_rfco_folders": 26
+  }
+}

@@ -1,0 +1,37 @@
+job_number: 1836
+project: "C.W. Driver - Ontario Luxury Apartments"
+contacts:
+  general_contractor:
+    company: "C.W. Driver LLC"
+    pm: "Gilbert Santos"
+    email: "gsantos@cwdriver.com"
+    phone: "909-555-1000"
+  accounting:
+    - name: "Mirian V."
+      role: "Accounts Payable"
+      notes: "Primary billing contact - slow to respond"
+    - name: "Danielle Plummer"
+      role: "Accounting"
+  city_inspector:
+    name: "M. Rodriguez"
+    agency: "City of Ontario Public Works"
+    phone: "909-555-2000"
+  district:
+    name: "Sheila Manning"
+    agency: "CVWD"
+    phone: "909-555-3000"
+    notes: "Documents sent 04-03-2024"
+  cp_team:
+    superintendent: "R. Garza"
+    pm: "John Pfister"
+    office: "Susan"
+  subcontractors:
+    - company: "Houston Harris Pipeline Services"
+      scope: "CCTV video inspection"
+      contact: "909-555-0700"
+    - company: "Dave Pastor Backflow Testing"
+      scope: "RPDA testing and certification"
+      contact: "909-555-0500"
+    - company: "South Bay Foundry"
+      scope: "Decorative manhole frames and covers"
+      po_open: true

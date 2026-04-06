@@ -1,0 +1,39 @@
+sidecar_schema:
+  version: "1.0"
+  required_fields:
+    - uuid
+    - source_file
+    - job_number
+    - ingest_date
+    - last_run
+    - processing_errors
+    - human_in_loop_required
+    - doc_type_detected
+    - confidence
+
+  optional_fields:
+    - derived_summary
+    - extracted_fields
+    - linked_mentions
+    - tags_inline
+    - tags_promoted
+    - reason_codes
+    - retry_count
+
+  reason_codes:
+    - billing-review-required
+    - usa-ticket-expired
+    - co-denied-disputed
+    - payment-overdue
+    - lien-notice-eligible
+    - punch-list-open
+    - permit-expiring
+    - insurance-expiring
+    - slow-pay-client
+
+  human_in_loop_triggers:
+    - confidence < 0.75
+    - doc_type_detected == null
+    - duplicate_suspected
+    - amount_discrepancy_detected
+    - payment_dispute_flag

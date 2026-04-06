@@ -1,0 +1,266 @@
+Transmittal Report:
+Created by AutoCAD eTransmit Monday, May 24, 2021, 1:46 PM.
+
+Drawing Sheet Set:
+
+This is a transmittal based on drawing sheets from the sheet set:
+	1289-003-SD PLAN.
+
+Sheets:
+1 TITLE SHEET
+2 SYSTEM INDEX MAP AND SECTIONS
+3 SD LINE G
+4 SD LINE G
+5 SD LINE A
+6 SD LINE A
+7 SD LINE B
+8 SD LINE B AND SD LINE B-1
+9 SD LINE E
+10 SD LINE C
+11 SD LINE D
+12 SD LINE D
+13 SD LINE F
+14 SD LINE F AND SD LINE H
+15 SD LINE I
+16 SD LINE  C-1
+
+
+Files:
+
+
+Root Drawings:	SD Impvt Tract 20157\1289-003sd01ts.dwg
+	SD Impvt Tract 20157\1289-003sd16sd.dwg
+	SD Impvt Tract 20157\1289-003sd02dt.dwg
+	SD Impvt Tract 20157\1289-003sd03sd.dwg
+	SD Impvt Tract 20157\1289-003sd04sd.dwg
+	SD Impvt Tract 20157\1289-003sd05sd.dwg
+	SD Impvt Tract 20157\1289-003sd06sd.dwg
+	SD Impvt Tract 20157\1289-003sd07sd.dwg
+	SD Impvt Tract 20157\1289-003sd08sd.dwg
+	SD Impvt Tract 20157\1289-003sd09sd.dwg
+	SD Impvt Tract 20157\1289-003sd10sd.dwg
+	SD Impvt Tract 20157\1289-003sd11sd.dwg
+	SD Impvt Tract 20157\1289-003sd12sd.dwg
+	SD Impvt Tract 20157\1289-003sd13sd.dwg
+	SD Impvt Tract 20157\1289-003sd14sd.dwg
+	SD Impvt Tract 20157\1289-003sd15sd.dwg
+
+Sheet Set Data File:
+	1289-003-SD PLAN.dst
+
+Sheet Template Files:
+	SheetSets\Civil Imperial.dwt
+
+AutoCAD Drawing (External) References:
+	_Xbase\X1289-003-BM.dwg
+	_Xbase\X1289-003-UT.dwg
+	Lot Parcel and Number\Z1289-003-AMAP-LPN.dwg
+	SD Impvt Tract 20157\X1289-003TBsd.dwg
+	Storm Drain\Z1289-003-PFSD-LINE C-C1.dwg
+	Storm Drain\Z1289-003-PFSD-G_ST.dwg
+	Storm Drain\Z1289-003-PFSD-LAT G_1_2.dwg
+	Storm Drain\Z1289-003-PFSD-LINE A.DWG
+	Storm Drain\Z1289-003-PFSD-LINE B-B1.dwg
+	Storm Drain\Z1289-003-PFSD-LINE E.dwg
+	Storm Drain\Z1289-003-PFSD-LINE D-D1.dwg
+	Storm Drain\Z1289-003-PFSD-LINE F.dwg
+	Storm Drain\Z1289-003-PFSD-LINE H.dwg
+	Storm Drain\Z1289-003-PFSD-LINE I.dwg
+
+JPG File References:
+	Textures\Concrete.Cast-In-Place.Flat.Grey.1.jpg
+	Textures\Metals.Ornamental Metals.Stainless.Satin.bump.jpg
+	Textures\Metals.Ornamental Metals.Stainless.Satin.jpg
+	Textures\Sitework.Paving - Surfacing.Asphalt.1.jpg
+	Textures\Sitework.Planting.Grass.Short.jpg
+	Textures\Sitework.Planting.Grass.Thick.jpg
+	Textures\Sitework.Planting.Gravel.Crushed.jpg
+	Textures\Sitework.Planting.Gravel.Mixed.jpg
+	Textures\Sitework.Planting.Soil.jpg
+
+AutoCAD Color-dependent Plot Style Table File References:
+	PlotCfgs\-FuscoeCorp.ctb
+
+AutoCAD Plotter Configuration File References:
+	PlotCfgs\DWG To PDF.pc3
+	PlotCfgs\DWF6 ePlot.pc3
+	PlotCfgs\AutoCAD PDF (General Documentation).pc3
+
+The following files were excluded from the transmittal:
+	acad.fmp
+	Fonts\simplex.shx
+	Fonts\romans.shx
+	Fonts\arial.ttf
+	Fonts\bold.shx
+	Fonts\ARIALN.TTF
+	Fonts\ghost.shx
+	Textures\Sitework.Paving - Surfacing.Asphalt.jpg
+	Fonts\calibri.ttf
+	Fonts\FLarrow01.shx
+	Fonts\ltypeshp.shx
+	Fonts\txt.shx
+	Fonts\EdgeSymbol.shx
+	Fonts\romcl.shx
+	Fonts\romand.shx
+	Fonts\AE1.SHX
+	Fonts\ROMANT.shx
+	Fonts\FUTURXKC.TTF
+	Fonts\FUTURAHI.TTF
+	Fonts\BOD_R.TTF
+	_Xbase\X1289-003-ESMT.dwg
+	PlotCfgs\-BOND7 B (OW).pc3
+	Storm Drain\Z1289-003-PFSD-LAT G_1_2-LINE H.dwg
+
+The following files could not be located:
+	Textures\Sitework.Paving - Surfacing.Asphalt.jpg
+	PlotCfgs\-BOND7 B (OW).pc3
+	Storm Drain\Z1289-003-PFSD-LAT G_1_2-LINE H.dwg
+
+
+Notes for distribution:
+
+.DWG external reference files:
+External reference (xref) paths may be present.  Make sure these paths work or that the root drawing is using the correct references.
+eTransmit does not include files required by xrefs unless they are also required by the root drawing.  In particular, plot style tables and overlay xrefs that are not used by the root drawing are omitted
+
+.PC3 printer configuration files:
+Please copy these files to the AutoCAD Printer Configuration Search Path directory.
+
+.CTB/.STB plot style tables:
+Please copy these files to the AutoCAD Plot Style Table Search Path directory.
+
+Material texture files:
+Please copy these files to the AutoCAD Texture Maps Search Path directory.
+
+The AutoCAD variable FONTALT was set to:
+C:\autodesk\_fei c3d 2021 local\fonts\simplex.shx
+Please make sure that the FONTALT variable is set to this file or an equivalent before opening any drawings.  All text styles with missing fonts are automatically set to this font.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd01ts.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd16sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd02dt.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd03sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd04sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd05sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd06sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd07sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd08sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd09sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd10sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd11sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd12sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd13sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd14sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Storm Drain\SD Impvt Tract 20157\1289-003sd15sd.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+

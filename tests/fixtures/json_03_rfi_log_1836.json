@@ -1,0 +1,51 @@
+{
+  "job_number": 1836,
+  "rfis": [
+    {
+      "rfi_id": "RFI-001",
+      "date_submitted": "2023-05-15",
+      "subject": "Clarify invert elevation at MH#3",
+      "submitted_by": "CP Construction",
+      "directed_to": "CW Driver / Civil Engineer",
+      "response_due": "2023-05-22",
+      "date_responded": "2023-05-20",
+      "days_to_respond": 5,
+      "status": "closed",
+      "late": false,
+      "resolution": "Invert confirmed at 847.32 per updated grading sheet"
+    },
+    {
+      "rfi_id": "RFI-002",
+      "date_submitted": "2023-06-02",
+      "subject": "Conflict between water service and storm drain at Sta 14+50",
+      "submitted_by": "CP Construction",
+      "directed_to": "CW Driver / Civil Engineer",
+      "response_due": "2023-06-09",
+      "date_responded": "2023-06-14",
+      "days_to_respond": 12,
+      "status": "closed",
+      "late": true,
+      "resolution": "Storm drain lowered 6 inches per engineer sketch"
+    },
+    {
+      "rfi_id": "RFI-007",
+      "date_submitted": "2024-02-28",
+      "subject": "Confirm CVWD approved meter size for fire sprinkler system",
+      "submitted_by": "CP Construction",
+      "directed_to": "CW Driver / CVWD",
+      "response_due": "2024-03-06",
+      "date_responded": "2024-03-15",
+      "days_to_respond": 15,
+      "status": "closed",
+      "late": true,
+      "resolution": "3-inch turbine meter approved per CVWD letter"
+    }
+  ],
+  "stats": {
+    "total": 7,
+    "open": 0,
+    "closed": 7,
+    "late": 3,
+    "avg_response_days": 8.4
+  }
+}

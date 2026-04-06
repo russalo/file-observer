@@ -1,0 +1,53 @@
+pipeline:
+  name: cp-job-document-ingestion
+  version: "1.0"
+  stage0_watch_dir: /data/inbox
+  stage1_output_dir: /data/stage1
+  stage3_output_dir: /data/stage3
+  sidecar_dir: /data/sidecars
+
+ingestion:
+  supported_extensions:
+    - .pdf
+    - .docx
+    - .xlsx
+    - .msg
+    - .txt
+    - .csv
+    - .jpg
+  max_file_size_mb: 50
+  ocr_enabled: true
+  ocr_engine: tesseract
+
+classification:
+  model: claude-sonnet
+  confidence_threshold: 0.85
+  doc_types:
+    - project-info
+    - change-order
+    - rfi
+    - t-and-m
+    - progress-billing
+    - preliminary-notice
+    - lien-release
+    - insurance-cert
+    - permit
+    - daily-report
+    - submittal
+    - contract
+    - bid
+    - correspondence
+
+controlled_vocabulary:
+  status:
+    - draft
+    - needs-review
+    - approved
+    - rejected
+    - archived
+  work_type:
+    - water
+    - sewer
+    - storm-drain
+    - fire-service
+    - water-and-sewer

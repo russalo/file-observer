@@ -1,0 +1,41 @@
+baseURL: "https://cp-jobs.internal/"
+title: "C.P. Construction Job Dashboard"
+theme: cp-job-theme
+
+params:
+  company: "C.P. Construction Co., Inc."
+  license: "792733"
+
+taxonomies:
+  doc_type: doc_types
+  client: clients
+  city: cities
+  work_type: work_types
+  status: statuses
+
+outputs:
+  home:
+    - HTML
+    - JSON
+  section:
+    - HTML
+  taxonomy:
+    - HTML
+
+menus:
+  main:
+    - name: "All Jobs"
+      url: "/jobs/"
+      weight: 1
+    - name: "Active"
+      url: "/status/active/"
+      weight: 2
+    - name: "By Client"
+      url: "/clients/"
+      weight: 3
+    - name: "Change Orders"
+      url: "/doc_types/change-order/"
+      weight: 4
+    - name: "Compliance"
+      url: "/compliance/"
+      weight: 5

@@ -1,0 +1,53 @@
+taxonomy:
+  storage:
+    values: [embedded, sidecar, external]
+    description: "Where the metadata lives"
+
+  shape:
+    values: [structured, unstructured]
+    description: "Machine-parseable vs free text"
+
+  org:
+    values: [flat, hierarchical, faceted, graph]
+    description: "How the data is organized"
+
+  semantic:
+    values:
+      - system
+      - provenance
+      - domain
+      - state
+      - sensitivity
+      - transient
+    description: "The role this metadata plays"
+
+stage_labels:
+  stage1_base_identity:
+    storage: embedded
+    shape: structured
+    org: flat
+    semantic: [system, provenance]
+
+  stage2_inline_tags:
+    storage: embedded
+    shape: unstructured
+    org: flat
+    semantic: [transient]
+
+  stage3_promoted_yaml:
+    storage: embedded
+    shape: structured
+    org: hierarchical
+    semantic: [domain]
+
+  stage4_sidecar:
+    storage: sidecar
+    shape: structured
+    org: flat
+    semantic: [system, audit, provenance]
+
+  stage5_graph_links:
+    storage: sidecar
+    shape: structured
+    org: graph
+    semantic: [provenance]

@@ -1,0 +1,257 @@
+Transmittal Report:
+Created by AutoCAD eTransmit Monday, May 24, 2021, 2:16 PM.
+
+Drawing Sheet Set:
+
+This is a transmittal based on drawing sheets from the sheet set:
+	1289-003-SS PLAN.
+
+Sheets:
+1 TITLE SHEET
+2 SYSTEM INDEX MAP AND SECTION
+3 SS LINE A
+4 SS LINE A
+5 SS LINE B
+6 SS LINE B
+7 SS LINE D
+8 SS LINE C
+9 SS LINE E &  F
+10 SS LINE G
+11 SS LINE H
+12 SS LINE I
+13 SS LINE J
+14 SS LINE K
+
+
+Files:
+
+
+Root Drawings:	Sewer\1289-003ss01ts.dwg
+	Sewer\1289-003ss14ss.dwg
+	Sewer\1289-003ss02dt.dwg
+	Sewer\1289-003ss03ss.dwg
+	Sewer\1289-003ss04ss.dwg
+	Sewer\1289-003ss05ss.dwg
+	Sewer\1289-003ss06ss.dwg
+	Sewer\1289-003ss07ss.dwg
+	Sewer\1289-003ss08ss.dwg
+	Sewer\1289-003ss09ss.dwg
+	Sewer\1289-003ss10ss.dwg
+	Sewer\1289-003ss11ss.dwg
+	Sewer\1289-003ss12ss.dwg
+	Sewer\1289-003ss13ss.dwg
+
+Sheet Set Data File:
+	1289-003-SS PLAN.dst
+
+AutoCAD Drawing (External) References:
+	_Xbase\X1289-003-BM.dwg
+	Lot Parcel and Number\Z1289-003-AMAP-LPN.dwg
+	Sewer\X1289-003TBss.dwg
+	_Xbase\X1289-003-UT.dwg
+	Sewer\Z1289-003-PFSS-LINE K.dwg
+	_Xbase\X1289-003-ESMT.dwg
+	Sewer\Z1289-003-PFSS-CLIFTON.dwg
+	Sewer\Z1289-003-PFSS-LINE B.dwg
+	Sewer\Z1289-003-PFSS-LINE D.dwg
+	Sewer\Z1289-003-PFSS-LINE C.dwg
+	Sewer\Z1289-003-PFSS-LINE E.dwg
+	Sewer\Z1289-003-PFSS-LINE F.dwg
+	Sewer\Z1289-003-PFSS-LINE G.dwg
+	Sewer\Z1289-003-PFSS-LINE H.dwg
+	Sewer\Z1289-003-PFSS-LINE I.dwg
+	Sewer\Z1289-003-PFSS-LINE J.dwg
+
+JPG File References:
+	Textures\Concrete.Cast-In-Place.Flat.Grey.1.jpg
+	Textures\Metals.Ornamental Metals.Stainless.Satin.bump.jpg
+	Textures\Metals.Ornamental Metals.Stainless.Satin.jpg
+	Textures\Sitework.Paving - Surfacing.Asphalt.1.jpg
+	Textures\Sitework.Planting.Grass.Short.jpg
+	Textures\Sitework.Planting.Grass.Thick.jpg
+	Textures\Sitework.Planting.Gravel.Crushed.jpg
+	Textures\Sitework.Planting.Gravel.Mixed.jpg
+	Textures\Sitework.Planting.Soil.jpg
+	Textures\Sitework.Paving - Surfacing.Asphalt.jpg
+
+AutoCAD Color-dependent Plot Style Table File References:
+	PlotCfgs\-FuscoeCorp.ctb
+
+AutoCAD Plotter Configuration File References:
+	PlotCfgs\AutoCAD PDF (General Documentation).pc3
+
+TIF File References:
+	Street\MODIFIED LOCAL DEPRESION 3005.tif
+
+BAK File References:
+	1289-003ss09ss.bak
+
+The following files were excluded from the transmittal:
+	acad.fmp
+	Fonts\simplex.shx
+	Fonts\romans.shx
+	Fonts\romand.shx
+	Fonts\arial.ttf
+	Fonts\FLarrow01.shx
+	Fonts\calibri.ttf
+	Fonts\EdgeSymbol.shx
+	Fonts\bold.shx
+	Fonts\ARIALN.TTF
+	Fonts\ghost.shx
+	Fonts\ltypeshp.shx
+	Textures\Sitework.Paving - Surfacing.Asphalt.jpg
+	Fonts\txt.shx
+	Fonts\AE1.SHX
+	Fonts\ROMANT.shx
+	Fonts\FUTURXKC.TTF
+	Fonts\FUTURAHI.TTF
+	Fonts\romcl.shx
+	Fonts\Ltypes.shx
+	Fonts\FESDI.shx
+	Fonts\FiberRoll.shx
+	Fonts\Circ3.shx
+	Fonts\Complex.shx
+	Fonts\SawCut.shx
+	X1289-003-TXRW.dwg
+	Street impvt Tract 20157\X1289-003-TR57-HATCH.dwg
+
+The following files could not be located:
+	Textures\Sitework.Paving - Surfacing.Asphalt.jpg
+	X1289-003-TXRW.dwg
+	Street impvt Tract 20157\X1289-003-TR57-HATCH.dwg
+
+
+Notes for distribution:
+
+.DWG external reference files:
+External reference (xref) paths may be present.  Make sure these paths work or that the root drawing is using the correct references.
+eTransmit does not include files required by xrefs unless they are also required by the root drawing.  In particular, plot style tables and overlay xrefs that are not used by the root drawing are omitted
+
+Raster image files:
+Paths may be present on references to raster images.  Make sure these paths work or that the root drawing is using the correct references.
+
+.PC3 printer configuration files:
+Please copy these files to the AutoCAD Printer Configuration Search Path directory.
+
+.CTB/.STB plot style tables:
+Please copy these files to the AutoCAD Plot Style Table Search Path directory.
+
+Material texture files:
+Please copy these files to the AutoCAD Texture Maps Search Path directory.
+
+The AutoCAD variable FONTALT was set to:
+C:\autodesk\_fei c3d 2021 local\fonts\simplex.shx
+Please make sure that the FONTALT variable is set to this file or an equivalent before opening any drawings.  All text styles with missing fonts are automatically set to this font.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss01ts.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss14ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss02dt.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss03ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss04ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss05ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss06ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss07ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss08ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss09ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss10ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss11ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss12ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Sewer and Water\Sewer\1289-003ss13ss.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+

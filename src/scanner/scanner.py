@@ -9,6 +9,7 @@ import json
 import mimetypes
 import os
 import re
+import uuid
 
 try:
     import chardet
@@ -165,9 +166,37 @@ class FileRecord:
 
 
 @dataclass
-class ScanManifest:
+class ScanMeta:
+    scan_id: str
     generated_at: str
     source_dir: str
+    config: dict[str, Any]
+
+
+@dataclass
+class ScanStats:
+    total_files: int
+    supported_files: int
+    unsupported_files: int
+    text_files: int
+    binary_files: int
+    requires_vision: int
+    requires_specialist_tool: int
+
+
+@dataclass
+class RoutingSummary:
+    baseline_ready: int
+    binary_only: int
+    requires_vision: int
+    requires_specialist_tool: int
+
+
+@dataclass
+class ScanManifest:
+    meta: ScanMeta
+    stats: ScanStats
+    routing_summary: RoutingSummary
     files: list[FileRecord]
 
 
@@ -177,6 +206,7 @@ class ScannerConfig:
     sample_size: int = 8192
     enable_specialists: bool = False
     exclude_hidden: bool = False
+    format: str = "json"
 
 
 class Scanner:
@@ -189,10 +219,45 @@ class Scanner:
         records: list[FileRecord] = []
         for path in self.iter_files(self.source_dir):
             records.append(self.scan_file(path))
-        return ScanManifest(
+
+        meta = ScanMeta(
+            scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
             source_dir=str(self.source_dir),
+            config=asdict(self.config),
+        )
+        stats = self._compute_stats(records)
+        routing = self._compute_routing_summary(records)
+
+        return ScanManifest(
+            meta=meta,
+            stats=stats,
+            routing_summary=routing,
             files=records,
+        )
+
+    def _compute_stats(self, records: list[FileRecord]) -> ScanStats:
+        supported = sum(
+            1 for r in records
+            if not any(e.code == ERR_UNSUPPORTED_EXTENSION for e in r.errors)
+        )
+        total = len(records)
+        return ScanStats(
+            total_files=total,
+            supported_files=supported,
+            unsupported_files=total - supported,
+            text_files=sum(1 for r in records if not r.is_binary),
+            binary_files=sum(1 for r in records if r.is_binary),
+            requires_vision=sum(1 for r in records if r.requires_vision),
+            requires_specialist_tool=sum(1 for r in records if r.requires_specialist_tool),
+        )
+
+    def _compute_routing_summary(self, records: list[FileRecord]) -> RoutingSummary:
+        return RoutingSummary(
+            baseline_ready=sum(1 for r in records if not r.is_binary and not r.requires_specialist_tool),
+            binary_only=sum(1 for r in records if r.is_binary and not r.requires_vision and not r.requires_specialist_tool),
+            requires_vision=sum(1 for r in records if r.requires_vision),
+            requires_specialist_tool=sum(1 for r in records if r.requires_specialist_tool),
         )
 
     def iter_files(self, root: Path) -> Iterable[Path]:
@@ -603,13 +668,29 @@ class Scanner:
         return datetime.now(timezone.utc).isoformat()
 
 
-def manifest_to_json(manifest: ScanManifest) -> str:
-    def encode(obj: Any) -> Any:
-        if hasattr(obj, "__dataclass_fields__"):
-            return asdict(obj)
-        raise TypeError(f"Unsupported type: {type(obj)!r}")
+def _dc_encoder(obj: Any) -> Any:
+    if hasattr(obj, "__dataclass_fields__"):
+        return asdict(obj)
+    raise TypeError(f"Unsupported type: {type(obj)!r}")
 
-    return json.dumps(manifest, default=encode, indent=2, ensure_ascii=False)
+
+def manifest_to_json(manifest: ScanManifest) -> str:
+    return json.dumps(manifest, default=_dc_encoder, indent=2, ensure_ascii=False)
+
+
+def manifest_to_jsonl(manifest: ScanManifest) -> str:
+    lines: list[str] = []
+    # Header line with meta, stats, routing_summary
+    header = {
+        "meta": asdict(manifest.meta),
+        "stats": asdict(manifest.stats),
+        "routing_summary": asdict(manifest.routing_summary),
+    }
+    lines.append(json.dumps(header, ensure_ascii=False))
+    # One line per file record
+    for record in manifest.files:
+        lines.append(json.dumps(asdict(record), ensure_ascii=False))
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:
@@ -623,21 +704,29 @@ def main() -> None:
     parser.add_argument("--specialists", action="store_true", help="Enable specialist tier probes")
     parser.add_argument("--exclude-hidden", action="store_true", help="Exclude hidden files and directories")
     parser.add_argument("--preview-max", type=int, default=1000, help="Max characters for content preview (default: 1000)")
+    parser.add_argument("--format", choices=["json", "jsonl"], default="json", help="Output format (default: json)")
     args = parser.parse_args()
 
     config = ScannerConfig(
         enable_specialists=args.specialists,
         exclude_hidden=args.exclude_hidden,
         preview_max_chars=args.preview_max,
+        format=args.format,
     )
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()
-    output = manifest_to_json(manifest)
+
+    if config.format == "jsonl":
+        output = manifest_to_jsonl(manifest)
+        ext = "jsonl"
+    else:
+        output = manifest_to_json(manifest)
+        ext = "json"
 
     manifest_dir = Path(args.output) if args.output else Path(__file__).resolve().parent / "manifests"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-    manifest_path = manifest_dir / f"manifest_{timestamp}.json"
+    manifest_path = manifest_dir / f"manifest_{timestamp}.{ext}"
     manifest_path.write_text(output, encoding="utf-8")
     print(f"Manifest written to {manifest_path}")
 

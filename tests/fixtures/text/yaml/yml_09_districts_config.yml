@@ -1,0 +1,33 @@
+water_districts:
+  cvwd:
+    name: "Cucamonga Valley Water District"
+    abbreviation: CVWD
+    cities: ["Rancho Cucamonga", "Fontana", "Ontario", "Upland"]
+    pipe_standards: "CVWD Engineering Standards"
+    approved_suppliers:
+      - "Ferguson Waterworks"
+      - "South Bay Foundry"
+    inspection_contact: "Sheila Manning"
+    co_approval_threshold: 10000
+    notes: "COs over $10K require board approval"
+
+  wvwd:
+    name: "West Valley Water District"
+    abbreviation: WVWD
+    cities: ["Rialto", "Bloomington", "Colton"]
+    inspection_contact: "Van Jew"
+
+  sawco:
+    name: "San Antonio Water Company"
+    abbreviation: SAWCo
+    cities: ["Upland", "Claremont", "Montclair"]
+
+  evmwd:
+    name: "Elsinore Valley Municipal Water District"
+    abbreviation: EVMWD
+    cities: ["Lake Elsinore", "Wildomar", "Murrieta"]
+
+  wfa:
+    name: "Water Facilities Authority"
+    abbreviation: WFA
+    cities: ["Montclair", "Upland"]

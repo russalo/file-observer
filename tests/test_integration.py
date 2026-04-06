@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scanner.scanner import Scanner, ScannerConfig, manifest_to_json, FileRecord, ScanManifest
+from scanner.scanner import Scanner, ScannerConfig, manifest_to_json, manifest_to_jsonl, FileRecord, ScanManifest
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -29,11 +29,34 @@ def _find(manifest: ScanManifest, filename: str) -> FileRecord:
 
 class TestManifestShape:
     def test_generated_at_present(self, manifest: ScanManifest) -> None:
-        assert manifest.generated_at is not None
-        assert "T" in manifest.generated_at  # ISO-8601
+        assert manifest.meta.generated_at is not None
+        assert "T" in manifest.meta.generated_at  # ISO-8601
 
     def test_source_dir_absolute(self, manifest: ScanManifest) -> None:
-        assert Path(manifest.source_dir).is_absolute()
+        assert Path(manifest.meta.source_dir).is_absolute()
+
+    def test_meta_has_scan_id(self, manifest: ScanManifest) -> None:
+        assert manifest.meta.scan_id
+        import uuid
+        uuid.UUID(manifest.meta.scan_id)  # validates format
+
+    def test_meta_config_reflects_runtime(self, manifest: ScanManifest) -> None:
+        assert manifest.meta.config["preview_max_chars"] == 1000
+        assert manifest.meta.config["enable_specialists"] is False
+
+    def test_stats_totals_consistent(self, manifest: ScanManifest) -> None:
+        s = manifest.stats
+        assert s.total_files == len(manifest.files)
+        assert s.supported_files + s.unsupported_files == s.total_files
+        assert s.text_files + s.binary_files == s.total_files
+
+    def test_routing_summary_present(self, manifest: ScanManifest) -> None:
+        r = manifest.routing_summary
+        # Verify counts match actual file records
+        assert r.requires_vision == sum(1 for f in manifest.files if f.requires_vision)
+        assert r.requires_specialist_tool == sum(1 for f in manifest.files if f.requires_specialist_tool)
+        assert r.baseline_ready == sum(1 for f in manifest.files if not f.is_binary and not f.requires_specialist_tool)
+        assert r.binary_only == sum(1 for f in manifest.files if f.is_binary and not f.requires_vision and not f.requires_specialist_tool)
 
     def test_files_is_list(self, manifest: ScanManifest) -> None:
         assert isinstance(manifest.files, list)
@@ -62,8 +85,11 @@ class TestJsonSerialization:
         import json
         output = manifest_to_json(manifest)
         data = json.loads(output)
-        assert "generated_at" in data
+        assert "meta" in data
+        assert "stats" in data
+        assert "routing_summary" in data
         assert "files" in data
+        assert "generated_at" in data["meta"]
 
     def test_arrays_never_null(self, manifest: ScanManifest) -> None:
         import json
@@ -248,3 +274,33 @@ class TestStructuralSignals:
     def test_technology_hints_sorted(self, manifest: ScanManifest) -> None:
         for f in manifest.files:
             assert f.structural.technology_hints == sorted(f.structural.technology_hints)
+
+
+# ---------------------------------------------------------------------------
+# JSONL output
+# ---------------------------------------------------------------------------
+
+class TestJsonlOutput:
+    def test_jsonl_valid_lines(self, manifest: ScanManifest) -> None:
+        import json
+        output = manifest_to_jsonl(manifest)
+        lines = output.strip().split("\n")
+        # First line is header, rest are file records
+        assert len(lines) == len(manifest.files) + 1
+        for line in lines:
+            json.loads(line)  # each line must be valid JSON
+
+    def test_jsonl_header_has_meta_stats_routing(self, manifest: ScanManifest) -> None:
+        import json
+        header = json.loads(manifest_to_jsonl(manifest).split("\n")[0])
+        assert "meta" in header
+        assert "stats" in header
+        assert "routing_summary" in header
+
+    def test_jsonl_records_match_json(self, manifest: ScanManifest) -> None:
+        import json
+        jsonl_lines = manifest_to_jsonl(manifest).strip().split("\n")
+        json_data = json.loads(manifest_to_json(manifest))
+        # File records should match
+        jsonl_records = [json.loads(line) for line in jsonl_lines[1:]]
+        assert jsonl_records == json_data["files"]

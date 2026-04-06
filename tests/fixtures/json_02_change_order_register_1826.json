@@ -1,0 +1,52 @@
+{
+  "job_number": 1826,
+  "client": "Security Paving Company",
+  "change_orders": [
+    {
+      "co_number": "CO-01",
+      "date": "2022-11-15",
+      "description": "Remove and replace unmarked 4-inch cast iron waterline",
+      "category": "differing-site-condition",
+      "requested": 8500.00,
+      "approved": 8500.00,
+      "status": "approved"
+    },
+    {
+      "co_number": "CO-02",
+      "date": "2023-01-09",
+      "description": "Extend 12-inch HDPE from sta 22+00 to 23+50 per revised plan",
+      "category": "plan-change",
+      "requested": 12750.00,
+      "approved": 11200.00,
+      "status": "approved-negotiated"
+    },
+    {
+      "co_number": "CO-05",
+      "date": "2023-08-30",
+      "description": "Relocate 2-inch blow-off conflict with signal foundation",
+      "category": "differing-site-condition",
+      "requested": 3200.00,
+      "approved": 0.00,
+      "status": "denied",
+      "notes": "GC claims design issue not differing condition. Written claim submitted 2024-01-15."
+    },
+    {
+      "co_number": "CO-06",
+      "date": "2023-10-11",
+      "description": "Replace 200 LF 8-inch ACP water main found deteriorated",
+      "category": "differing-site-condition",
+      "requested": 22000.00,
+      "approved": null,
+      "status": "pending",
+      "days_open": 65,
+      "awaiting": "CVWD board approval"
+    }
+  ],
+  "summary": {
+    "total_requested": 75850.00,
+    "total_approved": 51500.00,
+    "total_pending": 22000.00,
+    "total_denied": 3200.00,
+    "approval_rate_pct": 67.9
+  }
+}

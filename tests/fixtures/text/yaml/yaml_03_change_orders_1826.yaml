@@ -1,0 +1,33 @@
+job_number: 1826
+client: "Security Paving Company"
+original_contract: 680000.00
+change_orders:
+  - co_number: CO-01
+    date: "2022-11-15"
+    category: differing-site-condition
+    amount_approved: 8500.00
+    status: approved
+  - co_number: CO-02
+    date: "2023-01-09"
+    category: plan-change
+    amount_requested: 12750.00
+    amount_approved: 11200.00
+    status: approved-negotiated
+  - co_number: CO-05
+    date: "2023-08-30"
+    category: differing-site-condition
+    amount_requested: 3200.00
+    amount_approved: 0
+    status: denied
+    claim_filed: "2024-01-15"
+  - co_number: CO-06
+    date: "2023-10-11"
+    category: differing-site-condition
+    amount_requested: 22000.00
+    status: pending
+    days_open: 65
+    blocking: CVWD board approval
+totals:
+  approved: 51500.00
+  pending: 22000.00
+  denied: 3200.00

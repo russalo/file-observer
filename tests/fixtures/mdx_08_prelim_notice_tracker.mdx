@@ -1,0 +1,23 @@
+---
+doc_type: prelim-notice-tracker
+updated: "2026-04-01"
+---
+
+# Preliminary Notice Tracker
+
+<PrelimSummary
+  totalActive={4}
+  totalLapsed={12}
+  lienExposure={485000}
+/>
+
+<PrelimTable
+  notices={[
+    { job: 1880, client: "The Previti Group", served: "2025-09-30", contractValue: 485000, status: "active" },
+    { job: 1883, client: "Hutton Development", served: "2026-01-15", contractValue: 320000, status: "active" },
+    { job: 1884, client: "CVWD", served: "2025-08-22", contractValue: 95000, status: "active" },
+    { job: 1885, client: "MKP Construction", served: "2026-02-01", contractValue: 187500, status: "active" },
+    { job: 1836, client: "CW Driver LLC", served: "2023-04-15", contractValue: 485000, status: "lapsed-paid" },
+    { job: 1850, client: "WFA", served: "2023-11-15", contractValue: 62000, status: "lapsed-unpaid", alert: true },
+  ]}
+/>

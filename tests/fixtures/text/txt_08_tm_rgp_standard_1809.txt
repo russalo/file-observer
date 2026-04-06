@@ -1,0 +1,289 @@
+Transmittal Report:
+Created by AutoCAD eTransmit Saturday, November 13, 2021, 4:46 AM.
+
+Drawing Sheet Set:
+
+This is a transmittal based on drawing sheets from the sheet set:
+	TM 20157 RGP.
+
+Sheets:
+1 TITLE SHEET
+2 DETAILS AND SECTIONS
+3 ROUGH GRADING PLAN
+4 ROUGH GRADING PLAN
+5 ROUGH GRADING PLAN
+6 ROUGH GRADING PLAN
+7 ROUGH GRADING PLAN
+8 ROUGH GRADING PLAN
+9 ROUGH GRADING PLAN
+10 EROSION CONTROL PLAN
+11 EROSION CONTROL NOTES
+12 SOILS REPORT RECOMMENDATIONS
+13 SOILS REPORT RECOMMENDATIONS
+14 INTERIM RETENTION BASIN PLAN
+
+
+Files:
+
+
+Root Drawings:	RGP\1289-003-rg01ts.dwg
+	RGP\1289-003-rg14rb.dwg
+	RGP\1289-003-rg02dt.dwg
+	RGP\1289-003-rg03rg.dwg
+	RGP\1289-003-rg04rg.dwg
+	RGP\1289-003-rg05rg.dwg
+	RGP\1289-003-rg06rg.dwg
+	RGP\1289-003-rg07rg.dwg
+	RGP\1289-003-rg08rg.dwg
+	RGP\1289-003-rg09rg.dwg
+	RGP\1289-003-rg10ec.dwg
+	RGP\1289-003-rg11ec.dwg
+	RGP\1289-003-rg12sr.dwg
+	RGP\1289-003-rg13sr.dwg
+
+Sheet Set Data File:
+	TM 20157 RGP.dst
+
+Sheet Template Files:
+	sheetsets\architectural imperial.dwt
+
+AutoCAD Drawing (External) References:
+	RGP\X1289-003-TBRG.dwg
+	_Xbase\X1289-003-BM.dwg
+	_Xbase\X1289-003-BND.dwg
+	_Xbase\X1289-003-UT.dwg
+	_Xbase\X1289-003-TP.dwg
+	RGP\X1289-003-TXRG.dwg
+	_Xbase\X1289-003-BL.dwg
+	_Xbase\X1289-003-ESMT.dwg
+	Files\723 - CALC.DWG
+
+JPG File References:
+	Textures\Concrete.Cast-In-Place.Flat.Grey.1.jpg
+	Textures\Sitework.Planting.Grass.Short.jpg
+	Textures\Sitework.Planting.Grass.Thick.jpg
+	Textures\Sitework.Planting.Gravel.Crushed.jpg
+	Textures\Sitework.Planting.Gravel.Mixed.jpg
+	Textures\Sitework.Planting.Soil.jpg
+	Textures\Metals.Ornamental Metals.Stainless.Satin.bump.jpg
+	Textures\Metals.Ornamental Metals.Stainless.Satin.jpg
+	Textures\Sitework.Paving - Surfacing.Asphalt.1.jpg
+
+AutoCAD Color-dependent Plot Style Table File References:
+	PlotCfgs\-FuscoeCorp.ctb
+	PlotCfgs\-FuscoeMono-half.ctb
+
+AutoCAD Plotter Configuration File References:
+	PlotCfgs\AutoCAD PDF (General Documentation).pc3
+	PlotCfgs\DWF6 ePlot.pc3
+
+TIF File References:
+	RGP\2018-03-16 Geo Evaluation_Sheet 16.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 17.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 18.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 19.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 20.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 21.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 22.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 23.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 24.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 25.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 26.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 27.tif
+	RGP\2018-03-16 Geo Evaluation_Sheet 28.tif
+	PDF's\methane_assessment.tif
+
+The following files were excluded from the transmittal:
+	acad.fmp
+	Fonts\simplex.shx
+	Fonts\romans.shx
+	Fonts\romand.shx
+	Fonts\arial.ttf
+	Fonts\FLarrow01.shx
+	Fonts\calibri.ttf
+	Fonts\bold.shx
+	Fonts\ARIALN.TTF
+	Fonts\ghost.shx
+	Fonts\AE1.SHX
+	Textures\Sitework.Paving - Surfacing.Asphalt.jpg
+	Fonts\ROMANT.shx
+	Fonts\FUTURXKC.TTF
+	Fonts\FUTURAHI.TTF
+	Fonts\ltypeshp.shx
+	Fonts\EdgeSymbol.shx
+	Fonts\Circ2.shx
+	Fonts\RBF.SHX
+	Fonts\AECCLAND.shx
+	Fonts\SMART.SHX
+	in8.(shx,ttf)
+	circlesolid.(shx,ttf)
+	SANDBAGS.(shx,ttf)
+	Fonts\Circ3.shx
+	Fonts\bubb.shx
+	Fonts\triangle.shx
+	Fonts\Complex.shx
+	Fonts\FESDI.shx
+	Fonts\bubb.shx
+	Fonts\triangle.shx
+	Fonts\txt.shx
+	Tentative Parcel Map 20157\1289-003-A-MAP-CNT.dwg
+	Textures\GEI2797.jpg
+	KA_ltypeshp.(shx,ttf)
+	titles.(shx,ttf)
+	Fonts\shadow.shx
+	Fonts\special.shx
+	Fonts\FRABK.TTF
+	Fonts\Ltypes.shx
+	Fonts\FiberRoll.shx
+	Fonts\Circ3.shx
+	Fonts\Complex.shx
+	Fonts\SawCut.shx
+
+The following files could not be located:
+	Textures\Sitework.Paving - Surfacing.Asphalt.jpg
+	in8.(shx,ttf)
+	circlesolid.(shx,ttf)
+	SANDBAGS.(shx,ttf)
+	Textures\GEI2797.jpg
+	KA_ltypeshp.(shx,ttf)
+	titles.(shx,ttf)
+
+
+Conversion:
+All drawing files were converted to AutoCAD 2013/LT 2013 format.
+
+
+Notes for distribution:
+
+.DWG external reference files:
+External reference (xref) paths may be present.  Make sure these paths work or that the root drawing is using the correct references.
+eTransmit does not include files required by xrefs unless they are also required by the root drawing.  In particular, plot style tables and overlay xrefs that are not used by the root drawing are omitted
+
+Raster image files:
+Paths may be present on references to raster images.  Make sure these paths work or that the root drawing is using the correct references.
+
+.PC3 printer configuration files:
+Please copy these files to the AutoCAD Printer Configuration Search Path directory.
+
+.CTB/.STB plot style tables:
+Please copy these files to the AutoCAD Plot Style Table Search Path directory.
+
+Material texture files:
+Please copy these files to the AutoCAD Texture Maps Search Path directory.
+
+The AutoCAD variable FONTALT was set to:
+C:\autodesk\_fei c3d 2021 local\fonts\simplex.shx
+Please make sure that the FONTALT variable is set to this file or an equivalent before opening any drawings.  All text styles with missing fonts are automatically set to this font.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg01ts.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg14rb.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg02dt.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg03rg.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg04rg.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg05rg.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg06rg.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg07rg.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg08rg.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg09rg.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg10ec.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg11ec.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg12sr.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+
+
+
+*** Map 2007 Data and Cache files ***
+
+The drawing 'F:\Projects\1289\003\Plans\Grading\RGP\1289-003-rg13sr.dwg' refers to a cache manifest XML file, zero or more cache files (.GWS) as well as raw data files.
+Please ensure the manifest XML file and cache files are unzipped to the drawing directory or your current MapCache directory.
+You may also need to update the cache manifest XML file to point to the unzipped location of the data files.
+

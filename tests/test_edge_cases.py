@@ -326,5 +326,6 @@ class TestEmptyDirectory:
         scanner = Scanner(source_dir=tmp_path)
         manifest = scanner.scan()
         assert manifest.files == []
-        assert manifest.generated_at
-        assert manifest.source_dir
+        assert manifest.meta.generated_at
+        assert manifest.meta.source_dir
+        assert manifest.stats.total_files == 0

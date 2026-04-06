@@ -1,0 +1,17 @@
+; This file is stored in ANSI encoding
+
+[ClipInfo]
+CreationDate="12/29/2022 8:08:30 AM"
+OriginalClipName="MH#2-MH#1-080816-S_Sectionname.mpg"
+DeviceType=2
+DeviceName="VM4-2-C7_OSD_MP"
+Compressor="MPEG1"
+Quality=-1
+VideoNorm="NTSC"
+hRes=320
+vRes=240
+VideoFormat=""
+CDLAB.Tech.CS.dll=1.0.2017.168
+Application="wincan_8"
+ClipRatio=1
+PictureRatio=1
