@@ -10,8 +10,20 @@ import mimetypes
 import os
 import re
 
-import chardet
-import magic
+try:
+    import chardet
+except ImportError:
+    chardet = None  # type: ignore[assignment]
+
+try:
+    import magic
+except ImportError:
+    magic = None  # type: ignore[assignment]
+
+try:
+    import yaml
+except ImportError:
+    yaml = None  # type: ignore[assignment]
 
 
 SUPPORTED_EXTENSIONS = {
@@ -28,6 +40,8 @@ CODE_STRIP_RE = re.compile(
     re.DOTALL,
 )
 FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
+FRONTMATTER_OPEN_RE = re.compile(r"\A---\n", re.DOTALL)
+CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f]")
 ASSET_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 FILENAME_DATE_RE = re.compile(r"(\d{4})[-_](\d{2})[-_](\d{2})")
 HTML_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
@@ -65,6 +79,14 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".docx": "docx_parser",
     ".rtf": "rtf_parser",
 }
+
+# Error code constants
+ERR_UNIVERSAL_STAT_FAILED = "universal_stat_failed"
+ERR_UNSUPPORTED_EXTENSION = "unsupported_extension"
+ERR_MIME_TYPE_FALLBACK = "mime_type_fallback"
+ERR_BASELINE_DECODE_FAILED = "baseline_decode_failed"
+ERR_SPECIALIST_PROBE_FAILED = "specialist_probe_failed"
+ERR_JSON_PARSE_FAILED = "json_parse_failed"
 
 BINARY_MIME_PREFIXES = ("image/", "audio/", "video/")
 BINARY_MIME_TYPES = {
@@ -107,6 +129,16 @@ class FrontmatterRecord:
 
 
 @dataclass
+class StructuralRecord:
+    title: str | None = None
+    heading_structure: list[str] = field(default_factory=list)
+    csv_headers: list[str] = field(default_factory=list)
+    document_keys: list[str] = field(default_factory=list)
+    technology_hints: list[str] = field(default_factory=list)
+    filename_date: str | None = None
+
+
+@dataclass
 class FileRecord:
     path: str
     filename: str
@@ -128,12 +160,7 @@ class FileRecord:
     tags: list[str]
     asset_matches: list[str]
     content_preview: str | None
-    filename_date: str | None
-    title: str | None
-    heading_structure: list[str]
-    document_keys: list[str]
-    csv_headers: list[str]
-    technology_hints: list[str]
+    structural: StructuralRecord
     errors: list[ErrorRecord] = field(default_factory=list)
 
 
@@ -144,17 +171,19 @@ class ScanManifest:
     files: list[FileRecord]
 
 
+@dataclass
 class ScannerConfig:
     preview_max_chars: int = 1000
     sample_size: int = 8192
     enable_specialists: bool = False
+    exclude_hidden: bool = False
 
 
 class Scanner:
     def __init__(self, source_dir: Path, config: ScannerConfig | None = None) -> None:
         self.source_dir = source_dir.resolve()
         self.config = config or ScannerConfig()
-        self._magic = magic.Magic(mime=True)
+        self._magic = magic.Magic(mime=True) if magic else None
 
     def scan(self) -> ScanManifest:
         records: list[FileRecord] = []
@@ -169,13 +198,52 @@ class Scanner:
     def iter_files(self, root: Path) -> Iterable[Path]:
         for path in sorted(root.rglob("*")):
             if path.is_file():
+                if self.config.exclude_hidden and any(
+                    part.startswith(".") for part in path.relative_to(root).parts
+                ):
+                    continue
                 yield path
 
     def scan_file(self, path: Path) -> FileRecord:
-        rel_path = path.relative_to(self.source_dir)
-        stat = path.stat()
-        extension = path.suffix.lower()
         errors: list[ErrorRecord] = []
+
+        try:
+            rel_path = path.relative_to(self.source_dir)
+            stat = path.stat()
+        except Exception as exc:
+            # Universal tier failure — return a minimal record per §1.18
+            rel_path = Path(path.name)
+            errors.append(ErrorRecord(
+                code=ERR_UNIVERSAL_STAT_FAILED,
+                message=str(exc),
+                stage="universal",
+            ))
+            return FileRecord(
+                path=str(rel_path).replace("\\", "/"),
+                filename=path.name,
+                extension=path.suffix.lower(),
+                mime_type="application/octet-stream",
+                size_bytes=0,
+                created_at=None,
+                modified_at=self.now_iso(),
+                checksum_sha256="",
+                stage_folder="",
+                directory_depth=0,
+                encoding=None,
+                is_binary=True,
+                requires_vision=False,
+                requires_specialist_tool=False,
+                specialist_tool=None,
+                sidecar_exists=False,
+                frontmatter=FrontmatterRecord(),
+                tags=[],
+                asset_matches=[],
+                content_preview=None,
+                structural=StructuralRecord(),
+                errors=errors,
+            )
+
+        extension = path.suffix.lower()
 
         mime_type = self.detect_mime(path, errors)
         checksum = self.hash_file(path)
@@ -193,49 +261,52 @@ class Scanner:
             sample, mime_type, extension, is_binary
         )
 
+        if extension not in SUPPORTED_EXTENSIONS:
+            errors.append(ErrorRecord(
+                code=ERR_UNSUPPORTED_EXTENSION,
+                message=f"Extension '{extension}' is not in supported file types",
+                stage="universal",
+            ))
+
         encoding: str | None = None
         preview: str | None = None
         tags: list[str] = []
         asset_matches: list[str] = []
         frontmatter = FrontmatterRecord()
-        title: str | None = None
-        heading_structure: list[str] = []
-        document_keys: list[str] = []
-        csv_headers: list[str] = []
-        technology_hints: list[str] = []
-
-        filename_date = self.extract_filename_date(path.name)
+        structural = StructuralRecord(
+            filename_date=self.extract_filename_date(path.name),
+        )
 
         if not is_binary:
             try:
                 encoding, text = self.decode_text(sample, path)
                 preview = self.make_preview(text)
                 tags = self.extract_tags(text)
-                technology_hints = self.detect_technology(text)
+                structural.technology_hints = self.detect_technology(text)
 
                 if extension in {".md", ".mdx"}:
                     frontmatter = self.extract_frontmatter(text)
                     asset_matches = self.extract_assets(text)
-                    title = self.extract_md_title(text)
-                    heading_structure = self.extract_heading_structure(text)
+                    structural.title = self.extract_md_title(text)
+                    structural.heading_structure = self.extract_heading_structure(text)
                     if frontmatter.exists:
                         tags = sorted(set(tags + self.tags_from_frontmatter(frontmatter.raw or "")))
 
                 elif extension in {".html", ".htm"}:
-                    title = self.extract_html_title(text)
+                    structural.title = self.extract_html_title(text)
 
                 elif extension == ".csv":
-                    csv_headers = self.extract_csv_headers(text)
+                    structural.csv_headers = self.extract_csv_headers(text)
 
                 elif extension in {".yaml", ".yml"}:
-                    document_keys = self.extract_yaml_keys(text)
+                    structural.document_keys = self.extract_yaml_keys(text)
 
                 elif extension == ".json":
-                    document_keys = self.extract_json_keys(text)
+                    structural.document_keys = self.extract_json_keys(text)
 
             except Exception as exc:
                 errors.append(ErrorRecord(
-                    code="baseline_decode_failed",
+                    code=ERR_BASELINE_DECODE_FAILED,
                     message=str(exc),
                     stage="baseline",
                 ))
@@ -247,7 +318,7 @@ class Scanner:
                 self.run_specialist_probe(path, extension, errors)
             except Exception as exc:
                 errors.append(ErrorRecord(
-                    code="specialist_probe_failed",
+                    code=ERR_SPECIALIST_PROBE_FAILED,
                     message=str(exc),
                     stage="specialist",
                 ))
@@ -273,22 +344,24 @@ class Scanner:
             tags=tags,
             asset_matches=asset_matches,
             content_preview=preview,
-            filename_date=filename_date,
-            title=title,
-            heading_structure=heading_structure,
-            document_keys=document_keys,
-            csv_headers=csv_headers,
-            technology_hints=technology_hints,
+            structural=structural,
             errors=errors,
         )
 
     def detect_mime(self, path: Path, errors: list[ErrorRecord]) -> str:
-        try:
-            detected = self._magic.from_file(str(path))
-            if detected:
-                return detected
-        except Exception:
-            pass
+        if self._magic:
+            try:
+                detected = self._magic.from_file(str(path))
+                if detected:
+                    return detected
+            except Exception as exc:
+                guessed, _ = mimetypes.guess_type(str(path))
+                errors.append(ErrorRecord(
+                    code=ERR_MIME_TYPE_FALLBACK,
+                    message=f"Content-based MIME detection failed ({exc}), used extension-based inference",
+                    stage="universal",
+                ))
+                return guessed or "application/octet-stream"
         # Fallback to extension-based inference per §1.12
         guessed, _ = mimetypes.guess_type(str(path))
         errors.append(ErrorRecord(
@@ -350,17 +423,22 @@ class Scanner:
         return False
 
     def decode_text(self, sample: bytes, path: Path) -> tuple[str, str]:
+        # Detect encoding from sample first to avoid full-file read for detection
+        detected_enc: str | None = None
+        if chardet:
+            detected = chardet.detect(sample)
+            if detected and detected.get("encoding"):
+                enc = detected["encoding"].lower()
+                confidence = detected.get("confidence", 0) or 0
+                if confidence >= 0.5:
+                    detected_enc = enc
+        # Full read needed for preview/tag extraction
         raw = path.read_bytes()
-        # Use chardet for encoding detection per §1.13
-        detected = chardet.detect(raw)
-        if detected and detected.get("encoding"):
-            enc = detected["encoding"].lower()
-            confidence = detected.get("confidence", 0) or 0
-            if confidence >= 0.5:
-                try:
-                    return enc, raw.decode(enc)
-                except (UnicodeDecodeError, LookupError):
-                    pass
+        if detected_enc:
+            try:
+                return detected_enc, raw.decode(detected_enc)
+            except (UnicodeDecodeError, LookupError):
+                pass
         # Fallback cascade
         for enc in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
             try:
@@ -370,7 +448,7 @@ class Scanner:
         return "unknown", raw.decode("utf-8", errors="replace")
 
     def make_preview(self, text: str) -> str:
-        normalized = text.replace("\x00", "").strip()
+        normalized = CONTROL_CHAR_RE.sub("", text).strip()
         return normalized[: self.config.preview_max_chars]
 
     def extract_tags(self, text: str) -> list[str]:
@@ -382,16 +460,33 @@ class Scanner:
 
     def extract_frontmatter(self, text: str) -> FrontmatterRecord:
         match = FRONTMATTER_RE.search(text)
-        if not match:
-            return FrontmatterRecord()
-        raw = match.group(1)
+        if match:
+            raw = match.group(1)
+            keys = self._parse_frontmatter_keys(raw)
+            return FrontmatterRecord(exists=True, keys=keys, raw=raw)
+        # Detect malformed frontmatter: opening --- without closing ---
+        if FRONTMATTER_OPEN_RE.match(text):
+            raw = text.split("\n", 1)[1] if "\n" in text else ""
+            return FrontmatterRecord(exists=False, keys=[], raw=raw)
+        return FrontmatterRecord()
+
+    def _parse_frontmatter_keys(self, raw: str) -> list[str]:
+        """Extract top-level keys from frontmatter YAML. Uses PyYAML when available."""
+        if yaml:
+            try:
+                parsed = yaml.safe_load(raw)
+                if isinstance(parsed, dict):
+                    return sorted(str(k) for k in parsed.keys())
+            except Exception:
+                pass
+        # Fallback: string splitting
         keys = []
         for line in raw.splitlines():
             if ":" in line:
                 key = line.split(":", 1)[0].strip()
                 if key:
                     keys.append(key)
-        return FrontmatterRecord(exists=True, keys=sorted(set(keys)), raw=raw)
+        return sorted(set(keys))
 
     def tags_from_frontmatter(self, raw: str) -> list[str]:
         tags: list[str] = []
@@ -488,15 +583,18 @@ class Scanner:
             try:
                 json.loads(path.read_text(encoding="utf-8"))
             except Exception as exc:
-                errors.append(ErrorRecord("json_parse_failed", str(exc), "specialist"))
+                errors.append(ErrorRecord(ERR_JSON_PARSE_FAILED, str(exc), "specialist"))
         elif extension in {".pdf", ".docx", ".rtf"}:
             return
 
     def safe_created_at(self, stat: os.stat_result) -> str | None:
-        birth = getattr(stat, "st_birthtime", None)
-        if birth is None:
+        try:
+            birth = getattr(stat, "st_birthtime", None)
+            if birth is None:
+                return None
+            return self.ts_to_iso(birth)
+        except (OSError, ValueError):
             return None
-        return self.ts_to_iso(birth)
 
     def ts_to_iso(self, ts: float) -> str:
         return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
@@ -515,15 +613,29 @@ def manifest_to_json(manifest: ScanManifest) -> str:
 
 
 def main() -> None:
-    import sys
+    import argparse
 
-    source_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(".")
-    scanner = Scanner(source_dir=source_dir)
+    parser = argparse.ArgumentParser(
+        description="File capability scanner — recursively discover files and emit a JSON manifest.",
+    )
+    parser.add_argument("source", nargs="?", default=".", help="Source directory to scan (default: cwd)")
+    parser.add_argument("-o", "--output", default=None, help="Output directory for the manifest (default: <scanner_pkg>/manifests/)")
+    parser.add_argument("--specialists", action="store_true", help="Enable specialist tier probes")
+    parser.add_argument("--exclude-hidden", action="store_true", help="Exclude hidden files and directories")
+    parser.add_argument("--preview-max", type=int, default=1000, help="Max characters for content preview (default: 1000)")
+    args = parser.parse_args()
+
+    config = ScannerConfig(
+        enable_specialists=args.specialists,
+        exclude_hidden=args.exclude_hidden,
+        preview_max_chars=args.preview_max,
+    )
+    scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()
     output = manifest_to_json(manifest)
 
-    manifest_dir = Path(__file__).resolve().parent / "manifests"
-    manifest_dir.mkdir(exist_ok=True)
+    manifest_dir = Path(args.output) if args.output else Path(__file__).resolve().parent / "manifests"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
     manifest_path = manifest_dir / f"manifest_{timestamp}.json"
     manifest_path.write_text(output, encoding="utf-8")

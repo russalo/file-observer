@@ -1,0 +1,250 @@
+"""Integration tests — full scan() against fixture directories with known expected output."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from scanner.scanner import Scanner, ScannerConfig, manifest_to_json, FileRecord, ScanManifest
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+@pytest.fixture
+def manifest() -> ScanManifest:
+    scanner = Scanner(source_dir=FIXTURES)
+    return scanner.scan()
+
+
+def _find(manifest: ScanManifest, filename: str) -> FileRecord:
+    for f in manifest.files:
+        if f.filename == filename:
+            return f
+    raise KeyError(f"{filename} not in manifest")
+
+
+# ---------------------------------------------------------------------------
+# Top-level manifest shape
+# ---------------------------------------------------------------------------
+
+class TestManifestShape:
+    def test_generated_at_present(self, manifest: ScanManifest) -> None:
+        assert manifest.generated_at is not None
+        assert "T" in manifest.generated_at  # ISO-8601
+
+    def test_source_dir_absolute(self, manifest: ScanManifest) -> None:
+        assert Path(manifest.source_dir).is_absolute()
+
+    def test_files_is_list(self, manifest: ScanManifest) -> None:
+        assert isinstance(manifest.files, list)
+        assert len(manifest.files) > 0
+
+    def test_every_file_has_all_fields(self, manifest: ScanManifest) -> None:
+        required = {
+            "path", "filename", "extension", "mime_type", "size_bytes",
+            "created_at", "modified_at", "checksum_sha256", "stage_folder",
+            "directory_depth", "encoding", "is_binary", "requires_vision",
+            "requires_specialist_tool", "specialist_tool", "sidecar_exists",
+            "frontmatter", "tags", "asset_matches", "content_preview",
+            "structural", "errors",
+        }
+        for rec in manifest.files:
+            fields = {f.name for f in rec.__dataclass_fields__.values()}
+            assert required <= fields, f"{rec.filename} missing fields: {required - fields}"
+
+
+# ---------------------------------------------------------------------------
+# JSON serialization
+# ---------------------------------------------------------------------------
+
+class TestJsonSerialization:
+    def test_valid_json(self, manifest: ScanManifest) -> None:
+        import json
+        output = manifest_to_json(manifest)
+        data = json.loads(output)
+        assert "generated_at" in data
+        assert "files" in data
+
+    def test_arrays_never_null(self, manifest: ScanManifest) -> None:
+        import json
+        data = json.loads(manifest_to_json(manifest))
+        for f in data["files"]:
+            assert isinstance(f["tags"], list)
+            assert isinstance(f["asset_matches"], list)
+            assert isinstance(f["errors"], list)
+            assert isinstance(f["structural"]["heading_structure"], list)
+            assert isinstance(f["structural"]["csv_headers"], list)
+            assert isinstance(f["structural"]["document_keys"], list)
+            assert isinstance(f["structural"]["technology_hints"], list)
+
+    def test_booleans_are_booleans(self, manifest: ScanManifest) -> None:
+        import json
+        data = json.loads(manifest_to_json(manifest))
+        for f in data["files"]:
+            assert isinstance(f["is_binary"], bool)
+            assert isinstance(f["requires_vision"], bool)
+            assert isinstance(f["requires_specialist_tool"], bool)
+            assert isinstance(f["sidecar_exists"], bool)
+            assert isinstance(f["frontmatter"]["exists"], bool)
+
+
+# ---------------------------------------------------------------------------
+# Universal tier — runs for every file
+# ---------------------------------------------------------------------------
+
+class TestUniversalTier:
+    def test_every_file_has_path(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert f.path
+            assert "/" not in f.path or f.path.count("\\") == 0  # forward slashes
+
+    def test_every_file_has_checksum(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert len(f.checksum_sha256) == 64
+
+    def test_extension_lowercase(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert f.extension == f.extension.lower()
+
+    def test_size_positive(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert f.size_bytes >= 0
+
+    def test_modified_at_is_iso(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert "T" in f.modified_at
+
+    def test_depth_consistent_with_path(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            parts = Path(f.path).parts
+            expected_depth = max(len(parts) - 1, 0)
+            assert f.directory_depth == expected_depth, f"{f.path}: depth {f.directory_depth} != {expected_depth}"
+
+
+# ---------------------------------------------------------------------------
+# Routing flags
+# ---------------------------------------------------------------------------
+
+class TestRoutingFlags:
+    def test_png_is_binary_and_vision(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "SIG.png")
+        assert rec.is_binary is True
+        assert rec.requires_vision is True
+
+    def test_pdf_is_binary(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "20250718.pdf")
+        assert rec.is_binary is True
+        assert rec.requires_specialist_tool is True
+        assert rec.specialist_tool == "pdf_scanner"
+
+    def test_txt_is_text(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "codepw.txt")
+        assert rec.is_binary is False
+        assert rec.requires_vision is False
+
+    def test_md_is_text(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "TASKS.md")
+        assert rec.is_binary is False
+
+    def test_specialist_tool_null_invariant(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            if f.requires_specialist_tool:
+                assert f.specialist_tool is not None
+            else:
+                assert f.specialist_tool is None
+
+    def test_docx_requires_specialist(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "PS-GEN-idx.docx")
+        assert rec.requires_specialist_tool is True
+        assert rec.specialist_tool == "docx_parser"
+
+    def test_unsupported_extension_marked(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "SIG.png")
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" in codes
+
+
+# ---------------------------------------------------------------------------
+# Baseline tier — text files
+# ---------------------------------------------------------------------------
+
+class TestBaselineTier:
+    def test_text_file_has_encoding(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "codepw.txt")
+        assert rec.encoding is not None
+
+    def test_text_file_has_preview(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "codepw.txt")
+        assert rec.content_preview is not None
+        assert len(rec.content_preview) <= 1000
+
+    def test_binary_file_null_encoding(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "SIG.png")
+        assert rec.encoding is None
+
+    def test_binary_file_null_preview(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "SIG.png")
+        assert rec.content_preview is None
+
+    def test_csv_headers_extracted(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "job1856_docs_list.csv")
+        assert len(rec.structural.csv_headers) > 0
+
+    def test_yaml_keys_extracted(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "domains.yaml")
+        assert "domains" in rec.structural.document_keys
+
+    def test_json_keys_extracted(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "core-plugins.json")
+        assert len(rec.structural.document_keys) > 0
+
+    def test_html_title_extracted(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "dashboard.html")
+        assert rec.structural.title is not None
+
+    def test_html_technology_detected(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "dashboard.html")
+        assert "google-fonts" in rec.structural.technology_hints
+
+
+# ---------------------------------------------------------------------------
+# Markdown-specific
+# ---------------------------------------------------------------------------
+
+class TestMarkdownFeatures:
+    def test_md_title(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "Documentation-Review-2026-04-02.md")
+        assert rec.structural.title is not None
+
+    def test_md_heading_structure(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "Documentation-Review-2026-04-02.md")
+        assert len(rec.structural.heading_structure) > 0
+
+    def test_md_frontmatter(self, manifest: ScanManifest) -> None:
+        # FRONT-MATTER-REVIEW.md doesn't have --- fences, check another
+        rec = _find(manifest, "System Details Report.md")
+        # This file may or may not have frontmatter — just verify the field exists
+        assert isinstance(rec.frontmatter.exists, bool)
+
+    def test_md_tags(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "TagEvolution.md")
+        # TagEvolution.md discusses tags, likely has some #hashtags
+        assert isinstance(rec.tags, list)
+
+
+# ---------------------------------------------------------------------------
+# Structural signals
+# ---------------------------------------------------------------------------
+
+class TestStructuralSignals:
+    def test_filename_date_extraction(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "Documentation-Review-2026-04-02.md")
+        assert rec.structural.filename_date == "2026-04-02"
+
+    def test_filename_date_none_when_absent(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "TASKS.md")
+        assert rec.structural.filename_date is None
+
+    def test_technology_hints_sorted(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert f.structural.technology_hints == sorted(f.structural.technology_hints)

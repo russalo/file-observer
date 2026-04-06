@@ -98,6 +98,24 @@ The Specialist tier MAY run for supported structured or complex formats when dec
 
 Specialist extraction MUST be bounded and MUST NOT cause a file-level fatal failure.
 
+1.6.4 Structural Signals Layer (v1 Extension)
+
+The Structural Signals Layer provides lightweight document structure signals derived during baseline processing.
+
+This layer:
+	•	operates within the baseline capability envelope
+	•	requires no specialist tools
+	•	MUST be best-effort and non-blocking
+	•	MUST NOT introduce scan failure
+	•	MUST NOT depend on external libraries beyond baseline processing
+	•	MUST default to null or empty values
+	•	MUST be deterministic
+	•	MUST NOT override specialist extraction results
+
+These signals provide early document understanding without invoking specialist parsing.
+
+The capability tier progression is: Universal → Baseline → Structural → Specialist.
+
 1.7 Determinism and Idempotency
 
 For identical file content and identical runtime configuration, the scanner MUST produce semantically identical output.
@@ -298,6 +316,14 @@ files
   "tags": [],
   "asset_matches": [],
   "content_preview": null,
+  "structural": {
+    "title": null,
+    "heading_structure": [],
+    "csv_headers": [],
+    "document_keys": [],
+    "technology_hints": [],
+    "filename_date": null
+  },
   "errors": []
 }
 
@@ -429,6 +455,41 @@ content_preview
 	•	Nullable: yes
 	•	Meaning: bounded preview text
 	•	null when not available
+
+structural
+	•	Type: object
+	•	Nullable: no
+	•	Meaning: lightweight document structure signals from the Structural Signals Layer
+
+structural.title
+	•	Type: string or null
+	•	Nullable: yes
+	•	Meaning: document title derived from markdown H1, HTML <title>, or first strong heading
+
+structural.heading_structure
+	•	Type: array of strings
+	•	Nullable: no
+	•	Meaning: ordered H2 headings detected in markdown
+
+structural.csv_headers
+	•	Type: array of strings
+	•	Nullable: no
+	•	Meaning: column names extracted from first row of CSV
+
+structural.document_keys
+	•	Type: array of strings
+	•	Nullable: no
+	•	Meaning: top-level keys for JSON/YAML documents
+
+structural.technology_hints
+	•	Type: array of strings
+	•	Nullable: no
+	•	Meaning: frameworks and tools inferred via lightweight pattern detection (e.g., google-fonts, react)
+
+structural.filename_date
+	•	Type: string or null
+	•	Nullable: yes
+	•	Meaning: date inferred from filename patterns, normalized to ISO format (YYYY-MM-DD)
 
 errors
 	•	Type: array of objects
