@@ -1,9 +1,0 @@
-pyproject.toml
-src/scanner/__init__.py
-src/scanner/scanner.py
-src/scanner.egg-info/PKG-INFO
-src/scanner.egg-info/SOURCES.txt
-src/scanner.egg-info/dependency_links.txt
-src/scanner.egg-info/entry_points.txt
-src/scanner.egg-info/requires.txt
-src/scanner.egg-info/top_level.txt
