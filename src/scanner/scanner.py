@@ -29,7 +29,8 @@ except ImportError:
 
 
 SUPPORTED_EXTENSIONS = {
-    ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml"
+    ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
+    ".html", ".htm",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -131,6 +132,13 @@ class FrontmatterRecord:
 
 
 @dataclass
+class MimeAnalysisRecord:
+    detected_mime: str | None
+    extension_mime: str | None
+    matches_extension: bool
+
+
+@dataclass
 class StructuralRecord:
     title: str | None = None
     heading_structure: list[str] = field(default_factory=list)
@@ -163,6 +171,8 @@ class FileRecord:
     asset_matches: list[str]
     content_preview: str | None
     structural: StructuralRecord
+    mime_analysis: MimeAnalysisRecord
+    specialist_metadata: dict[str, Any] | None
     errors: list[ErrorRecord] = field(default_factory=list)
 
 
@@ -400,12 +410,19 @@ class Scanner:
                 asset_matches=[],
                 content_preview=None,
                 structural=StructuralRecord(),
+                mime_analysis=MimeAnalysisRecord(
+                    detected_mime=None,
+                    extension_mime=None,
+                    matches_extension=False,
+                ),
+                specialist_metadata=None,
                 errors=errors,
             )
 
         extension = path.suffix.lower()
 
         mime_type = self.detect_mime(path, errors)
+        mime_analysis = self.analyze_mime(path, mime_type, extension)
         checksum = self.hash_file(path)
         created_at = self.safe_created_at(stat)
         modified_at = self.ts_to_iso(stat.st_mtime)
@@ -473,6 +490,7 @@ class Scanner:
         else:
             encoding = None
 
+        specialist_metadata: dict[str, Any] | None = None
         if self.config.enable_specialists:
             try:
                 self.run_specialist_probe(path, extension, errors)
@@ -480,6 +498,14 @@ class Scanner:
                 errors.append(ErrorRecord(
                     code=ERR_SPECIALIST_PROBE_FAILED,
                     message=str(exc),
+                    stage="specialist",
+                ))
+            try:
+                specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
+            except Exception as exc:
+                errors.append(ErrorRecord(
+                    code=ERR_SPECIALIST_PROBE_FAILED,
+                    message=f"specialist metadata extraction failed: {exc}",
                     stage="specialist",
                 ))
 
@@ -505,6 +531,8 @@ class Scanner:
             asset_matches=asset_matches,
             content_preview=preview,
             structural=structural,
+            mime_analysis=mime_analysis,
+            specialist_metadata=specialist_metadata,
             errors=errors,
         )
 
@@ -530,6 +558,74 @@ class Scanner:
             stage="universal",
         ))
         return guessed or "application/octet-stream"
+
+    def analyze_mime(self, path: Path, detected_mime: str, extension: str) -> MimeAnalysisRecord:
+        extension_mime, _ = mimetypes.guess_type(f"file{extension}")
+        # detected_mime comes from detect_mime() which may be content-based or extension-based
+        # For a meaningful comparison, we compare detected vs extension-derived
+        if extension_mime is None:
+            matches = True  # can't compare when extension has no known MIME
+        else:
+            matches = detected_mime == extension_mime
+        return MimeAnalysisRecord(
+            detected_mime=detected_mime,
+            extension_mime=extension_mime,
+            matches_extension=matches,
+        )
+
+    def extract_specialist_metadata(
+        self, path: Path, extension: str, sample: bytes
+    ) -> dict[str, Any] | None:
+        if extension == ".pdf":
+            return self._extract_pdf_metadata(sample)
+        return None
+
+    def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
+        meta: dict[str, Any] = {}
+        # Detect text stream markers
+        has_text_streams = (
+            b"/Text" in sample
+            or b"BT\n" in sample
+            or b"BT\r" in sample
+            or b"/Font" in sample
+        )
+        meta["has_text_streams"] = has_text_streams
+        # Extract page count from /Count in the sample (catalog/pages object)
+        count_match = re.search(rb"/Count\s+(\d+)", sample)
+        if count_match:
+            meta["page_count"] = int(count_match.group(1))
+        else:
+            meta["page_count"] = None
+        # Extract document info fields from the sample
+        for field_name, pdf_key in [
+            ("title", b"/Title"),
+            ("author", b"/Author"),
+            ("producer", b"/Producer"),
+            ("creator", b"/Creator"),
+        ]:
+            value = self._extract_pdf_string(sample, pdf_key)
+            meta[field_name] = value
+        # Creation date
+        create_match = re.search(rb"/CreationDate\s*\(([^)]*)\)", sample)
+        meta["creation_date"] = create_match.group(1).decode("latin-1", errors="replace") if create_match else None
+        return meta
+
+    def _extract_pdf_string(self, sample: bytes, key: bytes) -> str | None:
+        # Look for /Key (value) or /Key <hex> patterns
+        pattern = re.escape(key) + rb"\s*\(([^)]*)\)"
+        match = re.search(pattern, sample)
+        if match:
+            return match.group(1).decode("latin-1", errors="replace")
+        # Try hex string
+        pattern_hex = re.escape(key) + rb"\s*<([^>]*)>"
+        match = re.search(pattern_hex, sample)
+        if match:
+            try:
+                hex_str = match.group(1).decode("ascii")
+                return bytes.fromhex(hex_str).decode("utf-16-be", errors="replace")
+            except (ValueError, UnicodeDecodeError):
+                return None
+        return None
 
     def hash_file(self, path: Path) -> str:
         digest = sha256()

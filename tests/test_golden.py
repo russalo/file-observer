@@ -84,3 +84,12 @@ class TestDeterminism:
         m1 = {f.path: f.checksum_sha256 for f in s1.scan().files}
         m2 = {f.path: f.checksum_sha256 for f in s2.scan().files}
         assert m1 == m2
+
+    def test_mime_analysis_deterministic(self) -> None:
+        """MIME analysis is identical across repeated scans."""
+        s1 = Scanner(source_dir=FIXTURES)
+        s2 = Scanner(source_dir=FIXTURES)
+        for f1, f2 in zip(s1.scan().files, s2.scan().files):
+            assert f1.mime_analysis.detected_mime == f2.mime_analysis.detected_mime
+            assert f1.mime_analysis.extension_mime == f2.mime_analysis.extension_mime
+            assert f1.mime_analysis.matches_extension == f2.mime_analysis.matches_extension

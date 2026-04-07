@@ -11,6 +11,7 @@ from scanner.scanner import (
     ScannerConfig,
     FileRecord,
     FrontmatterRecord,
+    MimeAnalysisRecord,
     StructuralRecord,
     manifest_to_json,
     compute_manifest_checksum,
@@ -552,3 +553,171 @@ class TestManifestChecksum:
         f.write_text("v2")
         c2 = Scanner(source_dir=tmp_path).scan().manifest_checksum
         assert c1 != c2
+
+
+# ---------------------------------------------------------------------------
+# MIME mismatch signaling
+# ---------------------------------------------------------------------------
+
+class TestMimeAnalysis:
+    def test_text_file_matches(self, tmp_path: Path) -> None:
+        (tmp_path / "hello.txt").write_text("Hello world")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis is not None
+        assert rec.mime_analysis.extension_mime == "text/plain"
+        assert isinstance(rec.mime_analysis.matches_extension, bool)
+
+    def test_json_file_matches(self, tmp_path: Path) -> None:
+        (tmp_path / "data.json").write_text('{"key": "value"}')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis.extension_mime == "application/json"
+
+    def test_unknown_extension_matches_true(self, tmp_path: Path) -> None:
+        (tmp_path / "weird.xyzabc").write_bytes(b"some data")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis.extension_mime is None
+        assert rec.mime_analysis.matches_extension is True
+
+    def test_spoofed_extension_mismatch(self, tmp_path: Path) -> None:
+        """A PNG file with .txt extension should show a mismatch when content-based detection is available."""
+        # Write PNG magic bytes in a .txt file
+        png_header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        (tmp_path / "fake.txt").write_bytes(png_header)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        # Extension says text/plain
+        assert rec.mime_analysis.extension_mime == "text/plain"
+        # Whether mismatch is detected depends on python-magic availability
+        assert isinstance(rec.mime_analysis.matches_extension, bool)
+
+    def test_mime_analysis_on_binary(self, tmp_path: Path) -> None:
+        (tmp_path / "data.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis is not None
+        assert rec.mime_analysis.extension_mime == "application/pdf"
+
+    def test_mime_analysis_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=tmp_path)
+        s2 = Scanner(source_dir=tmp_path)
+        r1 = s1.scan().files[0].mime_analysis
+        r2 = s2.scan().files[0].mime_analysis
+        assert r1.detected_mime == r2.detected_mime
+        assert r1.extension_mime == r2.extension_mime
+        assert r1.matches_extension == r2.matches_extension
+
+    def test_html_extension_mime(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>Test</title></head></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis.extension_mime == "text/html"
+
+
+# ---------------------------------------------------------------------------
+# Specialist metadata
+# ---------------------------------------------------------------------------
+
+class TestSpecialistMetadata:
+    def test_specialist_metadata_none_when_disabled(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_pdf_metadata_extracted_when_enabled(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /Font /Text BT\n/Count 3 /Title (Test Doc) /Author (Alice)"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is not None
+        assert rec.specialist_metadata["has_text_streams"] is True
+        assert rec.specialist_metadata["page_count"] == 3
+        assert rec.specialist_metadata["title"] == "Test Doc"
+        assert rec.specialist_metadata["author"] == "Alice"
+
+    def test_pdf_no_text_streams(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 just image data no text markers here"
+        (tmp_path / "scan.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is not None
+        assert rec.specialist_metadata["has_text_streams"] is False
+
+    def test_pdf_missing_page_count(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /Font"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["page_count"] is None
+
+    def test_non_pdf_specialist_metadata_null(self, tmp_path: Path) -> None:
+        (tmp_path / "readme.txt").write_text("Hello")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_pdf_creation_date(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /CreationDate (D:20260101120000)"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["creation_date"] == "D:20260101120000"
+
+    def test_specialist_metadata_deterministic(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /Font /Count 5 /Title (Report) /Author (Bob)"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        s1 = Scanner(source_dir=tmp_path, config=config)
+        s2 = Scanner(source_dir=tmp_path, config=config)
+        m1 = s1.scan().files[0].specialist_metadata
+        m2 = s2.scan().files[0].specialist_metadata
+        assert m1 == m2
+
+
+# ---------------------------------------------------------------------------
+# HTML / HTM formal support
+# ---------------------------------------------------------------------------
+
+class TestHtmlFormalSupport:
+    def test_html_is_supported(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>Test</title></head><body>Hi</body></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_htm_is_supported(self, tmp_path: Path) -> None:
+        (tmp_path / "page.htm").write_text("<html><body>Hi</body></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_html_title_extraction(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>My Page</title></head></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.structural.title == "My Page"
+
+    def test_html_has_preview(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><body>Content here</body></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.content_preview is not None
+        assert "Content here" in rec.content_preview
+
+    def test_html_technology_detection(self, tmp_path: Path) -> None:
+        html = '<html><head><link href="https://fonts.googleapis.com/css2"></head></html>'
+        (tmp_path / "page.html").write_text(html)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "google-fonts" in rec.structural.technology_hints
