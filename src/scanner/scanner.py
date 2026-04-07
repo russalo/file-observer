@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
+from fnmatch import fnmatch
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable
@@ -28,7 +29,8 @@ except ImportError:
 
 
 SUPPORTED_EXTENSIONS = {
-    ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml"
+    ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
+    ".html", ".htm",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -130,6 +132,13 @@ class FrontmatterRecord:
 
 
 @dataclass
+class MimeAnalysisRecord:
+    detected_mime: str | None
+    extension_mime: str | None
+    matches_extension: bool
+
+
+@dataclass
 class StructuralRecord:
     title: str | None = None
     heading_structure: list[str] = field(default_factory=list)
@@ -162,6 +171,8 @@ class FileRecord:
     asset_matches: list[str]
     content_preview: str | None
     structural: StructuralRecord
+    mime_analysis: MimeAnalysisRecord
+    specialist_metadata: dict[str, Any] | None
     errors: list[ErrorRecord] = field(default_factory=list)
 
 
@@ -193,10 +204,21 @@ class RoutingSummary:
 
 
 @dataclass
+class DeltaRecord:
+    previous_scan_id: str
+    added: list[str]
+    modified: list[str]
+    unchanged: list[str]
+    removed: list[str]
+
+
+@dataclass
 class ScanManifest:
     meta: ScanMeta
     stats: ScanStats
     routing_summary: RoutingSummary
+    delta: DeltaRecord | None
+    manifest_checksum: str
     files: list[FileRecord]
 
 
@@ -207,6 +229,8 @@ class ScannerConfig:
     enable_specialists: bool = False
     exclude_hidden: bool = False
     format: str = "json"
+    ignore_file: str | None = None
+    previous_manifest: str | None = None
 
 
 class Scanner:
@@ -214,6 +238,47 @@ class Scanner:
         self.source_dir = source_dir.resolve()
         self.config = config or ScannerConfig()
         self._magic = magic.Magic(mime=True) if magic else None
+        self._ignore_patterns = self._load_ignore_patterns()
+
+    def _load_ignore_patterns(self) -> list[str]:
+        patterns: list[str] = []
+        # Check explicit --ignore-file first, then default .scannerignore
+        ignore_path: Path | None = None
+        if self.config.ignore_file:
+            ignore_path = Path(self.config.ignore_file)
+        else:
+            default = self.source_dir / ".scannerignore"
+            if default.is_file():
+                ignore_path = default
+        if ignore_path and ignore_path.is_file():
+            for line in ignore_path.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+        return patterns
+
+    def _is_ignored(self, rel_path: Path) -> bool:
+        rel_str = str(rel_path).replace("\\", "/")
+        for pattern in self._ignore_patterns:
+            # Directory pattern (ends with /)
+            if pattern.endswith("/"):
+                dir_pattern = pattern.rstrip("/")
+                # Match each individual component (e.g. "node_modules/")
+                if any(fnmatch(part, dir_pattern) for part in rel_path.parts[:-1]):
+                    return True
+                # Match path-scoped patterns (e.g. "src/generated/")
+                # Build cumulative directory prefixes and match against the pattern
+                dir_parts = rel_path.parts[:-1]
+                for i in range(len(dir_parts)):
+                    prefix = "/".join(dir_parts[: i + 1])
+                    if fnmatch(prefix, dir_pattern):
+                        return True
+            # File pattern
+            if fnmatch(rel_path.name, pattern):
+                return True
+            if fnmatch(rel_str, pattern):
+                return True
+        return False
 
     def scan(self) -> ScanManifest:
         records: list[FileRecord] = []
@@ -228,13 +293,19 @@ class Scanner:
         )
         stats = self._compute_stats(records)
         routing = self._compute_routing_summary(records)
+        delta = self._compute_delta(records)
 
-        return ScanManifest(
+        # Build manifest without checksum first, then compute it
+        manifest = ScanManifest(
             meta=meta,
             stats=stats,
             routing_summary=routing,
+            delta=delta,
+            manifest_checksum="",
             files=records,
         )
+        manifest.manifest_checksum = compute_manifest_checksum(manifest)
+        return manifest
 
     def _compute_stats(self, records: list[FileRecord]) -> ScanStats:
         supported = sum(
@@ -260,12 +331,54 @@ class Scanner:
             requires_specialist_tool=sum(1 for r in records if r.requires_specialist_tool),
         )
 
+    def _compute_delta(self, records: list[FileRecord]) -> DeltaRecord | None:
+        if not self.config.previous_manifest:
+            return None
+        prev_path = Path(self.config.previous_manifest)
+        if not prev_path.is_file():
+            return None
+        try:
+            prev_data = json.loads(prev_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None
+
+        prev_scan_id = prev_data.get("meta", {}).get("scan_id", "")
+        prev_files: dict[str, str] = {}
+        for f in prev_data.get("files", []):
+            p = f.get("path")
+            if p is not None:
+                prev_files[p] = f.get("checksum_sha256", "")
+
+        current_files: dict[str, str] = {r.path: r.checksum_sha256 for r in records}
+
+        added = sorted(p for p in current_files if p not in prev_files)
+        removed = sorted(p for p in prev_files if p not in current_files)
+        modified = sorted(
+            p for p in current_files
+            if p in prev_files and current_files[p] != prev_files[p]
+        )
+        unchanged = sorted(
+            p for p in current_files
+            if p in prev_files and current_files[p] == prev_files[p]
+        )
+
+        return DeltaRecord(
+            previous_scan_id=prev_scan_id,
+            added=added,
+            modified=modified,
+            unchanged=unchanged,
+            removed=removed,
+        )
+
     def iter_files(self, root: Path) -> Iterable[Path]:
         for path in sorted(root.rglob("*")):
             if path.is_file():
+                rel = path.relative_to(root)
                 if self.config.exclude_hidden and any(
-                    part.startswith(".") for part in path.relative_to(root).parts
+                    part.startswith(".") for part in rel.parts
                 ):
+                    continue
+                if self._ignore_patterns and self._is_ignored(rel):
                     continue
                 yield path
 
@@ -305,12 +418,19 @@ class Scanner:
                 asset_matches=[],
                 content_preview=None,
                 structural=StructuralRecord(),
+                mime_analysis=MimeAnalysisRecord(
+                    detected_mime=None,
+                    extension_mime=None,
+                    matches_extension=False,
+                ),
+                specialist_metadata=None,
                 errors=errors,
             )
 
         extension = path.suffix.lower()
 
         mime_type = self.detect_mime(path, errors)
+        mime_analysis = self.analyze_mime(path, mime_type, extension)
         checksum = self.hash_file(path)
         created_at = self.safe_created_at(stat)
         modified_at = self.ts_to_iso(stat.st_mtime)
@@ -378,6 +498,7 @@ class Scanner:
         else:
             encoding = None
 
+        specialist_metadata: dict[str, Any] | None = None
         if self.config.enable_specialists:
             try:
                 self.run_specialist_probe(path, extension, errors)
@@ -385,6 +506,14 @@ class Scanner:
                 errors.append(ErrorRecord(
                     code=ERR_SPECIALIST_PROBE_FAILED,
                     message=str(exc),
+                    stage="specialist",
+                ))
+            try:
+                specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
+            except Exception as exc:
+                errors.append(ErrorRecord(
+                    code=ERR_SPECIALIST_PROBE_FAILED,
+                    message=f"specialist metadata extraction failed: {exc}",
                     stage="specialist",
                 ))
 
@@ -410,6 +539,8 @@ class Scanner:
             asset_matches=asset_matches,
             content_preview=preview,
             structural=structural,
+            mime_analysis=mime_analysis,
+            specialist_metadata=specialist_metadata,
             errors=errors,
         )
 
@@ -435,6 +566,74 @@ class Scanner:
             stage="universal",
         ))
         return guessed or "application/octet-stream"
+
+    def analyze_mime(self, path: Path, detected_mime: str, extension: str) -> MimeAnalysisRecord:
+        extension_mime, _ = mimetypes.guess_type(f"file{extension}")
+        # detected_mime comes from detect_mime() which may be content-based or extension-based
+        # For a meaningful comparison, we compare detected vs extension-derived
+        if extension_mime is None:
+            matches = True  # can't compare when extension has no known MIME
+        else:
+            matches = detected_mime == extension_mime
+        return MimeAnalysisRecord(
+            detected_mime=detected_mime,
+            extension_mime=extension_mime,
+            matches_extension=matches,
+        )
+
+    def extract_specialist_metadata(
+        self, path: Path, extension: str, sample: bytes
+    ) -> dict[str, Any] | None:
+        if extension == ".pdf":
+            return self._extract_pdf_metadata(sample)
+        return None
+
+    def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
+        meta: dict[str, Any] = {}
+        # Detect text stream markers
+        has_text_streams = (
+            b"/Text" in sample
+            or b"BT\n" in sample
+            or b"BT\r" in sample
+            or b"/Font" in sample
+        )
+        meta["has_text_streams"] = has_text_streams
+        # Extract page count from /Count in the sample (catalog/pages object)
+        count_match = re.search(rb"/Count\s+(\d+)", sample)
+        if count_match:
+            meta["page_count"] = int(count_match.group(1))
+        else:
+            meta["page_count"] = None
+        # Extract document info fields from the sample
+        for field_name, pdf_key in [
+            ("title", b"/Title"),
+            ("author", b"/Author"),
+            ("producer", b"/Producer"),
+            ("creator", b"/Creator"),
+        ]:
+            value = self._extract_pdf_string(sample, pdf_key)
+            meta[field_name] = value
+        # Creation date
+        create_match = re.search(rb"/CreationDate\s*\(([^)]*)\)", sample)
+        meta["creation_date"] = create_match.group(1).decode("latin-1", errors="replace") if create_match else None
+        return meta
+
+    def _extract_pdf_string(self, sample: bytes, key: bytes) -> str | None:
+        # Look for /Key (value) or /Key <hex> patterns
+        pattern = re.escape(key) + rb"\s*\(([^)]*)\)"
+        match = re.search(pattern, sample)
+        if match:
+            return match.group(1).decode("latin-1", errors="replace")
+        # Try hex string
+        pattern_hex = re.escape(key) + rb"\s*<([^>]*)>"
+        match = re.search(pattern_hex, sample)
+        if match:
+            try:
+                hex_str = match.group(1).decode("ascii")
+                return bytes.fromhex(hex_str).decode("utf-16-be", errors="replace")
+            except (ValueError, UnicodeDecodeError):
+                return None
+        return None
 
     def hash_file(self, path: Path) -> str:
         digest = sha256()
@@ -674,17 +873,27 @@ def _dc_encoder(obj: Any) -> Any:
     raise TypeError(f"Unsupported type: {type(obj)!r}")
 
 
+def compute_manifest_checksum(manifest: ScanManifest) -> str:
+    """Compute SHA-256 of the manifest content, excluding the checksum field itself."""
+    d = asdict(manifest)
+    d["manifest_checksum"] = ""
+    canonical = json.dumps(d, sort_keys=True, ensure_ascii=False)
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def manifest_to_json(manifest: ScanManifest) -> str:
     return json.dumps(manifest, default=_dc_encoder, indent=2, ensure_ascii=False)
 
 
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
-    # Header line with meta, stats, routing_summary
-    header = {
+    # Header line with meta, stats, routing_summary, delta, manifest_checksum
+    header: dict[str, Any] = {
         "meta": asdict(manifest.meta),
         "stats": asdict(manifest.stats),
         "routing_summary": asdict(manifest.routing_summary),
+        "delta": asdict(manifest.delta) if manifest.delta else None,
+        "manifest_checksum": manifest.manifest_checksum,
     }
     lines.append(json.dumps(header, ensure_ascii=False))
     # One line per file record
@@ -705,6 +914,8 @@ def main() -> None:
     parser.add_argument("--exclude-hidden", action="store_true", help="Exclude hidden files and directories")
     parser.add_argument("--preview-max", type=int, default=1000, help="Max characters for content preview (default: 1000)")
     parser.add_argument("--format", choices=["json", "jsonl"], default="json", help="Output format (default: json)")
+    parser.add_argument("--ignore-file", default=None, help="Path to ignore file (default: .scannerignore in source dir)")
+    parser.add_argument("--previous-manifest", default=None, help="Path to previous manifest for delta comparison")
     args = parser.parse_args()
 
     config = ScannerConfig(
@@ -712,6 +923,8 @@ def main() -> None:
         exclude_hidden=args.exclude_hidden,
         preview_max_chars=args.preview_max,
         format=args.format,
+        ignore_file=args.ignore_file,
+        previous_manifest=args.previous_manifest,
     )
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()

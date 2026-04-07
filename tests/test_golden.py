@@ -24,11 +24,13 @@ class TestDeterminism:
         j1 = json.loads(manifest_to_json(m1))
         j2 = json.loads(manifest_to_json(m2))
 
-        # generated_at and scan_id will differ — normalize them
+        # generated_at, scan_id, and manifest_checksum will differ — normalize them
         j1["meta"]["generated_at"] = ""
         j2["meta"]["generated_at"] = ""
         j1["meta"]["scan_id"] = ""
         j2["meta"]["scan_id"] = ""
+        j1["manifest_checksum"] = ""
+        j2["manifest_checksum"] = ""
 
         assert j1 == j2
 
@@ -82,3 +84,12 @@ class TestDeterminism:
         m1 = {f.path: f.checksum_sha256 for f in s1.scan().files}
         m2 = {f.path: f.checksum_sha256 for f in s2.scan().files}
         assert m1 == m2
+
+    def test_mime_analysis_deterministic(self) -> None:
+        """MIME analysis is identical across repeated scans."""
+        s1 = Scanner(source_dir=FIXTURES)
+        s2 = Scanner(source_dir=FIXTURES)
+        for f1, f2 in zip(s1.scan().files, s2.scan().files):
+            assert f1.mime_analysis.detected_mime == f2.mime_analysis.detected_mime
+            assert f1.mime_analysis.extension_mime == f2.mime_analysis.extension_mime
+            assert f1.mime_analysis.matches_extension == f2.mime_analysis.matches_extension

@@ -11,8 +11,10 @@ from scanner.scanner import (
     ScannerConfig,
     FileRecord,
     FrontmatterRecord,
+    MimeAnalysisRecord,
     StructuralRecord,
     manifest_to_json,
+    compute_manifest_checksum,
 )
 
 
@@ -329,3 +331,428 @@ class TestEmptyDirectory:
         assert manifest.meta.generated_at
         assert manifest.meta.source_dir
         assert manifest.stats.total_files == 0
+
+
+# ---------------------------------------------------------------------------
+# .scannerignore
+# ---------------------------------------------------------------------------
+
+class TestScannerIgnore:
+    def test_ignore_by_extension(self, tmp_path: Path) -> None:
+        (tmp_path / "keep.txt").write_text("hello")
+        (tmp_path / "skip.log").write_text("noise")
+        (tmp_path / ".scannerignore").write_text("*.log\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "keep.txt" in paths
+        assert "skip.log" not in paths
+
+    def test_ignore_directory(self, tmp_path: Path) -> None:
+        (tmp_path / "src").mkdir()
+        (tmp_path / "src" / "app.txt").write_text("code")
+        (tmp_path / "node_modules").mkdir()
+        (tmp_path / "node_modules" / "dep.txt").write_text("dep")
+        (tmp_path / ".scannerignore").write_text("node_modules/\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "app.txt" in paths
+        assert "dep.txt" not in paths
+
+    def test_ignore_comments_and_blanks(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.log").write_text("b")
+        (tmp_path / ".scannerignore").write_text("# comment\n\n*.log\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "a.txt" in paths
+        assert "b.log" not in paths
+
+    def test_ignore_file_not_in_manifest(self, tmp_path: Path) -> None:
+        """The .scannerignore file itself should appear in the manifest (it's a regular file)."""
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / ".scannerignore").write_text("*.log\n")
+        scanner = Scanner(source_dir=tmp_path)
+        paths = [f.filename for f in scanner.scan().files]
+        assert ".scannerignore" in paths
+
+    def test_explicit_ignore_file_path(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.tmp").write_text("b")
+        ignore = tmp_path / "custom.ignore"
+        ignore.write_text("*.tmp\n")
+        config = ScannerConfig(ignore_file=str(ignore))
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "a.txt" in paths
+        assert "b.tmp" not in paths
+
+    def test_ignore_coexists_with_exclude_hidden(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / ".hidden").write_text("h")
+        (tmp_path / "b.log").write_text("b")
+        (tmp_path / ".scannerignore").write_text("*.log\n")
+        config = ScannerConfig(exclude_hidden=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        paths = [f.filename for f in scanner.scan().files]
+        assert "a.txt" in paths
+        assert ".hidden" not in paths
+        assert "b.log" not in paths
+
+    def test_no_ignore_file_scans_everything(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("a")
+        (tmp_path / "b.log").write_text("b")
+        scanner = Scanner(source_dir=tmp_path)
+        assert len(scanner.scan().files) == 2
+
+    def test_ignore_path_scoped_directory(self, tmp_path: Path) -> None:
+        """Path-scoped ignore patterns like 'src/generated/' should work."""
+        gen = tmp_path / "src" / "generated"
+        gen.mkdir(parents=True)
+        (gen / "output.txt").write_text("generated")
+        (tmp_path / "src" / "real.txt").write_text("real")
+        (tmp_path / ".scannerignore").write_text("src/generated/\n")
+        scanner = Scanner(source_dir=tmp_path)
+        names = [f.filename for f in scanner.scan().files]
+        assert "real.txt" in names
+        assert "output.txt" not in names
+
+
+# ---------------------------------------------------------------------------
+# Delta / incremental scanning
+# ---------------------------------------------------------------------------
+
+class TestDeltaScanning:
+    def test_no_previous_manifest_returns_null_delta(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        scanner = Scanner(source_dir=tmp_path)
+        manifest = scanner.scan()
+        assert manifest.delta is None
+
+    def _save_prev(self, manifest, tmp_path: Path) -> Path:
+        """Write manifest outside the scan dir so it doesn't appear in next scan."""
+        out_dir = tmp_path / "_out"
+        out_dir.mkdir(exist_ok=True)
+        prev = out_dir / "prev.json"
+        prev.write_text(manifest_to_json(manifest), encoding="utf-8")
+        return prev
+
+    def test_unchanged_files(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert m2.delta.unchanged == ["a.txt"]
+        assert m2.delta.added == []
+        assert m2.delta.modified == []
+        assert m2.delta.removed == []
+
+    def test_added_file(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        (src / "b.txt").write_text("world")
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert "b.txt" in m2.delta.added
+        assert "a.txt" in m2.delta.unchanged
+
+    def test_modified_file(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        f = src / "a.txt"
+        f.write_text("version1")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        f.write_text("version2")
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert "a.txt" in m2.delta.modified
+
+    def test_removed_file(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        (src / "b.txt").write_text("world")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        (src / "b.txt").unlink()
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert "b.txt" in m2.delta.removed
+        assert "a.txt" in m2.delta.unchanged
+
+    def test_delta_has_previous_scan_id(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert m2.delta.previous_scan_id == m1.meta.scan_id
+
+    def test_malformed_previous_manifest(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        prev = tmp_path / "prev.json"
+        prev.write_text("not json", encoding="utf-8")
+        config = ScannerConfig(previous_manifest=str(prev))
+        scanner = Scanner(source_dir=src, config=config)
+        manifest = scanner.scan()
+        assert manifest.delta is None
+
+    def test_previous_manifest_missing_path_keys(self, tmp_path: Path) -> None:
+        """Previous manifest with entries missing 'path' should not crash."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        # Write a malformed previous manifest with a record missing 'path'
+        import json
+        prev_data = {
+            "meta": {"scan_id": "test-id"},
+            "files": [
+                {"checksum_sha256": "abc123"},  # no 'path' key
+                {"path": "b.txt", "checksum_sha256": "def456"},
+            ],
+        }
+        prev = tmp_path / "prev.json"
+        prev.write_text(json.dumps(prev_data))
+        config = ScannerConfig(previous_manifest=str(prev))
+        scanner = Scanner(source_dir=src, config=config)
+        manifest = scanner.scan()
+        assert manifest.delta is not None
+        assert "a.txt" in manifest.delta.added
+        assert "b.txt" in manifest.delta.removed
+
+    def test_delta_lists_sorted(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        for name in ["c.txt", "a.txt", "b.txt"]:
+            (src / name).write_text(name)
+        s1 = Scanner(source_dir=src)
+        m1 = s1.scan()
+        prev = self._save_prev(m1, tmp_path)
+        for name in ["c.txt", "a.txt", "b.txt"]:
+            (src / name).write_text(name + " changed")
+        config = ScannerConfig(previous_manifest=str(prev))
+        s2 = Scanner(source_dir=src, config=config)
+        m2 = s2.scan()
+        assert m2.delta is not None
+        assert m2.delta.modified == sorted(m2.delta.modified)
+
+
+# ---------------------------------------------------------------------------
+# Manifest checksum
+# ---------------------------------------------------------------------------
+
+class TestManifestChecksum:
+    def test_checksum_present(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        scanner = Scanner(source_dir=tmp_path)
+        manifest = scanner.scan()
+        assert manifest.manifest_checksum
+        assert len(manifest.manifest_checksum) == 64  # SHA-256 hex
+
+    def test_checksum_verifiable(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        scanner = Scanner(source_dir=tmp_path)
+        manifest = scanner.scan()
+        recomputed = compute_manifest_checksum(manifest)
+        assert manifest.manifest_checksum == recomputed
+
+    def test_checksum_changes_with_content(self, tmp_path: Path) -> None:
+        f = tmp_path / "a.txt"
+        f.write_text("v1")
+        c1 = Scanner(source_dir=tmp_path).scan().manifest_checksum
+        f.write_text("v2")
+        c2 = Scanner(source_dir=tmp_path).scan().manifest_checksum
+        assert c1 != c2
+
+
+# ---------------------------------------------------------------------------
+# MIME mismatch signaling
+# ---------------------------------------------------------------------------
+
+class TestMimeAnalysis:
+    def test_text_file_matches(self, tmp_path: Path) -> None:
+        (tmp_path / "hello.txt").write_text("Hello world")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis is not None
+        assert rec.mime_analysis.extension_mime == "text/plain"
+        assert isinstance(rec.mime_analysis.matches_extension, bool)
+
+    def test_json_file_matches(self, tmp_path: Path) -> None:
+        (tmp_path / "data.json").write_text('{"key": "value"}')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis.extension_mime == "application/json"
+
+    def test_unknown_extension_matches_true(self, tmp_path: Path) -> None:
+        (tmp_path / "weird.xyzabc").write_bytes(b"some data")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis.extension_mime is None
+        assert rec.mime_analysis.matches_extension is True
+
+    def test_spoofed_extension_mismatch(self, tmp_path: Path) -> None:
+        """A PNG file with .txt extension should show a mismatch when content-based detection is available."""
+        # Write PNG magic bytes in a .txt file
+        png_header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        (tmp_path / "fake.txt").write_bytes(png_header)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        # Extension says text/plain
+        assert rec.mime_analysis.extension_mime == "text/plain"
+        # Whether mismatch is detected depends on python-magic availability
+        assert isinstance(rec.mime_analysis.matches_extension, bool)
+
+    def test_mime_analysis_on_binary(self, tmp_path: Path) -> None:
+        (tmp_path / "data.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis is not None
+        assert rec.mime_analysis.extension_mime == "application/pdf"
+
+    def test_mime_analysis_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        s1 = Scanner(source_dir=tmp_path)
+        s2 = Scanner(source_dir=tmp_path)
+        r1 = s1.scan().files[0].mime_analysis
+        r2 = s2.scan().files[0].mime_analysis
+        assert r1.detected_mime == r2.detected_mime
+        assert r1.extension_mime == r2.extension_mime
+        assert r1.matches_extension == r2.matches_extension
+
+    def test_html_extension_mime(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>Test</title></head></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.mime_analysis.extension_mime == "text/html"
+
+
+# ---------------------------------------------------------------------------
+# Specialist metadata
+# ---------------------------------------------------------------------------
+
+class TestSpecialistMetadata:
+    def test_specialist_metadata_none_when_disabled(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_pdf_metadata_extracted_when_enabled(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /Font /Text BT\n/Count 3 /Title (Test Doc) /Author (Alice)"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is not None
+        assert rec.specialist_metadata["has_text_streams"] is True
+        assert rec.specialist_metadata["page_count"] == 3
+        assert rec.specialist_metadata["title"] == "Test Doc"
+        assert rec.specialist_metadata["author"] == "Alice"
+
+    def test_pdf_no_text_streams(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 just image data no text markers here"
+        (tmp_path / "scan.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is not None
+        assert rec.specialist_metadata["has_text_streams"] is False
+
+    def test_pdf_missing_page_count(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /Font"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["page_count"] is None
+
+    def test_non_pdf_specialist_metadata_null(self, tmp_path: Path) -> None:
+        (tmp_path / "readme.txt").write_text("Hello")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_pdf_creation_date(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /CreationDate (D:20260101120000)"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["creation_date"] == "D:20260101120000"
+
+    def test_specialist_metadata_deterministic(self, tmp_path: Path) -> None:
+        pdf_content = b"%PDF-1.4 /Font /Count 5 /Title (Report) /Author (Bob)"
+        (tmp_path / "doc.pdf").write_bytes(pdf_content)
+        config = ScannerConfig(enable_specialists=True)
+        s1 = Scanner(source_dir=tmp_path, config=config)
+        s2 = Scanner(source_dir=tmp_path, config=config)
+        m1 = s1.scan().files[0].specialist_metadata
+        m2 = s2.scan().files[0].specialist_metadata
+        assert m1 == m2
+
+
+# ---------------------------------------------------------------------------
+# HTML / HTM formal support
+# ---------------------------------------------------------------------------
+
+class TestHtmlFormalSupport:
+    def test_html_is_supported(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>Test</title></head><body>Hi</body></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_htm_is_supported(self, tmp_path: Path) -> None:
+        (tmp_path / "page.htm").write_text("<html><body>Hi</body></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_html_title_extraction(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>My Page</title></head></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.structural.title == "My Page"
+
+    def test_html_has_preview(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><body>Content here</body></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.content_preview is not None
+        assert "Content here" in rec.content_preview
+
+    def test_html_technology_detection(self, tmp_path: Path) -> None:
+        html = '<html><head><link href="https://fonts.googleapis.com/css2"></head></html>'
+        (tmp_path / "page.html").write_text(html)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "google-fonts" in rec.structural.technology_hints

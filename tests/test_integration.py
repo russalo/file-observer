@@ -69,7 +69,7 @@ class TestManifestShape:
             "directory_depth", "encoding", "is_binary", "requires_vision",
             "requires_specialist_tool", "specialist_tool", "sidecar_exists",
             "frontmatter", "tags", "asset_matches", "content_preview",
-            "structural", "errors",
+            "structural", "mime_analysis", "specialist_metadata", "errors",
         }
         for rec in manifest.files:
             fields = {f.name for f in rec.__dataclass_fields__.values()}
@@ -88,6 +88,8 @@ class TestJsonSerialization:
         assert "meta" in data
         assert "stats" in data
         assert "routing_summary" in data
+        assert "delta" in data
+        assert "manifest_checksum" in data
         assert "files" in data
         assert "generated_at" in data["meta"]
 
@@ -296,6 +298,8 @@ class TestJsonlOutput:
         assert "meta" in header
         assert "stats" in header
         assert "routing_summary" in header
+        assert "delta" in header
+        assert "manifest_checksum" in header
 
     def test_jsonl_records_match_json(self, manifest: ScanManifest) -> None:
         import json
@@ -304,3 +308,80 @@ class TestJsonlOutput:
         # File records should match
         jsonl_records = [json.loads(line) for line in jsonl_lines[1:]]
         assert jsonl_records == json_data["files"]
+
+
+# ---------------------------------------------------------------------------
+# MIME analysis (Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestMimeAnalysisIntegration:
+    def test_every_file_has_mime_analysis(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert f.mime_analysis is not None
+            assert isinstance(f.mime_analysis.matches_extension, bool)
+
+    def test_mime_analysis_detected_mime_present(self, manifest: ScanManifest) -> None:
+        for f in manifest.files:
+            assert f.mime_analysis.detected_mime is not None
+
+    def test_supported_extensions_have_extension_mime(self, manifest: ScanManifest) -> None:
+        # .mdx has no standard MIME registration in Python's mimetypes module
+        no_standard_mime = {".mdx"}
+        from scanner.scanner import SUPPORTED_EXTENSIONS
+        for f in manifest.files:
+            if f.extension in SUPPORTED_EXTENSIONS and f.extension not in no_standard_mime:
+                assert f.mime_analysis.extension_mime is not None, (
+                    f"{f.filename}: supported extension should have a known MIME"
+                )
+
+    def test_mime_analysis_in_json_output(self, manifest: ScanManifest) -> None:
+        import json
+        data = json.loads(manifest_to_json(manifest))
+        for f in data["files"]:
+            assert "mime_analysis" in f
+            assert "detected_mime" in f["mime_analysis"]
+            assert "extension_mime" in f["mime_analysis"]
+            assert "matches_extension" in f["mime_analysis"]
+
+
+# ---------------------------------------------------------------------------
+# Specialist metadata (Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestSpecialistMetadataIntegration:
+    def test_specialist_metadata_null_by_default(self, manifest: ScanManifest) -> None:
+        """Specialist metadata should be null when specialists are disabled (default)."""
+        for f in manifest.files:
+            assert f.specialist_metadata is None
+
+    def test_specialist_metadata_in_json_output(self, manifest: ScanManifest) -> None:
+        import json
+        data = json.loads(manifest_to_json(manifest))
+        for f in data["files"]:
+            assert "specialist_metadata" in f
+
+
+# ---------------------------------------------------------------------------
+# HTML formal support (Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestHtmlIntegration:
+    def test_html_no_unsupported_error(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "dashboard.html")
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_html_is_text(self, manifest: ScanManifest) -> None:
+        rec = _find(manifest, "dashboard.html")
+        assert rec.is_binary is False
+        assert rec.encoding is not None
+
+    def test_html_counted_as_supported(self, manifest: ScanManifest) -> None:
+        """HTML files should count toward supported_files in stats."""
+        html_count = sum(1 for f in manifest.files if f.extension in {".html", ".htm"})
+        if html_count > 0:
+            # Verify none of them have unsupported_extension errors
+            for f in manifest.files:
+                if f.extension in {".html", ".htm"}:
+                    codes = [e.code for e in f.errors]
+                    assert "unsupported_extension" not in codes

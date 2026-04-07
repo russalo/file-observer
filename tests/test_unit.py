@@ -486,3 +486,66 @@ class TestHashFile:
         scanner = Scanner(source_dir=tmp_path)
         h = scanner.hash_file(f)
         assert len(h) == 64
+
+
+# ---------------------------------------------------------------------------
+# analyze_mime
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeMime:
+    def test_matching_text(self, scanner: Scanner) -> None:
+        result = scanner.analyze_mime(Path("fake.txt"), "text/plain", ".txt")
+        assert result.detected_mime == "text/plain"
+        assert result.extension_mime == "text/plain"
+        assert result.matches_extension is True
+
+    def test_mismatch(self, scanner: Scanner) -> None:
+        result = scanner.analyze_mime(Path("fake.txt"), "image/png", ".txt")
+        assert result.detected_mime == "image/png"
+        assert result.extension_mime == "text/plain"
+        assert result.matches_extension is False
+
+    def test_unknown_extension(self, scanner: Scanner) -> None:
+        result = scanner.analyze_mime(Path("file.xyzabc"), "application/octet-stream", ".xyzabc")
+        assert result.extension_mime is None
+        assert result.matches_extension is True
+
+    def test_json_match(self, scanner: Scanner) -> None:
+        result = scanner.analyze_mime(Path("data.json"), "application/json", ".json")
+        assert result.matches_extension is True
+
+    def test_pdf_match(self, scanner: Scanner) -> None:
+        result = scanner.analyze_mime(Path("doc.pdf"), "application/pdf", ".pdf")
+        assert result.matches_extension is True
+
+
+# ---------------------------------------------------------------------------
+# extract_specialist_metadata (PDF)
+# ---------------------------------------------------------------------------
+
+class TestExtractSpecialistMetadata:
+    def test_pdf_with_all_fields(self, scanner: Scanner) -> None:
+        sample = b"%PDF-1.4 /Font /Count 7 /Title (My Report) /Author (Jane) /Producer (LaTeX) /Creator (pdfTeX) /CreationDate (D:20260101)"
+        meta = scanner.extract_specialist_metadata(Path("doc.pdf"), ".pdf", sample)
+        assert meta is not None
+        assert meta["has_text_streams"] is True
+        assert meta["page_count"] == 7
+        assert meta["title"] == "My Report"
+        assert meta["author"] == "Jane"
+        assert meta["producer"] == "LaTeX"
+        assert meta["creator"] == "pdfTeX"
+        assert meta["creation_date"] == "D:20260101"
+
+    def test_pdf_minimal(self, scanner: Scanner) -> None:
+        sample = b"%PDF-1.4 image only"
+        meta = scanner.extract_specialist_metadata(Path("scan.pdf"), ".pdf", sample)
+        assert meta is not None
+        assert meta["has_text_streams"] is False
+        assert meta["page_count"] is None
+        assert meta["title"] is None
+        assert meta["author"] is None
+
+    def test_non_pdf_returns_none(self, scanner: Scanner) -> None:
+        assert scanner.extract_specialist_metadata(Path("a.txt"), ".txt", b"hello") is None
+        assert scanner.extract_specialist_metadata(Path("a.csv"), ".csv", b"a,b") is None
+        assert scanner.extract_specialist_metadata(Path("a.docx"), ".docx", b"PK") is None
