@@ -404,6 +404,18 @@ class TestScannerIgnore:
         scanner = Scanner(source_dir=tmp_path)
         assert len(scanner.scan().files) == 2
 
+    def test_ignore_path_scoped_directory(self, tmp_path: Path) -> None:
+        """Path-scoped ignore patterns like 'src/generated/' should work."""
+        gen = tmp_path / "src" / "generated"
+        gen.mkdir(parents=True)
+        (gen / "output.txt").write_text("generated")
+        (tmp_path / "src" / "real.txt").write_text("real")
+        (tmp_path / ".scannerignore").write_text("src/generated/\n")
+        scanner = Scanner(source_dir=tmp_path)
+        names = [f.filename for f in scanner.scan().files]
+        assert "real.txt" in names
+        assert "output.txt" not in names
+
 
 # ---------------------------------------------------------------------------
 # Delta / incremental scanning
@@ -509,6 +521,29 @@ class TestDeltaScanning:
         scanner = Scanner(source_dir=src, config=config)
         manifest = scanner.scan()
         assert manifest.delta is None
+
+    def test_previous_manifest_missing_path_keys(self, tmp_path: Path) -> None:
+        """Previous manifest with entries missing 'path' should not crash."""
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        # Write a malformed previous manifest with a record missing 'path'
+        import json
+        prev_data = {
+            "meta": {"scan_id": "test-id"},
+            "files": [
+                {"checksum_sha256": "abc123"},  # no 'path' key
+                {"path": "b.txt", "checksum_sha256": "def456"},
+            ],
+        }
+        prev = tmp_path / "prev.json"
+        prev.write_text(json.dumps(prev_data))
+        config = ScannerConfig(previous_manifest=str(prev))
+        scanner = Scanner(source_dir=src, config=config)
+        manifest = scanner.scan()
+        assert manifest.delta is not None
+        assert "a.txt" in manifest.delta.added
+        assert "b.txt" in manifest.delta.removed
 
     def test_delta_lists_sorted(self, tmp_path: Path) -> None:
         src = tmp_path / "src"

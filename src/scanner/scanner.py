@@ -263,10 +263,16 @@ class Scanner:
             # Directory pattern (ends with /)
             if pattern.endswith("/"):
                 dir_pattern = pattern.rstrip("/")
+                # Match each individual component (e.g. "node_modules/")
                 if any(fnmatch(part, dir_pattern) for part in rel_path.parts[:-1]):
                     return True
-                if fnmatch(rel_path.parts[0], dir_pattern) if rel_path.parts else False:
-                    return True
+                # Match path-scoped patterns (e.g. "src/generated/")
+                # Build cumulative directory prefixes and match against the pattern
+                dir_parts = rel_path.parts[:-1]
+                for i in range(len(dir_parts)):
+                    prefix = "/".join(dir_parts[: i + 1])
+                    if fnmatch(prefix, dir_pattern):
+                        return True
             # File pattern
             if fnmatch(rel_path.name, pattern):
                 return True
@@ -339,7 +345,9 @@ class Scanner:
         prev_scan_id = prev_data.get("meta", {}).get("scan_id", "")
         prev_files: dict[str, str] = {}
         for f in prev_data.get("files", []):
-            prev_files[f["path"]] = f.get("checksum_sha256", "")
+            p = f.get("path")
+            if p is not None:
+                prev_files[p] = f.get("checksum_sha256", "")
 
         current_files: dict[str, str] = {r.path: r.checksum_sha256 for r in records}
 
