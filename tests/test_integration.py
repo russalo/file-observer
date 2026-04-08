@@ -69,7 +69,8 @@ class TestManifestShape:
             "directory_depth", "encoding", "is_binary", "requires_vision",
             "requires_specialist_tool", "specialist_tool", "sidecar_exists",
             "frontmatter", "tags", "asset_matches", "content_preview",
-            "structural", "mime_analysis", "specialist_metadata", "errors",
+            "structural", "mime_analysis", "specialist_metadata",
+            "signal_provenance", "errors",
         }
         for rec in manifest.files:
             fields = {f.name for f in rec.__dataclass_fields__.values()}
@@ -85,6 +86,7 @@ class TestJsonSerialization:
         import json
         output = manifest_to_json(manifest)
         data = json.loads(output)
+        assert "context" in data
         assert "meta" in data
         assert "stats" in data
         assert "routing_summary" in data
@@ -163,7 +165,7 @@ class TestRoutingFlags:
         rec = _find(manifest, "20250718.pdf")
         assert rec.is_binary is True
         assert rec.requires_specialist_tool is True
-        assert rec.specialist_tool == "pdf_scanner"
+        assert rec.specialist_tool == "pdf_extraction"
 
     def test_txt_is_text(self, manifest: ScanManifest) -> None:
         rec = _find(manifest, "codepw.txt")
@@ -184,10 +186,10 @@ class TestRoutingFlags:
     def test_docx_requires_specialist(self, manifest: ScanManifest) -> None:
         rec = _find(manifest, "PS-GEN-idx.docx")
         assert rec.requires_specialist_tool is True
-        assert rec.specialist_tool == "docx_parser"
+        assert rec.specialist_tool == "document_extraction"
 
     def test_unsupported_extension_marked(self, manifest: ScanManifest) -> None:
-        rec = _find(manifest, "SIG.png")
+        rec = _find(manifest, "Job SS.xlsx.filepart")
         codes = [e.code for e in rec.errors]
         assert "unsupported_extension" in codes
 

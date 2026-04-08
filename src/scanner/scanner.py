@@ -9,7 +9,10 @@ from typing import Any, Iterable
 import json
 import mimetypes
 import os
+import platform
 import re
+import struct
+import sys
 import uuid
 
 try:
@@ -27,10 +30,32 @@ try:
 except ImportError:
     yaml = None  # type: ignore[assignment]
 
+try:
+    import olefile
+except ImportError:
+    olefile = None  # type: ignore[assignment]
+
+try:
+    import tomllib
+except ImportError:
+    tomllib = None  # type: ignore[assignment]
+
+try:
+    from defusedxml.ElementTree import fromstring as xml_fromstring
+    _defusedxml_available = True
+except ImportError:
+    from xml.etree.ElementTree import fromstring as xml_fromstring
+    _defusedxml_available = False
+
+
+SCANNER_VERSION = "0.4.0"
+LOGIC_VERSION = "0.4.0"
+
 
 SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
-    ".html", ".htm",
+    ".html", ".htm", ".xml", ".toml", ".png", ".msg",
+    ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -78,9 +103,15 @@ TECHNOLOGY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 SPECIALIST_TOOLS: dict[str, str] = {
-    ".pdf": "pdf_scanner",
-    ".docx": "docx_parser",
-    ".rtf": "rtf_parser",
+    ".pdf": "pdf_extraction",
+    ".docx": "document_extraction",
+    ".rtf": "document_extraction",
+    ".png": "image_structure",
+    ".jpg": "image_structure",
+    ".jpeg": "image_structure",
+    ".msg": "email_envelope",
+    ".eml": "email_envelope",
+    ".xlsx": "spreadsheet_structure",
 }
 
 # Error code constants
@@ -115,6 +146,24 @@ TEXT_APP_MIMES = {
     "application/yaml",
     "application/x-yaml",
 }
+
+
+@dataclass
+class ProvenanceEntry:
+    layer: str          # "raw", "derived", or "semantic_local"
+    method: str         # stable token for the logic block
+    trigger: str        # specific condition that fired
+    inputs: list[str] = field(default_factory=list)
+    detail: dict[str, Any] | str | None = None
+
+
+@dataclass
+class ScanContext:
+    logic_version: str
+    scanner_version: str
+    python_version: str
+    platform: str
+    dependencies: dict[str, dict[str, Any]]
 
 
 @dataclass
@@ -173,6 +222,7 @@ class FileRecord:
     structural: StructuralRecord
     mime_analysis: MimeAnalysisRecord
     specialist_metadata: dict[str, Any] | None
+    signal_provenance: dict[str, Any] = field(default_factory=dict)
     errors: list[ErrorRecord] = field(default_factory=list)
 
 
@@ -210,10 +260,12 @@ class DeltaRecord:
     modified: list[str]
     unchanged: list[str]
     removed: list[str]
+    rescan_candidates: list[str] = field(default_factory=list)
 
 
 @dataclass
 class ScanManifest:
+    context: ScanContext
     meta: ScanMeta
     stats: ScanStats
     routing_summary: RoutingSummary
@@ -285,6 +337,7 @@ class Scanner:
         for path in self.iter_files(self.source_dir):
             records.append(self.scan_file(path))
 
+        context = self._build_context()
         meta = ScanMeta(
             scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
@@ -297,6 +350,7 @@ class Scanner:
 
         # Build manifest without checksum first, then compute it
         manifest = ScanManifest(
+            context=context,
             meta=meta,
             stats=stats,
             routing_summary=routing,
@@ -306,6 +360,62 @@ class Scanner:
         )
         manifest.manifest_checksum = compute_manifest_checksum(manifest)
         return manifest
+
+    def _build_context(self) -> ScanContext:
+        deps: dict[str, dict[str, Any]] = {}
+        # magic / libmagic
+        if magic:
+            magic_ver: str | None = None
+            try:
+                magic_ver = str(magic.Magic(mime=True).from_buffer(b""))  # type: ignore
+                # Try to get the actual libmagic version
+                if hasattr(magic, '__version__'):
+                    magic_ver = magic.__version__
+                elif hasattr(magic, 'version'):
+                    magic_ver = str(magic.version())
+                else:
+                    magic_ver = "unknown"
+            except Exception:
+                magic_ver = "unknown"
+            deps["magic"] = {"available": True, "version": magic_ver}
+        else:
+            deps["magic"] = {"available": False, "version": None}
+        # chardet
+        if chardet:
+            chardet_ver = getattr(chardet, "__version__", "unknown")
+            deps["chardet"] = {"available": True, "version": chardet_ver}
+        else:
+            deps["chardet"] = {"available": False, "version": None}
+        # PyYAML
+        if yaml:
+            yaml_ver = getattr(yaml, "__version__", "unknown")
+            deps["yaml"] = {"available": True, "version": yaml_ver}
+        else:
+            deps["yaml"] = {"available": False, "version": None}
+        # olefile
+        if olefile:
+            olefile_ver = getattr(olefile, "__version__", "unknown")
+            deps["olefile"] = {"available": True, "version": olefile_ver}
+        else:
+            deps["olefile"] = {"available": False, "version": None}
+        # defusedxml
+        if _defusedxml_available:
+            try:
+                import defusedxml
+                dxml_ver = getattr(defusedxml, "__version__", "unknown")
+            except Exception:
+                dxml_ver = "unknown"
+            deps["defusedxml"] = {"available": True, "version": dxml_ver}
+        else:
+            deps["defusedxml"] = {"available": False, "version": None}
+
+        return ScanContext(
+            logic_version=LOGIC_VERSION,
+            scanner_version=SCANNER_VERSION,
+            python_version=f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            platform=sys.platform,
+            dependencies=deps,
+        )
 
     def _compute_stats(self, records: list[FileRecord]) -> ScanStats:
         supported = sum(
@@ -362,12 +472,27 @@ class Scanner:
             if p in prev_files and current_files[p] == prev_files[p]
         )
 
+        # rescan_candidates: paths from previous manifest with specialist failures
+        # that still exist in the current scan
+        rescan_candidates: list[str] = []
+        for f in prev_data.get("files", []):
+            p = f.get("path")
+            if p is None:
+                continue
+            if p not in current_files:
+                continue
+            errors = f.get("errors", [])
+            if any(e.get("code") == ERR_SPECIALIST_PROBE_FAILED for e in errors):
+                rescan_candidates.append(p)
+        rescan_candidates.sort()
+
         return DeltaRecord(
             previous_scan_id=prev_scan_id,
             added=added,
             modified=modified,
             unchanged=unchanged,
             removed=removed,
+            rescan_candidates=rescan_candidates,
         )
 
     def iter_files(self, root: Path) -> Iterable[Path]:
@@ -424,13 +549,22 @@ class Scanner:
                     matches_extension=False,
                 ),
                 specialist_metadata=None,
+                signal_provenance={},
                 errors=errors,
             )
 
         extension = path.suffix.lower()
+        provenance: dict[str, Any] = {}
 
-        mime_type = self.detect_mime(path, errors)
+        mime_type, mime_prov = self.detect_mime(path, errors)
+        provenance["mime_type"] = asdict(mime_prov)
         mime_analysis = self.analyze_mime(path, mime_type, extension)
+        provenance["mime_analysis.matches_extension"] = asdict(ProvenanceEntry(
+            layer="derived", method="analyze_mime",
+            trigger="mismatch" if not mime_analysis.matches_extension else "match",
+            inputs=["mime_type"],
+            detail={"detected": mime_analysis.detected_mime, "extension": mime_analysis.extension_mime},
+        ))
         checksum = self.hash_file(path)
         created_at = self.safe_created_at(stat)
         modified_at = self.ts_to_iso(stat.st_mtime)
@@ -439,12 +573,19 @@ class Scanner:
         sidecar_exists = self.detect_sidecar(path)
 
         sample = self.read_sample(path)
-        is_binary = self.detect_binary(sample, mime_type)
+        is_binary, binary_prov = self.detect_binary(sample, mime_type)
+        provenance["is_binary"] = asdict(binary_prov)
         specialist_tool = SPECIALIST_TOOLS.get(extension)
         requires_specialist_tool = specialist_tool is not None
-        requires_vision = self.detect_requires_vision(
+        provenance["requires_specialist_tool"] = asdict(ProvenanceEntry(
+            layer="derived", method="specialist_tools_registry",
+            trigger="registry_match" if requires_specialist_tool else "registry_none",
+            detail=f"{extension} -> {specialist_tool}" if specialist_tool else None,
+        ))
+        requires_vision, vision_prov = self.detect_requires_vision(
             sample, mime_type, extension, is_binary
         )
+        provenance["requires_vision"] = asdict(vision_prov)
 
         if extension not in SUPPORTED_EXTENSIONS:
             errors.append(ErrorRecord(
@@ -464,7 +605,8 @@ class Scanner:
 
         if not is_binary:
             try:
-                encoding, text = self.decode_text(sample, path)
+                encoding, text, enc_prov = self.decode_text(sample, path)
+                provenance["encoding"] = asdict(enc_prov)
                 preview = self.make_preview(text)
                 tags = self.extract_tags(text)
                 structural.technology_hints = self.detect_technology(text)
@@ -489,6 +631,12 @@ class Scanner:
                 elif extension == ".json":
                     structural.document_keys = self.extract_json_keys(text)
 
+                elif extension in {".xml", ".vx"}:
+                    structural.document_keys = self.extract_xml_keys(text)
+
+                elif extension == ".toml":
+                    structural.document_keys = self.extract_toml_keys(text)
+
             except Exception as exc:
                 errors.append(ErrorRecord(
                     code=ERR_BASELINE_DECODE_FAILED,
@@ -497,6 +645,11 @@ class Scanner:
                 ))
         else:
             encoding = None
+            provenance["encoding"] = asdict(ProvenanceEntry(
+                layer="derived", method="decode_text",
+                trigger="not_applicable",
+                detail="binary_file",
+            ))
 
         specialist_metadata: dict[str, Any] | None = None
         if self.config.enable_specialists:
@@ -510,6 +663,26 @@ class Scanner:
                 ))
             try:
                 specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
+                if specialist_metadata is not None:
+                    tool = SPECIALIST_TOOLS.get(extension, "unknown")
+                    is_deviation = extension == ".xlsx"
+                    for key in specialist_metadata:
+                        prov_key = f"specialist_metadata.{key}"
+                        trigger = "bounded_deviation" if is_deviation else "bounded_sample"
+                        if specialist_metadata[key] is None:
+                            trigger = "missing_from_bounds"
+                        prov_detail: dict[str, Any] = {"tool": tool}
+                        if is_deviation:
+                            prov_detail["read_budget_bytes"] = 131072
+                            prov_detail["reason"] = "zip_central_directory_required"
+                        else:
+                            prov_detail["sample_size"] = len(sample)
+                        provenance[prov_key] = asdict(ProvenanceEntry(
+                            layer="derived",
+                            method=f"_{extension.lstrip('.')}_specialist",
+                            trigger=trigger,
+                            detail=prov_detail,
+                        ))
             except Exception as exc:
                 errors.append(ErrorRecord(
                     code=ERR_SPECIALIST_PROBE_FAILED,
@@ -541,15 +714,20 @@ class Scanner:
             structural=structural,
             mime_analysis=mime_analysis,
             specialist_metadata=specialist_metadata,
+            signal_provenance=provenance,
             errors=errors,
         )
 
-    def detect_mime(self, path: Path, errors: list[ErrorRecord]) -> str:
+    def detect_mime(self, path: Path, errors: list[ErrorRecord]) -> tuple[str, ProvenanceEntry]:
         if self._magic:
             try:
                 detected = self._magic.from_file(str(path))
                 if detected:
-                    return detected
+                    prov = ProvenanceEntry(
+                        layer="raw", method="detect_mime",
+                        trigger="libmagic",
+                    )
+                    return detected, prov
             except Exception as exc:
                 guessed, _ = mimetypes.guess_type(str(path))
                 errors.append(ErrorRecord(
@@ -557,7 +735,12 @@ class Scanner:
                     message=f"Content-based MIME detection failed ({exc}), used extension-based inference",
                     stage="universal",
                 ))
-                return guessed or "application/octet-stream"
+                prov = ProvenanceEntry(
+                    layer="raw", method="detect_mime",
+                    trigger="extension_fallback",
+                    detail={"reason": "libmagic_exception"},
+                )
+                return guessed or "application/octet-stream", prov
         # Fallback to extension-based inference per §1.12
         guessed, _ = mimetypes.guess_type(str(path))
         errors.append(ErrorRecord(
@@ -565,7 +748,12 @@ class Scanner:
             message="Content-based MIME detection unavailable, used extension-based inference",
             stage="universal",
         ))
-        return guessed or "application/octet-stream"
+        prov = ProvenanceEntry(
+            layer="raw", method="detect_mime",
+            trigger="extension_fallback",
+            detail={"reason": "libmagic_unavailable"},
+        )
+        return guessed or "application/octet-stream", prov
 
     def analyze_mime(self, path: Path, detected_mime: str, extension: str) -> MimeAnalysisRecord:
         extension_mime, _ = mimetypes.guess_type(f"file{extension}")
@@ -586,6 +774,16 @@ class Scanner:
     ) -> dict[str, Any] | None:
         if extension == ".pdf":
             return self._extract_pdf_metadata(sample)
+        if extension == ".png":
+            return self._extract_png_metadata(sample)
+        if extension in {".jpg", ".jpeg"}:
+            return self._extract_jpeg_metadata(sample)
+        if extension == ".msg":
+            return self._extract_msg_metadata(sample)
+        if extension == ".eml":
+            return self._extract_eml_metadata(sample)
+        if extension == ".xlsx":
+            return self._extract_xlsx_metadata(path)
         return None
 
     def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
@@ -600,10 +798,7 @@ class Scanner:
         meta["has_text_streams"] = has_text_streams
         # Extract page count from /Count in the sample (catalog/pages object)
         count_match = re.search(rb"/Count\s+(\d+)", sample)
-        if count_match:
-            meta["page_count"] = int(count_match.group(1))
-        else:
-            meta["page_count"] = None
+        meta["page_count"] = int(count_match.group(1)) if count_match else None
         # Extract document info fields from the sample
         for field_name, pdf_key in [
             ("title", b"/Title"),
@@ -611,20 +806,29 @@ class Scanner:
             ("producer", b"/Producer"),
             ("creator", b"/Creator"),
         ]:
-            value = self._extract_pdf_string(sample, pdf_key)
-            meta[field_name] = value
+            meta[field_name] = self._extract_pdf_string(sample, pdf_key)
         # Creation date
         create_match = re.search(rb"/CreationDate\s*\(([^)]*)\)", sample)
         meta["creation_date"] = create_match.group(1).decode("latin-1", errors="replace") if create_match else None
+        # v0.3: encrypted
+        meta["encrypted"] = b"/Encrypt" in sample
+        # v0.3: pdf_version from %PDF-X.Y header
+        ver_match = re.match(rb"%PDF-(\d+\.\d+)", sample)
+        meta["pdf_version"] = ver_match.group(1).decode("ascii") if ver_match else None
+        # v0.3: sample_text_marker_density
+        count_bt = len(re.findall(rb"\bBT\b", sample))
+        count_et = len(re.findall(rb"\bET\b", sample))
+        if len(sample) > 0:
+            meta["sample_text_marker_density"] = (count_bt + count_et) / len(sample)
+        else:
+            meta["sample_text_marker_density"] = None
         return meta
 
     def _extract_pdf_string(self, sample: bytes, key: bytes) -> str | None:
-        # Look for /Key (value) or /Key <hex> patterns
         pattern = re.escape(key) + rb"\s*\(([^)]*)\)"
         match = re.search(pattern, sample)
         if match:
             return match.group(1).decode("latin-1", errors="replace")
-        # Try hex string
         pattern_hex = re.escape(key) + rb"\s*<([^>]*)>"
         match = re.search(pattern_hex, sample)
         if match:
@@ -634,6 +838,195 @@ class Scanner:
             except (ValueError, UnicodeDecodeError):
                 return None
         return None
+
+    def _extract_png_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        # PNG signature: 8 bytes + IHDR chunk (4 len + 4 type + 13 data = 29 bytes minimum)
+        PNG_SIG = b"\x89PNG\r\n\x1a\n"
+        if len(sample) < 8 or sample[:8] != PNG_SIG:
+            return None
+        # IHDR must be first chunk: bytes 8-11 = length, 12-15 = "IHDR", 16-28 = data
+        if len(sample) < 24:
+            return {"width": None, "height": None, "bit_depth": None}
+        chunk_type = sample[12:16]
+        if chunk_type != b"IHDR":
+            return {"width": None, "height": None, "bit_depth": None}
+        # IHDR data: width(4) + height(4) + bit_depth(1) + color_type(1) + ...
+        if len(sample) < 29:
+            return {"width": None, "height": None, "bit_depth": None}
+        width, height = struct.unpack(">II", sample[16:24])
+        bit_depth = sample[24]
+        return {"width": width, "height": height, "bit_depth": bit_depth}
+
+    def _extract_jpeg_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        # Scan for SOF0 (0xFFC0) or SOF2 (0xFFC2) markers
+        i = 0
+        while i < len(sample) - 1:
+            if sample[i] != 0xFF:
+                i += 1
+                continue
+            marker = sample[i + 1]
+            if marker in (0xC0, 0xC2):  # SOF0 or SOF2
+                # SOF frame: 2 bytes length, 1 byte precision, 2 bytes height, 2 bytes width
+                if i + 9 > len(sample):
+                    return {"width": None, "height": None}
+                height = struct.unpack(">H", sample[i + 5:i + 7])[0]
+                width = struct.unpack(">H", sample[i + 7:i + 9])[0]
+                return {"width": width, "height": height}
+            if marker == 0xD8 or marker == 0xD9:  # SOI or EOI
+                i += 2
+                continue
+            if marker == 0x00:  # stuffed byte
+                i += 2
+                continue
+            # Other markers: skip length
+            if i + 3 < len(sample):
+                seg_len = struct.unpack(">H", sample[i + 2:i + 4])[0]
+                i += 2 + seg_len
+            else:
+                break
+        return {"width": None, "height": None}
+
+    def _extract_eml_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        try:
+            from email.parser import BytesParser
+            from email.policy import default as email_policy
+            msg = BytesParser(policy=email_policy).parsebytes(sample)
+            subject = msg.get("Subject")
+            from_addr = msg.get("From")
+            to_addr = msg.get("To")
+            date_str = msg.get("Date")
+            message_id = msg.get("Message-ID")
+            # Detect attachments
+            has_attachments = False
+            content_type = msg.get_content_type() or ""
+            if "multipart/mixed" in content_type:
+                has_attachments = True
+            elif sample.find(b"Content-Disposition: attachment") != -1:
+                has_attachments = True
+            return {
+                "subject": str(subject) if subject else None,
+                "from": str(from_addr) if from_addr else None,
+                "to": str(to_addr) if to_addr else None,
+                "date": str(date_str) if date_str else None,
+                "message_id": str(message_id) if message_id else None,
+                "has_attachments": has_attachments,
+            }
+        except Exception:
+            return None
+
+    def _extract_xlsx_metadata(self, path: Path) -> dict[str, Any] | None:
+        import zipfile
+        from io import BytesIO
+        # Read up to deviation budget (128KB)
+        deviation_budget = 131072
+        try:
+            raw = path.read_bytes()[:deviation_budget]
+        except Exception:
+            return None
+        try:
+            zf = zipfile.ZipFile(BytesIO(raw))
+        except (zipfile.BadZipFile, Exception):
+            return None
+        try:
+            sheet_names: list[str] = []
+            header_rows: dict[str, list[str]] = {}
+            # Extract sheet names from workbook.xml
+            if "xl/workbook.xml" in zf.namelist():
+                if not self._is_safe_zip_entry("xl/workbook.xml"):
+                    return None
+                wb_xml = zf.read("xl/workbook.xml").decode("utf-8", errors="replace")
+                try:
+                    root = xml_fromstring(wb_xml)
+                    ns = {"": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+                    for sheet in root.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet"):
+                        name = sheet.get("name")
+                        if name:
+                            sheet_names.append(name)
+                except Exception:
+                    pass
+            # Extract header rows from sheet XML files
+            for i, sheet_name in enumerate(sheet_names[:10], start=1):  # cap at 10 sheets
+                sheet_path = f"xl/worksheets/sheet{i}.xml"
+                if sheet_path not in zf.namelist():
+                    continue
+                if not self._is_safe_zip_entry(sheet_path):
+                    continue
+                try:
+                    sheet_xml = zf.read(sheet_path).decode("utf-8", errors="replace")
+                    sroot = xml_fromstring(sheet_xml)
+                    ns_main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                    rows = list(sroot.iter(f"{{{ns_main}}}row"))
+                    if rows:
+                        first_row = rows[0]
+                        cells = []
+                        for cell in first_row.iter(f"{{{ns_main}}}v"):
+                            cells.append(cell.text or "")
+                        if cells:
+                            header_rows[sheet_name] = cells
+                except Exception:
+                    continue
+            return {"sheet_names": sheet_names, "header_rows": header_rows}
+        finally:
+            zf.close()
+
+    def _extract_msg_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        if not olefile:
+            return None
+        try:
+            from io import BytesIO
+            buf = BytesIO(sample)
+            if not olefile.isOleFile(buf):
+                return None
+            buf.seek(0)
+            ole = olefile.OleFileIO(buf)
+            try:
+                subject = self._msg_read_property(ole, "__substg1.0_0037001F") or \
+                          self._msg_read_property(ole, "__substg1.0_0037001E")
+                from_addr = self._msg_read_property(ole, "__substg1.0_0C1F001F") or \
+                            self._msg_read_property(ole, "__substg1.0_0C1F001E") or \
+                            self._msg_read_property(ole, "__substg1.0_0042001F") or \
+                            self._msg_read_property(ole, "__substg1.0_0042001E")
+                to_addr = self._msg_read_property(ole, "__substg1.0_0E04001F") or \
+                          self._msg_read_property(ole, "__substg1.0_0E04001E")
+                # v0.4: enriched fields for EML parity
+                date_val = self._msg_read_property(ole, "__substg1.0_0047001F") or \
+                           self._msg_read_property(ole, "__substg1.0_0047001E")
+                message_id = self._msg_read_property(ole, "__substg1.0_1035001F") or \
+                             self._msg_read_property(ole, "__substg1.0_1035001E")
+                # has_attachments from PR_HASATTACH (0x0E1B) — boolean property
+                has_attachments = ole.exists("__attach_version1.0_#00000000")
+                return {
+                    "subject": subject,
+                    "from": from_addr,
+                    "to": to_addr,
+                    "date": date_val,
+                    "message_id": message_id,
+                    "has_attachments": has_attachments,
+                }
+            finally:
+                ole.close()
+        except Exception:
+            return None
+
+    def _msg_read_property(self, ole: Any, stream_name: str) -> str | None:
+        try:
+            if ole.exists(stream_name):
+                data = ole.openstream(stream_name).read()
+                if stream_name.endswith("001F"):
+                    return data.decode("utf-16-le", errors="replace").rstrip("\x00")
+                else:
+                    return data.decode("cp1252", errors="replace").rstrip("\x00")
+        except Exception:
+            pass
+        return None
+
+    @staticmethod
+    def _is_safe_zip_entry(name: str) -> bool:
+        if name.startswith("/") or name.startswith("\\"):
+            return False
+        if ".." in name.split("/") or ".." in name.split("\\"):
+            return False
+        return True
 
     def hash_file(self, path: Path) -> str:
         digest = sha256()
@@ -646,17 +1039,42 @@ class Scanner:
         with path.open("rb") as f:
             return f.read(self.config.sample_size)
 
-    def detect_binary(self, sample: bytes, mime_type: str) -> bool:
+    def detect_binary(self, sample: bytes, mime_type: str) -> tuple[bool, ProvenanceEntry]:
         if b"\x00" in sample:
-            return True
+            return True, ProvenanceEntry(
+                layer="derived", method="detect_binary",
+                trigger="nul_byte", inputs=["mime_type"],
+            )
         if any(mime_type.startswith(p) for p in BINARY_MIME_PREFIXES):
-            return True
+            return True, ProvenanceEntry(
+                layer="derived", method="detect_binary",
+                trigger="mime_prefix_binary", inputs=["mime_type"],
+                detail={"mime_type": mime_type},
+            )
         if mime_type in BINARY_MIME_TYPES:
-            return True
+            return True, ProvenanceEntry(
+                layer="derived", method="detect_binary",
+                trigger="known_binary_mime", inputs=["mime_type"],
+                detail={"mime_type": mime_type},
+            )
         if mime_type.startswith("application/") and mime_type not in TEXT_APP_MIMES:
             if not self.looks_like_text(sample):
-                return True
-        return not self.looks_like_text(sample)
+                return True, ProvenanceEntry(
+                    layer="derived", method="detect_binary",
+                    trigger="text_ratio_failure", inputs=["mime_type"],
+                    detail={"threshold": 0.85},
+                )
+        if not self.looks_like_text(sample):
+            return True, ProvenanceEntry(
+                layer="derived", method="detect_binary",
+                trigger="text_ratio_failure", inputs=["mime_type"],
+                detail={"threshold": 0.85},
+            )
+        return False, ProvenanceEntry(
+            layer="derived", method="detect_binary",
+            trigger="text_ratio_ok", inputs=["mime_type"],
+            detail={"threshold": 0.85},
+        )
 
     def looks_like_text(self, sample: bytes) -> bool:
         if not sample:
@@ -669,47 +1087,70 @@ class Scanner:
 
     def detect_requires_vision(
         self, sample: bytes, mime_type: str, extension: str, is_binary: bool
-    ) -> bool:
-        # Image files require vision
+    ) -> tuple[bool, ProvenanceEntry]:
         if mime_type.startswith("image/"):
-            return True
-        # PDFs: check if text content is extractable from the sample
+            return True, ProvenanceEntry(
+                layer="derived", method="detect_requires_vision",
+                trigger="image_mime", inputs=["mime_type"],
+            )
         if extension == ".pdf" and is_binary:
-            # If the PDF sample contains text stream markers, it likely has
-            # extractable text. Image-only PDFs typically lack these.
             has_text_markers = (
                 b"/Text" in sample
                 or b"BT\n" in sample
                 or b"BT\r" in sample
                 or b"/Font" in sample
             )
-            return not has_text_markers
-        return False
+            if not has_text_markers:
+                return True, ProvenanceEntry(
+                    layer="derived", method="detect_requires_vision",
+                    trigger="pdf_no_text_markers", inputs=["mime_type", "is_binary"],
+                )
+            return False, ProvenanceEntry(
+                layer="derived", method="detect_requires_vision",
+                trigger="pdf_has_text_markers", inputs=["mime_type", "is_binary"],
+            )
+        return False, ProvenanceEntry(
+            layer="derived", method="detect_requires_vision",
+            trigger="not_applicable", inputs=["mime_type"],
+        )
 
-    def decode_text(self, sample: bytes, path: Path) -> tuple[str, str]:
-        # Detect encoding from sample first to avoid full-file read for detection
+    def decode_text(self, sample: bytes, path: Path) -> tuple[str, str, ProvenanceEntry]:
         detected_enc: str | None = None
+        chardet_confidence: float = 0.0
         if chardet:
             detected = chardet.detect(sample)
             if detected and detected.get("encoding"):
                 enc = detected["encoding"].lower()
-                confidence = detected.get("confidence", 0) or 0
-                if confidence >= 0.5:
+                chardet_confidence = detected.get("confidence", 0) or 0
+                if chardet_confidence >= 0.5:
                     detected_enc = enc
-        # Full read needed for preview/tag extraction
         raw = path.read_bytes()
         if detected_enc:
             try:
-                return detected_enc, raw.decode(detected_enc)
+                prov = ProvenanceEntry(
+                    layer="derived", method="decode_text",
+                    trigger="chardet_confident",
+                    detail={"encoding": detected_enc, "confidence": chardet_confidence},
+                )
+                return detected_enc, raw.decode(detected_enc), prov
             except (UnicodeDecodeError, LookupError):
                 pass
-        # Fallback cascade
-        for enc in ("utf-8", "utf-8-sig", "cp1252", "latin-1"):
+        cascade_encodings = ("utf-8", "utf-8-sig", "cp1252", "latin-1")
+        for enc in cascade_encodings:
             try:
-                return enc, raw.decode(enc)
+                trigger = f"cascade_{enc.replace('-', '_')}"
+                prov = ProvenanceEntry(
+                    layer="derived", method="decode_text",
+                    trigger=trigger,
+                )
+                return enc, raw.decode(enc), prov
             except UnicodeDecodeError:
                 continue
-        return "unknown", raw.decode("utf-8", errors="replace")
+        prov = ProvenanceEntry(
+            layer="derived", method="decode_text",
+            trigger="replace",
+        )
+        return "unknown", raw.decode("utf-8", errors="replace"), prov
 
     def make_preview(self, text: str) -> str:
         normalized = CONTROL_CHAR_RE.sub("", text).strip()
@@ -827,6 +1268,25 @@ class Scanner:
             pass
         return []
 
+    def extract_xml_keys(self, text: str) -> list[str]:
+        try:
+            root = xml_fromstring(text)
+            keys = [root.tag]
+            child_tags = sorted({child.tag for child in root})
+            keys.extend(child_tags)
+            return keys
+        except Exception:
+            return []
+
+    def extract_toml_keys(self, text: str) -> list[str]:
+        if not tomllib:
+            return []
+        try:
+            data = tomllib.loads(text)
+            return sorted(data.keys())
+        except Exception:
+            return []
+
     def detect_technology(self, text: str) -> list[str]:
         found: set[str] = set()
         for name, pattern in TECHNOLOGY_PATTERNS:
@@ -874,9 +1334,12 @@ def _dc_encoder(obj: Any) -> Any:
 
 
 def compute_manifest_checksum(manifest: ScanManifest) -> str:
-    """Compute SHA-256 of the manifest content, excluding the checksum field itself."""
+    """Compute SHA-256 of the manifest content, excluding volatile fields."""
     d = asdict(manifest)
     d["manifest_checksum"] = ""
+    # Exclude volatile fields from deterministic checksum per RFC §Deterministic serialization
+    d["meta"]["scan_id"] = ""
+    d["meta"]["generated_at"] = ""
     canonical = json.dumps(d, sort_keys=True, ensure_ascii=False)
     return sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -887,8 +1350,9 @@ def manifest_to_json(manifest: ScanManifest) -> str:
 
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
-    # Header line with meta, stats, routing_summary, delta, manifest_checksum
+    # Header line with context, meta, stats, routing_summary, delta, manifest_checksum
     header: dict[str, Any] = {
+        "context": asdict(manifest.context),
         "meta": asdict(manifest.meta),
         "stats": asdict(manifest.stats),
         "routing_summary": asdict(manifest.routing_summary),
