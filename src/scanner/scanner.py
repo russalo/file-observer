@@ -56,6 +56,7 @@ SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
     ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
+    ".doc",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -105,6 +106,7 @@ TECHNOLOGY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 SPECIALIST_TOOLS: dict[str, str] = {
     ".pdf": "pdf_extraction",
     ".docx": "document_extraction",
+    ".doc": "document_extraction",
     ".rtf": "document_extraction",
     ".png": "image_structure",
     ".jpg": "image_structure",
@@ -665,7 +667,7 @@ class Scanner:
                 specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
                 if specialist_metadata is not None:
                     tool = SPECIALIST_TOOLS.get(extension, "unknown")
-                    is_deviation = extension == ".xlsx"
+                    is_deviation = extension in {".xlsx", ".docx"}
                     for key in specialist_metadata:
                         prov_key = f"specialist_metadata.{key}"
                         trigger = "bounded_deviation" if is_deviation else "bounded_sample"
@@ -784,6 +786,12 @@ class Scanner:
             return self._extract_eml_metadata(sample)
         if extension == ".xlsx":
             return self._extract_xlsx_metadata(path)
+        if extension == ".docx":
+            return self._extract_docx_metadata(path)
+        if extension == ".doc":
+            return self._extract_doc_metadata(sample)
+        if extension == ".rtf":
+            return self._extract_rtf_metadata(sample)
         return None
 
     def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
@@ -968,6 +976,144 @@ class Scanner:
             return {"sheet_names": sheet_names, "header_rows": header_rows}
         finally:
             zf.close()
+
+    def _extract_docx_metadata(self, path: Path) -> dict[str, Any] | None:
+        import zipfile
+        from io import BytesIO
+        deviation_budget = 131072  # same as xlsx
+        try:
+            raw = path.read_bytes()[:deviation_budget]
+        except Exception:
+            return None
+        try:
+            zf = zipfile.ZipFile(BytesIO(raw))
+        except (zipfile.BadZipFile, Exception):
+            return None
+        try:
+            meta: dict[str, Any] = {
+                "title": None, "author": None, "word_count": None, "heading_count": None,
+            }
+            # Core properties from docProps/core.xml
+            if "docProps/core.xml" in zf.namelist() and self._is_safe_zip_entry("docProps/core.xml"):
+                try:
+                    core_xml = zf.read("docProps/core.xml").decode("utf-8", errors="replace")
+                    root = xml_fromstring(core_xml)
+                    # dc:title
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}title"):
+                        if el.text:
+                            meta["title"] = el.text.strip()
+                        break
+                    # dc:creator (author)
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}creator"):
+                        if el.text:
+                            meta["author"] = el.text.strip()
+                        break
+                except Exception:
+                    pass
+            # App properties from docProps/app.xml (word count)
+            if "docProps/app.xml" in zf.namelist() and self._is_safe_zip_entry("docProps/app.xml"):
+                try:
+                    app_xml = zf.read("docProps/app.xml").decode("utf-8", errors="replace")
+                    root = xml_fromstring(app_xml)
+                    ns = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+                    for el in root.iter(f"{{{ns}}}Words"):
+                        if el.text and el.text.isdigit():
+                            meta["word_count"] = int(el.text)
+                        break
+                except Exception:
+                    pass
+            # Heading count from word/document.xml
+            if "word/document.xml" in zf.namelist() and self._is_safe_zip_entry("word/document.xml"):
+                try:
+                    doc_xml = zf.read("word/document.xml").decode("utf-8", errors="replace")
+                    root = xml_fromstring(doc_xml)
+                    ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                    heading_count = 0
+                    for pstyle in root.iter(f"{{{ns_w}}}pStyle"):
+                        val = pstyle.get(f"{{{ns_w}}}val", "")
+                        if val.startswith("Heading") or val.startswith("heading"):
+                            heading_count += 1
+                    meta["heading_count"] = heading_count
+                except Exception:
+                    pass
+            return meta
+        finally:
+            zf.close()
+
+    def _extract_doc_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        if not olefile:
+            return None
+        try:
+            from io import BytesIO
+            buf = BytesIO(sample)
+            if not olefile.isOleFile(buf):
+                return None
+            buf.seek(0)
+            ole = olefile.OleFileIO(buf)
+            try:
+                meta: dict[str, Any] = {
+                    "title": None, "author": None, "word_count": None,
+                }
+                # OLE2 summary info properties
+                if ole.exists("\x05SummaryInformation"):
+                    try:
+                        props = ole.getproperties("\x05SummaryInformation")
+                        # Property IDs: 2=Title, 4=Author, 6=Subject
+                        meta["title"] = props.get(2)
+                        meta["author"] = props.get(4)
+                    except Exception:
+                        pass
+                # Document summary for word count
+                if ole.exists("\x05DocumentSummaryInformation"):
+                    try:
+                        dprops = ole.getproperties("\x05DocumentSummaryInformation")
+                        # No standard word count in DocumentSummary, try SummaryInfo
+                    except Exception:
+                        pass
+                # Clean string values
+                for key in ("title", "author"):
+                    if isinstance(meta[key], bytes):
+                        meta[key] = meta[key].decode("cp1252", errors="replace").rstrip("\x00")
+                    elif isinstance(meta[key], str):
+                        meta[key] = meta[key].rstrip("\x00") or None
+                return meta
+            finally:
+                ole.close()
+        except Exception:
+            return None
+
+    def _extract_rtf_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        try:
+            text = sample.decode("ascii", errors="replace")
+        except Exception:
+            return None
+        meta: dict[str, Any] = {"title": None, "author": None}
+        # Find {\info ...} group accounting for nested braces
+        info_start = text.find("{\\info")
+        if info_start == -1:
+            return meta
+        # Walk from info_start to find matching closing brace
+        depth = 0
+        info_block = ""
+        for i in range(info_start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    info_block = text[info_start:i + 1]
+                    break
+        if not info_block:
+            return meta
+        # Extract {\title ...} and {\author ...} from the info block
+        for field in ("title", "author"):
+            pattern = r"\{\\" + field + r"\s+([^}]*)\}"
+            match = re.search(pattern, info_block)
+            if match:
+                val = match.group(1).strip()
+                if val:
+                    meta[field] = val
+        return meta
 
     def _extract_msg_metadata(self, sample: bytes) -> dict[str, Any] | None:
         if not olefile:
