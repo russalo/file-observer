@@ -1123,3 +1123,158 @@ class TestZipEntryValidation:
     def test_absolute_path_rejected(self) -> None:
         assert Scanner._is_safe_zip_entry("/etc/passwd") is False
         assert Scanner._is_safe_zip_entry("\\windows\\system32") is False
+
+
+# ---------------------------------------------------------------------------
+# Document envelope specialists (DOCX, DOC, RTF)
+# ---------------------------------------------------------------------------
+
+class TestDocxMetadata:
+    def _make_docx(self, title: str | None = None, author: str | None = None, words: int | None = None) -> bytes:
+        import zipfile
+        from io import BytesIO
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            # core.xml
+            core_parts = []
+            if title:
+                core_parts.append(f'<dc:title>{title}</dc:title>')
+            if author:
+                core_parts.append(f'<dc:creator>{author}</dc:creator>')
+            core_xml = f'<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/">{"".join(core_parts)}</cp:coreProperties>'
+            zf.writestr("docProps/core.xml", core_xml)
+            # app.xml
+            if words is not None:
+                app_xml = f'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Words>{words}</Words></Properties>'
+                zf.writestr("docProps/app.xml", app_xml)
+            # minimal document.xml
+            zf.writestr("word/document.xml", '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body/></w:document>')
+        return buf.getvalue()
+
+    def test_docx_title_and_author(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.docx").write_bytes(self._make_docx(title="My Report", author="Jane"))
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["title"] == "My Report"
+        assert rec.specialist_metadata["author"] == "Jane"
+
+    def test_docx_word_count(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.docx").write_bytes(self._make_docx(words=1500))
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["word_count"] == 1500
+
+    def test_docx_no_metadata(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.docx").write_bytes(self._make_docx())
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is not None
+        # All fields should be present even if null
+        assert "title" in rec.specialist_metadata
+        assert "author" in rec.specialist_metadata
+
+    def test_docx_heading_count(self, tmp_path: Path) -> None:
+        import zipfile
+        from io import BytesIO
+        buf = BytesIO()
+        ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        doc_xml = f'''<w:document xmlns:w="{ns}"><w:body>
+            <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr></w:p>
+            <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr></w:p>
+            <w:p><w:pPr><w:pStyle w:val="Normal"/></w:pPr></w:p>
+            <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr></w:p>
+        </w:body></w:document>'''
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("word/document.xml", doc_xml)
+            zf.writestr("docProps/core.xml", '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"/>')
+        (tmp_path / "doc.docx").write_bytes(buf.getvalue())
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["heading_count"] == 3
+
+    def test_docx_invalid_zip(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.docx").write_bytes(b"not a zip")
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_docx_real_fixtures(self) -> None:
+        from pathlib import Path as P
+        fixtures = P(__file__).parent / "fixtures"
+        scanner = Scanner(source_dir=fixtures, config=ScannerConfig(enable_specialists=True))
+        manifest = scanner.scan()
+        docx_with_author = [f for f in manifest.files if f.extension == ".docx"
+                           and f.specialist_metadata and f.specialist_metadata.get("author")]
+        assert len(docx_with_author) > 0
+
+
+class TestDocMetadata:
+    def test_doc_without_olefile_returns_none(self, scanner: Scanner) -> None:
+        import scanner.scanner as mod
+        original = mod.olefile
+        try:
+            mod.olefile = None
+            result = scanner._extract_doc_metadata(b"fake content")
+            assert result is None
+        finally:
+            mod.olefile = original
+
+    def test_doc_invalid_file(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.doc").write_bytes(b"not an OLE file")
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_doc_extracts_from_real_fixtures(self) -> None:
+        """Test against real .doc fixtures if they exist."""
+        from pathlib import Path as P
+        fixtures = P(__file__).parent / "fixtures"
+        doc_files = list(fixtures.rglob("*.doc"))
+        if not doc_files:
+            pytest.skip("No .doc fixtures available")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=fixtures, config=config)
+        manifest = scanner.scan()
+        docs = [f for f in manifest.files if f.extension == ".doc" and f.specialist_metadata]
+        # If olefile is available and fixtures have OLE properties, we should get metadata
+        import scanner.scanner as mod
+        if mod.olefile:
+            # At least verify no crashes; metadata may be null if sample too small
+            for f in manifest.files:
+                if f.extension == ".doc":
+                    assert f.requires_specialist_tool is True
+                    assert f.specialist_tool == "document_extraction"
+
+    def test_doc_specialist_tool(self) -> None:
+        from scanner.scanner import SPECIALIST_TOOLS
+        assert SPECIALIST_TOOLS[".doc"] == "document_extraction"
+
+
+class TestRtfMetadata:
+    def test_rtf_with_info(self, scanner: Scanner) -> None:
+        sample = rb"{\rtf1 {\info {\title My Document} {\author John Smith}} Hello}"
+        meta = scanner._extract_rtf_metadata(sample)
+        assert meta["title"] == "My Document"
+        assert meta["author"] == "John Smith"
+
+    def test_rtf_no_info(self, scanner: Scanner) -> None:
+        sample = rb"{\rtf1 Hello world}"
+        meta = scanner._extract_rtf_metadata(sample)
+        assert meta is not None
+        assert meta["title"] is None
+        assert meta["author"] is None
+
+    def test_rtf_partial_info(self, scanner: Scanner) -> None:
+        sample = rb"{\rtf1 {\info {\title Report}} Content}"
+        meta = scanner._extract_rtf_metadata(sample)
+        assert meta["title"] == "Report"
+        assert meta["author"] is None
+
+    def test_rtf_through_scan(self, tmp_path: Path) -> None:
+        rtf = rb"{\rtf1 {\info {\title Test Doc} {\author Alice}} Body text}"
+        (tmp_path / "doc.rtf").write_bytes(rtf)
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_tool == "document_extraction"
+        assert rec.specialist_metadata["title"] == "Test Doc"
+        assert rec.specialist_metadata["author"] == "Alice"

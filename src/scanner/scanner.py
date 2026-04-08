@@ -56,6 +56,7 @@ SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
     ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
+    ".doc",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -105,6 +106,7 @@ TECHNOLOGY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 SPECIALIST_TOOLS: dict[str, str] = {
     ".pdf": "pdf_extraction",
     ".docx": "document_extraction",
+    ".doc": "document_extraction",
     ".rtf": "document_extraction",
     ".png": "image_structure",
     ".jpg": "image_structure",
@@ -665,7 +667,7 @@ class Scanner:
                 specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
                 if specialist_metadata is not None:
                     tool = SPECIALIST_TOOLS.get(extension, "unknown")
-                    is_deviation = extension == ".xlsx"
+                    is_deviation = extension in {".xlsx", ".docx"}
                     for key in specialist_metadata:
                         prov_key = f"specialist_metadata.{key}"
                         trigger = "bounded_deviation" if is_deviation else "bounded_sample"
@@ -784,6 +786,12 @@ class Scanner:
             return self._extract_eml_metadata(sample)
         if extension == ".xlsx":
             return self._extract_xlsx_metadata(path)
+        if extension == ".docx":
+            return self._extract_docx_metadata(path)
+        if extension == ".doc":
+            return self._extract_doc_metadata(sample)
+        if extension == ".rtf":
+            return self._extract_rtf_metadata(sample)
         return None
 
     def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
@@ -932,9 +940,10 @@ class Scanner:
             header_rows: dict[str, list[str]] = {}
             # Extract sheet names from workbook.xml
             if "xl/workbook.xml" in zf.namelist():
-                if not self._is_safe_zip_entry("xl/workbook.xml"):
+                wb_raw = self._safe_zip_read(zf, "xl/workbook.xml")
+                if wb_raw is None:
                     return None
-                wb_xml = zf.read("xl/workbook.xml").decode("utf-8", errors="replace")
+                wb_xml = wb_raw.decode("utf-8", errors="replace")
                 try:
                     root = xml_fromstring(wb_xml)
                     ns = {"": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
@@ -949,10 +958,11 @@ class Scanner:
                 sheet_path = f"xl/worksheets/sheet{i}.xml"
                 if sheet_path not in zf.namelist():
                     continue
-                if not self._is_safe_zip_entry(sheet_path):
+                sheet_raw = self._safe_zip_read(zf, sheet_path)
+                if sheet_raw is None:
                     continue
                 try:
-                    sheet_xml = zf.read(sheet_path).decode("utf-8", errors="replace")
+                    sheet_xml = sheet_raw.decode("utf-8", errors="replace")
                     sroot = xml_fromstring(sheet_xml)
                     ns_main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
                     rows = list(sroot.iter(f"{{{ns_main}}}row"))
@@ -968,6 +978,135 @@ class Scanner:
             return {"sheet_names": sheet_names, "header_rows": header_rows}
         finally:
             zf.close()
+
+    def _extract_docx_metadata(self, path: Path) -> dict[str, Any] | None:
+        import zipfile
+        from io import BytesIO
+        deviation_budget = 131072  # same as xlsx
+        try:
+            with path.open("rb") as f:
+                raw = f.read(deviation_budget)
+        except Exception:
+            return None
+        try:
+            zf = zipfile.ZipFile(BytesIO(raw))
+        except (zipfile.BadZipFile, Exception):
+            return None
+        try:
+            meta: dict[str, Any] = {
+                "title": None, "author": None, "word_count": None, "heading_count": None,
+            }
+            # Core properties from docProps/core.xml
+            core_raw = self._safe_zip_read(zf, "docProps/core.xml")
+            if core_raw is not None:
+                try:
+                    root = xml_fromstring(core_raw.decode("utf-8", errors="replace"))
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}title"):
+                        if el.text:
+                            meta["title"] = el.text.strip()
+                        break
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}creator"):
+                        if el.text:
+                            meta["author"] = el.text.strip()
+                        break
+                except Exception:
+                    pass
+            # App properties from docProps/app.xml (word count)
+            app_raw = self._safe_zip_read(zf, "docProps/app.xml")
+            if app_raw is not None:
+                try:
+                    root = xml_fromstring(app_raw.decode("utf-8", errors="replace"))
+                    ns = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+                    for el in root.iter(f"{{{ns}}}Words"):
+                        if el.text and el.text.isdigit():
+                            meta["word_count"] = int(el.text)
+                        break
+                except Exception:
+                    pass
+            # Heading count from word/document.xml
+            doc_raw = self._safe_zip_read(zf, "word/document.xml")
+            if doc_raw is not None:
+                try:
+                    root = xml_fromstring(doc_raw.decode("utf-8", errors="replace"))
+                    ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                    heading_count = 0
+                    for pstyle in root.iter(f"{{{ns_w}}}pStyle"):
+                        val = pstyle.get(f"{{{ns_w}}}val", "")
+                        if val.startswith("Heading") or val.startswith("heading"):
+                            heading_count += 1
+                    meta["heading_count"] = heading_count
+                except Exception:
+                    pass
+            return meta
+        finally:
+            zf.close()
+
+    def _extract_doc_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        if not olefile:
+            return None
+        try:
+            from io import BytesIO
+            buf = BytesIO(sample)
+            if not olefile.isOleFile(buf):
+                return None
+            buf.seek(0)
+            ole = olefile.OleFileIO(buf)
+            try:
+                meta: dict[str, Any] = {
+                    "title": None, "author": None,
+                }
+                # OLE2 SummaryInformation: 2=Title, 4=Author
+                if ole.exists("\x05SummaryInformation"):
+                    try:
+                        props = ole.getproperties("\x05SummaryInformation")
+                        meta["title"] = props.get(2)
+                        meta["author"] = props.get(4)
+                    except Exception:
+                        pass
+                # Clean string values
+                for key in ("title", "author"):
+                    if isinstance(meta[key], bytes):
+                        meta[key] = meta[key].decode("cp1252", errors="replace").rstrip("\x00")
+                    elif isinstance(meta[key], str):
+                        meta[key] = meta[key].rstrip("\x00") or None
+                return meta
+            finally:
+                ole.close()
+        except Exception:
+            return None
+
+    def _extract_rtf_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        try:
+            text = sample.decode("ascii", errors="replace")
+        except Exception:
+            return None
+        meta: dict[str, Any] = {"title": None, "author": None}
+        # Find {\info ...} group accounting for nested braces
+        info_start = text.find("{\\info")
+        if info_start == -1:
+            return meta
+        # Walk from info_start to find matching closing brace
+        depth = 0
+        info_block = ""
+        for i in range(info_start, len(text)):
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    info_block = text[info_start:i + 1]
+                    break
+        if not info_block:
+            return meta
+        # Extract {\title ...} and {\author ...} from the info block
+        for field in ("title", "author"):
+            pattern = r"\{\\" + field + r"\s+([^}]*)\}"
+            match = re.search(pattern, info_block)
+            if match:
+                val = match.group(1).strip()
+                if val:
+                    meta[field] = val
+        return meta
 
     def _extract_msg_metadata(self, sample: bytes) -> dict[str, Any] | None:
         if not olefile:
@@ -1019,6 +1158,20 @@ class Scanner:
         except Exception:
             pass
         return None
+
+    _ZIP_MAX_DECOMPRESS = 1048576  # 1MB max decompressed size per entry
+
+    def _safe_zip_read(self, zf: Any, entry_name: str) -> bytes | None:
+        """Read a ZIP entry with size validation. Returns None if unsafe."""
+        if not self._is_safe_zip_entry(entry_name):
+            return None
+        try:
+            info = zf.getinfo(entry_name)
+            if info.file_size > self._ZIP_MAX_DECOMPRESS:
+                return None
+            return zf.read(entry_name)
+        except Exception:
+            return None
 
     @staticmethod
     def _is_safe_zip_entry(name: str) -> bool:
