@@ -756,3 +756,305 @@ class TestHtmlFormalSupport:
         scanner = Scanner(source_dir=tmp_path)
         rec = scanner.scan().files[0]
         assert "google-fonts" in rec.structural.technology_hints
+
+
+# ---------------------------------------------------------------------------
+# PDF deepened specialist metadata (v0.3 Phase 2)
+# ---------------------------------------------------------------------------
+
+class TestPdfDeepenedEdgeCases:
+    def test_encrypted_pdf_through_scan(self, tmp_path: Path) -> None:
+        content = b"%PDF-1.4 /Encrypt << /Filter /Standard >> /Font BT\nsome ET"
+        (tmp_path / "encrypted.pdf").write_bytes(content)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["encrypted"] is True
+        assert rec.specialist_metadata["pdf_version"] == "1.4"
+        assert rec.specialist_metadata["sample_text_marker_density"] > 0
+
+    def test_pdf_density_deterministic(self, tmp_path: Path) -> None:
+        content = b"%PDF-1.4 BT text ET BT more ET"
+        (tmp_path / "doc.pdf").write_bytes(content)
+        config = ScannerConfig(enable_specialists=True)
+        m1 = Scanner(source_dir=tmp_path, config=config).scan().files[0].specialist_metadata
+        m2 = Scanner(source_dir=tmp_path, config=config).scan().files[0].specialist_metadata
+        assert m1["sample_text_marker_density"] == m2["sample_text_marker_density"]
+
+
+# ---------------------------------------------------------------------------
+# PNG specialist edge cases (v0.3 Phase 2)
+# ---------------------------------------------------------------------------
+
+class TestPngEdgeCases:
+    def _make_png(self, width: int, height: int, bit_depth: int = 8) -> bytes:
+        import struct
+        sig = b"\x89PNG\r\n\x1a\n"
+        ihdr_data = struct.pack(">II", width, height) + bytes([bit_depth, 2, 0, 0, 0])
+        ihdr_len = struct.pack(">I", 13)
+        return sig + ihdr_len + b"IHDR" + ihdr_data
+
+    def test_zero_byte_png(self, tmp_path: Path) -> None:
+        (tmp_path / "empty.png").write_bytes(b"")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        # Should not crash; specialist_metadata may be None
+        assert rec.specialist_metadata is None or rec.specialist_metadata.get("width") is None
+
+    def test_png_requires_specialist(self, tmp_path: Path) -> None:
+        (tmp_path / "test.png").write_bytes(self._make_png(100, 100))
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.requires_specialist_tool is True
+        assert rec.specialist_tool == "png_header"
+
+    def test_png_no_metadata_when_specialists_disabled(self, tmp_path: Path) -> None:
+        (tmp_path / "test.png").write_bytes(self._make_png(100, 100))
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_real_png_fixture(self) -> None:
+        """Test against the real PNG fixture file."""
+        from pathlib import Path as P
+        fixture = P(__file__).parent / "fixtures" / "SIG.png"
+        if not fixture.exists():
+            pytest.skip("SIG.png fixture not present")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=fixture.parent, config=config)
+        manifest = scanner.scan()
+        recs = [f for f in manifest.files if f.filename == "SIG.png"]
+        assert len(recs) == 1
+        rec = recs[0]
+        if rec.specialist_metadata and rec.specialist_metadata.get("width"):
+            assert rec.specialist_metadata["width"] > 0
+            assert rec.specialist_metadata["height"] > 0
+
+
+# ---------------------------------------------------------------------------
+# MSG specialist edge cases (v0.3 Phase 2)
+# ---------------------------------------------------------------------------
+
+class TestMsgEdgeCases:
+    def test_msg_requires_specialist(self, tmp_path: Path) -> None:
+        (tmp_path / "email.msg").write_bytes(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.requires_specialist_tool is True
+        assert rec.specialist_tool == "msg_envelope"
+
+    def test_msg_no_metadata_when_specialists_disabled(self, tmp_path: Path) -> None:
+        (tmp_path / "email.msg").write_bytes(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_msg_invalid_file(self, tmp_path: Path) -> None:
+        (tmp_path / "fake.msg").write_bytes(b"not an OLE file at all")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        # Should not crash; metadata is None for non-OLE files
+        assert rec.specialist_metadata is None
+
+
+# ---------------------------------------------------------------------------
+# XML support (v0.3 Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestXmlSupport:
+    def test_xml_is_supported(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text('<?xml version="1.0"?><root><a/><b/></root>')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_xml_document_keys(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text('<?xml version="1.0"?><config><db/><cache/><log/></config>')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "config" in rec.structural.document_keys
+        assert "cache" in rec.structural.document_keys
+        assert "db" in rec.structural.document_keys
+        assert "log" in rec.structural.document_keys
+
+    def test_xml_root_element_first(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text('<project><name/><version/></project>')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.structural.document_keys[0] == "project"
+
+    def test_xml_malformed_non_fatal(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.xml").write_text('<broken><no closing tag')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.structural.document_keys == []
+
+    def test_xml_has_preview(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text('<root>hello</root>')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.content_preview is not None
+        assert "root" in rec.content_preview
+
+    def test_xml_deduplicates_children(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text('<root><item/><item/><item/></root>')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.structural.document_keys.count("item") == 1
+
+
+# ---------------------------------------------------------------------------
+# TOML support (v0.3 Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestTomlSupport:
+    def test_toml_is_supported(self, tmp_path: Path) -> None:
+        (tmp_path / "config.toml").write_text('name = "test"\nversion = "1.0"\n')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_toml_document_keys(self, tmp_path: Path) -> None:
+        (tmp_path / "config.toml").write_text('name = "scanner"\nversion = "0.3"\ndebug = false\n')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "debug" in rec.structural.document_keys
+        assert "name" in rec.structural.document_keys
+        assert "version" in rec.structural.document_keys
+
+    def test_toml_keys_sorted(self, tmp_path: Path) -> None:
+        (tmp_path / "config.toml").write_text('zebra = 1\nalpha = 2\nmid = 3\n')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.structural.document_keys == sorted(rec.structural.document_keys)
+
+    def test_toml_malformed_non_fatal(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.toml").write_text('this is not valid toml [[[')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.structural.document_keys == []
+
+    def test_toml_has_preview(self, tmp_path: Path) -> None:
+        (tmp_path / "config.toml").write_text('title = "My Config"\n')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.content_preview is not None
+
+
+# ---------------------------------------------------------------------------
+# PNG / MSG in SUPPORTED_EXTENSIONS (v0.3 Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestNewSupportedExtensions:
+    def test_png_no_unsupported_error(self, tmp_path: Path) -> None:
+        import struct
+        sig = b"\x89PNG\r\n\x1a\n"
+        ihdr = struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 10, 10) + bytes([8, 2, 0, 0, 0])
+        (tmp_path / "img.png").write_bytes(sig + ihdr)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_msg_no_unsupported_error(self, tmp_path: Path) -> None:
+        (tmp_path / "mail.msg").write_bytes(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_xml_no_unsupported_error(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text("<root/>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+    def test_toml_no_unsupported_error(self, tmp_path: Path) -> None:
+        (tmp_path / "cfg.toml").write_text('key = "val"\n')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "unsupported_extension" not in codes
+
+
+# ---------------------------------------------------------------------------
+# Delta rescan_candidates (v0.3 Phase 3)
+# ---------------------------------------------------------------------------
+
+class TestRescanCandidates:
+    def _save_prev(self, manifest, tmp_path: Path) -> Path:
+        from scanner.scanner import manifest_to_json
+        out_dir = tmp_path / "_out"
+        out_dir.mkdir(exist_ok=True)
+        prev = out_dir / "prev.json"
+        prev.write_text(manifest_to_json(manifest), encoding="utf-8")
+        return prev
+
+    def test_no_rescan_candidates_when_no_errors(self, tmp_path: Path) -> None:
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        m1 = Scanner(source_dir=src).scan()
+        prev = self._save_prev(m1, tmp_path)
+        config = ScannerConfig(previous_manifest=str(prev))
+        m2 = Scanner(source_dir=src, config=config).scan()
+        assert m2.delta is not None
+        assert m2.delta.rescan_candidates == []
+
+    def test_rescan_candidates_from_specialist_failures(self, tmp_path: Path) -> None:
+        """Previous manifest with specialist_probe_failed errors → rescan_candidates."""
+        import json
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "doc.pdf").write_bytes(b"%PDF-1.4\x00")
+        prev_data = {
+            "meta": {"scan_id": "test-id", "generated_at": "", "source_dir": str(src), "config": {}},
+            "stats": {"total_files": 1, "supported_files": 1, "unsupported_files": 0,
+                       "text_files": 0, "binary_files": 1, "requires_vision": 0, "requires_specialist_tool": 1},
+            "routing_summary": {"baseline_ready": 0, "binary_only": 0, "requires_vision": 0, "requires_specialist_tool": 1},
+            "context": {"logic_version": "0.3.0", "scanner_version": "0.3.0", "python_version": "3.12", "platform": "linux", "dependencies": {}},
+            "delta": None,
+            "manifest_checksum": "",
+            "files": [
+                {
+                    "path": "doc.pdf",
+                    "checksum_sha256": "abc123",
+                    "errors": [{"code": "specialist_probe_failed", "message": "test", "stage": "specialist"}],
+                }
+            ],
+        }
+        prev = tmp_path / "prev.json"
+        prev.write_text(json.dumps(prev_data))
+        config = ScannerConfig(previous_manifest=str(prev))
+        m2 = Scanner(source_dir=src, config=config).scan()
+        assert m2.delta is not None
+        assert "doc.pdf" in m2.delta.rescan_candidates
+
+    def test_rescan_candidates_sorted(self, tmp_path: Path) -> None:
+        import json
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("a")
+        prev_data = {
+            "meta": {"scan_id": "id", "generated_at": "", "source_dir": str(src), "config": {}},
+            "stats": {"total_files": 2, "supported_files": 2, "unsupported_files": 0,
+                       "text_files": 0, "binary_files": 2, "requires_vision": 0, "requires_specialist_tool": 2},
+            "routing_summary": {"baseline_ready": 0, "binary_only": 0, "requires_vision": 0, "requires_specialist_tool": 2},
+            "context": {"logic_version": "0.3.0", "scanner_version": "0.3.0", "python_version": "3.12", "platform": "linux", "dependencies": {}},
+            "delta": None,
+            "manifest_checksum": "",
+            "files": [
+                {"path": "z.pdf", "checksum_sha256": "", "errors": [{"code": "specialist_probe_failed", "message": "", "stage": "specialist"}]},
+                {"path": "a.pdf", "checksum_sha256": "", "errors": [{"code": "specialist_probe_failed", "message": "", "stage": "specialist"}]},
+            ],
+        }
+        prev = tmp_path / "prev.json"
+        prev.write_text(json.dumps(prev_data))
+        config = ScannerConfig(previous_manifest=str(prev))
+        m2 = Scanner(source_dir=src, config=config).scan()
+        assert m2.delta.rescan_candidates == ["a.pdf", "z.pdf"]

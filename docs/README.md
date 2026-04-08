@@ -7,10 +7,10 @@ Recursively discovers files under a source directory, extracts universal and for
 | | |
 |---|---|
 | **Package** | `scanner` |
-| **Version** | `0.2.0` |
+| **Version** | `0.3.0` |
 | **Python** | `>= 3.12` |
 | **License** | Private |
-| **Spec** | [`docs/SPEC.md`](SPEC.md), [`docs/v0.2Spec.md`](v0.2Spec.md) |
+| **Spec** | [`docs/v0.3.0 RFC_Specification.md`](v0.3.0%20RFC_Specification.md) (authoritative), [`docs/SPEC.md`](SPEC.md) (v0.1), [`docs/v0.2Spec.md`](v0.2Spec.md) (v0.2) |
 
 ---
 
@@ -35,7 +35,10 @@ pip install -e .
 # PyYAML for robust frontmatter parsing
 pip install -e ".[yaml]"
 
-# Full development environment (pytest + PyYAML)
+# olefile for .msg email envelope extraction
+pip install -e ".[msg]"
+
+# Full development environment (pytest + PyYAML + olefile)
 pip install -e ".[dev]"
 ```
 
@@ -90,15 +93,19 @@ scanner /path/to/files -o ./output --exclude-hidden --specialists --format jsonl
 
 ## Key Features
 
-- **Deterministic output** -- identical inputs always produce identical JSON manifests (sorted files, sorted tags, stable checksums).
-- **Three capability tiers** -- Universal (every file), Baseline (text-decodeable files), and Specialist (format-specific probes, opt-in).
+- **Capability-locked determinism** -- identical inputs + identical `ScanContext` always produce identical manifests. Cross-environment variance is explained by dependency versions and logic version.
+- **Signal provenance** -- every derived field includes a structured `signal_provenance` entry tracing exactly how and why it was computed (layer, method, trigger, inputs).
+- **Signal layering** -- every field is classified as raw (direct observation), derived (computed from raw), or semantic-local (reserved, opt-in).
+- **Bounded observation** -- specialist extractors operate within the sample buffer (8KB default). Null means "not observed within bounds."
+- **ScanContext** -- environment fingerprint with logic version, scanner version, Python version, platform, and dependency versions.
+- **Three capability tiers** -- Universal (every file), Baseline (text-decodeable files), Structural (format-specific keys/headings), and Specialist (bounded metadata probes, opt-in).
+- **Specialist metadata** -- PDF (page count, text streams, doc info, encrypted, pdf_version, sample_text_marker_density), PNG (width, height, bit_depth via IHDR), MSG (subject, from, to via OLE2 envelope).
 - **Manifest metadata** -- scan ID, runtime config, stats, routing summary, and SHA-256 manifest checksum for auditing and orchestration.
 - **JSONL output** -- streaming-friendly NDJSON format with header line + one record per file.
-- **Delta scanning** -- compare against a previous manifest to identify added, modified, unchanged, and removed files.
+- **Delta scanning** -- compare against a previous manifest to identify added, modified, unchanged, removed files, plus `rescan_candidates` for files with prior specialist failures.
 - **Ignore rules** -- `.scannerignore` file support for excluding vendor directories, build artifacts, and user-defined patterns.
 - **MIME mismatch signaling** -- per-file `mime_analysis` exposing content-detected vs extension-expected MIME types and match status.
-- **Specialist metadata** -- bounded PDF metadata extraction (page count, text stream markers, document info) when specialists are enabled.
-- **Structural signal extraction** -- titles, heading structure, CSV headers, JSON/YAML document keys, technology hints, filename dates.
+- **Structural signal extraction** -- titles, heading structure, CSV headers, JSON/YAML/XML/TOML document keys, technology hints, filename dates.
 - **Intelligent binary detection** -- NUL byte check, MIME-based classification, and text-ratio heuristic (0.85 threshold).
 - **Content-based MIME detection** -- `libmagic` primary, extension-based fallback with diagnostic recording.
 - **Encoding detection** -- `chardet` with sample-based detection and a four-step fallback cascade (`utf-8` -> `utf-8-sig` -> `cp1252` -> `latin-1`).
@@ -108,7 +115,7 @@ scanner /path/to/files -o ./output --exclude-hidden --specialists --format jsonl
 - **Sidecar detection** -- checks for companion `.json` and `.md` metadata files.
 - **Routing flags** -- `is_binary`, `requires_vision`, `requires_specialist_tool` for downstream pipeline decisions.
 - **Non-fatal error model** -- a single unreadable file never halts the scan; structured `ErrorRecord` objects captured per file per stage.
-- **Graceful degradation** -- runs without `python-magic`, `chardet`, or `PyYAML` installed.
+- **Graceful degradation** -- runs without `python-magic`, `chardet`, `PyYAML`, or `olefile` installed.
 
 ---
 
@@ -116,6 +123,8 @@ scanner /path/to/files -o ./output --exclude-hidden --specialists --format jsonl
 
 ```
 Scanner.scan()
+  |
+  +-- _build_context()      Environment fingerprint (versions, dependencies)
   |
   +-- iter_files()          Sorted recursive walk, ignore rules, hidden-file exclusion
   |
@@ -125,9 +134,10 @@ Scanner.scan()
   |    +-- MIME Analysis    Content vs extension MIME comparison (every file)
   |    +-- Baseline         Encoding, preview, tags, frontmatter, assets (text files)
   |    +-- Structural       Title, headings, CSV headers, doc keys, tech hints (text files)
-  |    +-- Specialist       Format-specific probes + metadata extraction (opt-in)
+  |    +-- Specialist       Format-specific bounded metadata extraction (opt-in)
+  |    +-- Provenance       Per-field derivation map (layer, method, trigger)
   |
-  +-- Manifest assembly     Meta, stats, routing summary, delta, checksum
+  +-- Manifest assembly     Context, meta, stats, routing summary, delta, checksum
 ```
 
 ### Capability Tiers
@@ -146,12 +156,16 @@ Scanner.scan()
 | `.txt` | encoding, preview, tags | technology_hints, filename_date | -- |
 | `.md` / `.mdx` | encoding, preview, tags, frontmatter, assets | title, heading_structure, technology_hints, filename_date | -- |
 | `.csv` | encoding, preview, tags | csv_headers, filename_date | -- |
-| `.json` | encoding, preview, tags | document_keys, filename_date | JSON validation |
+| `.json` | encoding, preview, tags | document_keys, filename_date | validation probe (opt-in) |
 | `.yaml` / `.yml` | encoding, preview, tags | document_keys, technology_hints, filename_date | -- |
 | `.html` / `.htm` | encoding, preview, tags | title, technology_hints, filename_date | -- |
-| `.pdf` | -- | filename_date | `pdf_scanner` (page count, text streams, doc info) |
-| `.docx` | -- | filename_date | `docx_parser` |
-| `.rtf` | -- | filename_date | `rtf_parser` |
+| `.xml` | encoding, preview, tags | document_keys (root + children), filename_date | -- |
+| `.toml` | encoding, preview, tags | document_keys (top-level), filename_date | -- |
+| `.pdf` | -- | filename_date | `pdf_scanner` (page count, text streams, doc info, encrypted, pdf_version, density) |
+| `.png` | -- | filename_date | `png_header` (width, height, bit_depth) |
+| `.msg` | -- | filename_date | `msg_envelope` (subject, from, to) |
+| `.docx` | -- | filename_date | `docx_parser` (downstream routing) |
+| `.rtf` | -- | filename_date | `rtf_parser` (downstream routing) |
 
 Unsupported extensions still receive universal-tier processing and are marked with an `unsupported_extension` error record.
 
@@ -851,7 +865,7 @@ The JSON manifest follows this structure:
 }
 ```
 
-See [`docs/SPEC.md`](SPEC.md) and [`docs/v0.2Spec.md`](v0.2Spec.md) for the complete field-by-field contract, null semantics, and normalization rules.
+See [`docs/v0.3.0 RFC_Specification.md`](v0.3.0%20RFC_Specification.md) for the complete v0.3 contract, signal layering, provenance schema, and null semantics.
 
 ---
 
@@ -872,7 +886,7 @@ pip install -e ".[dev]"
 ### Running tests
 
 ```bash
-# Full suite (213 tests)
+# Full suite (287 tests)
 python -m pytest tests/ -v
 
 # Single test file
@@ -886,15 +900,15 @@ python -m pytest tests/test_unit.py::TestExtractTags::test_basic_hashtags -v
 
 | File | Scope |
 |---|---|
-| `tests/test_unit.py` | Unit tests for every extraction method (88 tests) |
-| `tests/test_integration.py` | Full `scan()` against `tests/fixtures/`, MIME analysis, specialist metadata, HTML support (52 tests) |
-| `tests/test_golden.py` | Determinism verification across repeated scans including MIME analysis (8 tests) |
-| `tests/test_edge_cases.py` | Empty files, no extension, binary-in-text, hidden files, ignore rules, delta scanning, MIME mismatch, specialist metadata, HTML support (65 tests) |
+| `tests/test_unit.py` | Unit tests for all extraction/detection methods, provenance, ScanContext, XML/TOML keys |
+| `tests/test_integration.py` | Full `scan()` against `tests/fixtures/`, manifest shape, provenance, MIME analysis, specialist metadata |
+| `tests/test_golden.py` | Determinism verification across repeated scans including provenance and MIME analysis |
+| `tests/test_edge_cases.py` | Edge cases for all features: empty files, binary-in-text, ignore rules, delta/rescan, MIME mismatch, PDF/PNG/MSG specialists, XML/TOML, HTML |
 
 ### Project conventions
 
 - Single-module implementation: all scanner logic lives in `src/scanner/scanner.py`.
 - `docs/SPEC.md` is authoritative. RFC normative language applies.
-- `docs/COMPLIANCE.md` tracks v0.1 spec compliance. `docs/COMPLIANCE-v0.2.md` tracks v0.2 spec compliance.
+- `docs/COMPLIANCE.md` tracks v0.1 spec compliance. `docs/COMPLIANCE-v0.2.md` tracks v0.2 spec compliance. v0.3 RFC is the authoritative spec.
 - External dependencies (`python-magic`, `chardet`, `PyYAML`) are imported with graceful fallbacks.
 - All outputs are deterministic: sorted file iteration, sorted tags, sorted keys.
