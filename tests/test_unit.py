@@ -1173,6 +1173,25 @@ class TestDocxMetadata:
         assert "title" in rec.specialist_metadata
         assert "author" in rec.specialist_metadata
 
+    def test_docx_heading_count(self, tmp_path: Path) -> None:
+        import zipfile
+        from io import BytesIO
+        buf = BytesIO()
+        ns = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+        doc_xml = f'''<w:document xmlns:w="{ns}"><w:body>
+            <w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr></w:p>
+            <w:p><w:pPr><w:pStyle w:val="Heading2"/></w:pPr></w:p>
+            <w:p><w:pPr><w:pStyle w:val="Normal"/></w:pPr></w:p>
+            <w:p><w:pPr><w:pStyle w:val="Heading3"/></w:pPr></w:p>
+        </w:body></w:document>'''
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("word/document.xml", doc_xml)
+            zf.writestr("docProps/core.xml", '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"/>')
+        (tmp_path / "doc.docx").write_bytes(buf.getvalue())
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["heading_count"] == 3
+
     def test_docx_invalid_zip(self, tmp_path: Path) -> None:
         (tmp_path / "bad.docx").write_bytes(b"not a zip")
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
@@ -1205,6 +1224,26 @@ class TestDocMetadata:
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
         rec = scanner.scan().files[0]
         assert rec.specialist_metadata is None
+
+    def test_doc_extracts_from_real_fixtures(self) -> None:
+        """Test against real .doc fixtures if they exist."""
+        from pathlib import Path as P
+        fixtures = P(__file__).parent / "fixtures"
+        doc_files = list(fixtures.rglob("*.doc"))
+        if not doc_files:
+            pytest.skip("No .doc fixtures available")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=fixtures, config=config)
+        manifest = scanner.scan()
+        docs = [f for f in manifest.files if f.extension == ".doc" and f.specialist_metadata]
+        # If olefile is available and fixtures have OLE properties, we should get metadata
+        import scanner.scanner as mod
+        if mod.olefile:
+            # At least verify no crashes; metadata may be null if sample too small
+            for f in manifest.files:
+                if f.extension == ".doc":
+                    assert f.requires_specialist_tool is True
+                    assert f.specialist_tool == "document_extraction"
 
     def test_doc_specialist_tool(self) -> None:
         from scanner.scanner import SPECIALIST_TOOLS

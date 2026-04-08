@@ -940,9 +940,10 @@ class Scanner:
             header_rows: dict[str, list[str]] = {}
             # Extract sheet names from workbook.xml
             if "xl/workbook.xml" in zf.namelist():
-                if not self._is_safe_zip_entry("xl/workbook.xml"):
+                wb_raw = self._safe_zip_read(zf, "xl/workbook.xml")
+                if wb_raw is None:
                     return None
-                wb_xml = zf.read("xl/workbook.xml").decode("utf-8", errors="replace")
+                wb_xml = wb_raw.decode("utf-8", errors="replace")
                 try:
                     root = xml_fromstring(wb_xml)
                     ns = {"": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
@@ -957,10 +958,11 @@ class Scanner:
                 sheet_path = f"xl/worksheets/sheet{i}.xml"
                 if sheet_path not in zf.namelist():
                     continue
-                if not self._is_safe_zip_entry(sheet_path):
+                sheet_raw = self._safe_zip_read(zf, sheet_path)
+                if sheet_raw is None:
                     continue
                 try:
-                    sheet_xml = zf.read(sheet_path).decode("utf-8", errors="replace")
+                    sheet_xml = sheet_raw.decode("utf-8", errors="replace")
                     sroot = xml_fromstring(sheet_xml)
                     ns_main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
                     rows = list(sroot.iter(f"{{{ns_main}}}row"))
@@ -982,7 +984,8 @@ class Scanner:
         from io import BytesIO
         deviation_budget = 131072  # same as xlsx
         try:
-            raw = path.read_bytes()[:deviation_budget]
+            with path.open("rb") as f:
+                raw = f.read(deviation_budget)
         except Exception:
             return None
         try:
@@ -994,16 +997,14 @@ class Scanner:
                 "title": None, "author": None, "word_count": None, "heading_count": None,
             }
             # Core properties from docProps/core.xml
-            if "docProps/core.xml" in zf.namelist() and self._is_safe_zip_entry("docProps/core.xml"):
+            core_raw = self._safe_zip_read(zf, "docProps/core.xml")
+            if core_raw is not None:
                 try:
-                    core_xml = zf.read("docProps/core.xml").decode("utf-8", errors="replace")
-                    root = xml_fromstring(core_xml)
-                    # dc:title
+                    root = xml_fromstring(core_raw.decode("utf-8", errors="replace"))
                     for el in root.iter("{http://purl.org/dc/elements/1.1/}title"):
                         if el.text:
                             meta["title"] = el.text.strip()
                         break
-                    # dc:creator (author)
                     for el in root.iter("{http://purl.org/dc/elements/1.1/}creator"):
                         if el.text:
                             meta["author"] = el.text.strip()
@@ -1011,10 +1012,10 @@ class Scanner:
                 except Exception:
                     pass
             # App properties from docProps/app.xml (word count)
-            if "docProps/app.xml" in zf.namelist() and self._is_safe_zip_entry("docProps/app.xml"):
+            app_raw = self._safe_zip_read(zf, "docProps/app.xml")
+            if app_raw is not None:
                 try:
-                    app_xml = zf.read("docProps/app.xml").decode("utf-8", errors="replace")
-                    root = xml_fromstring(app_xml)
+                    root = xml_fromstring(app_raw.decode("utf-8", errors="replace"))
                     ns = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
                     for el in root.iter(f"{{{ns}}}Words"):
                         if el.text and el.text.isdigit():
@@ -1023,10 +1024,10 @@ class Scanner:
                 except Exception:
                     pass
             # Heading count from word/document.xml
-            if "word/document.xml" in zf.namelist() and self._is_safe_zip_entry("word/document.xml"):
+            doc_raw = self._safe_zip_read(zf, "word/document.xml")
+            if doc_raw is not None:
                 try:
-                    doc_xml = zf.read("word/document.xml").decode("utf-8", errors="replace")
-                    root = xml_fromstring(doc_xml)
+                    root = xml_fromstring(doc_raw.decode("utf-8", errors="replace"))
                     ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
                     heading_count = 0
                     for pstyle in root.iter(f"{{{ns_w}}}pStyle"):
@@ -1052,22 +1053,14 @@ class Scanner:
             ole = olefile.OleFileIO(buf)
             try:
                 meta: dict[str, Any] = {
-                    "title": None, "author": None, "word_count": None,
+                    "title": None, "author": None,
                 }
-                # OLE2 summary info properties
+                # OLE2 SummaryInformation: 2=Title, 4=Author
                 if ole.exists("\x05SummaryInformation"):
                     try:
                         props = ole.getproperties("\x05SummaryInformation")
-                        # Property IDs: 2=Title, 4=Author, 6=Subject
                         meta["title"] = props.get(2)
                         meta["author"] = props.get(4)
-                    except Exception:
-                        pass
-                # Document summary for word count
-                if ole.exists("\x05DocumentSummaryInformation"):
-                    try:
-                        dprops = ole.getproperties("\x05DocumentSummaryInformation")
-                        # No standard word count in DocumentSummary, try SummaryInfo
                     except Exception:
                         pass
                 # Clean string values
@@ -1165,6 +1158,20 @@ class Scanner:
         except Exception:
             pass
         return None
+
+    _ZIP_MAX_DECOMPRESS = 1048576  # 1MB max decompressed size per entry
+
+    def _safe_zip_read(self, zf: Any, entry_name: str) -> bytes | None:
+        """Read a ZIP entry with size validation. Returns None if unsafe."""
+        if not self._is_safe_zip_entry(entry_name):
+            return None
+        try:
+            info = zf.getinfo(entry_name)
+            if info.file_size > self._ZIP_MAX_DECOMPRESS:
+                return None
+            return zf.read(entry_name)
+        except Exception:
+            return None
 
     @staticmethod
     def _is_safe_zip_entry(name: str) -> bool:
