@@ -453,10 +453,13 @@ class Scanner:
         )
 
         # rescan_candidates: paths from previous manifest with specialist failures
+        # that still exist in the current scan
         rescan_candidates: list[str] = []
         for f in prev_data.get("files", []):
             p = f.get("path")
             if p is None:
+                continue
+            if p not in current_files:
                 continue
             errors = f.get("errors", [])
             if any(e.get("code") == ERR_SPECIALIST_PROBE_FAILED for e in errors):
@@ -747,7 +750,7 @@ class Scanner:
         if extension == ".png":
             return self._extract_png_metadata(sample)
         if extension == ".msg":
-            return self._extract_msg_metadata(path)
+            return self._extract_msg_metadata(sample)
         return None
 
     def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
@@ -821,13 +824,16 @@ class Scanner:
         bit_depth = sample[24]
         return {"width": width, "height": height, "bit_depth": bit_depth}
 
-    def _extract_msg_metadata(self, path: Path) -> dict[str, Any] | None:
+    def _extract_msg_metadata(self, sample: bytes) -> dict[str, Any] | None:
         if not olefile:
             return None
         try:
-            if not olefile.isOleFile(str(path)):
+            from io import BytesIO
+            buf = BytesIO(sample)
+            if not olefile.isOleFile(buf):
                 return None
-            ole = olefile.OleFileIO(str(path))
+            buf.seek(0)
+            ole = olefile.OleFileIO(buf)
             try:
                 subject = self._msg_read_property(ole, "__substg1.0_0037001F") or \
                           self._msg_read_property(ole, "__substg1.0_0037001E")
@@ -854,7 +860,7 @@ class Scanner:
                 if stream_name.endswith("001F"):
                     return data.decode("utf-16-le", errors="replace").rstrip("\x00")
                 else:
-                    return data.decode("utf-8", errors="replace").rstrip("\x00")
+                    return data.decode("cp1252", errors="replace").rstrip("\x00")
         except Exception:
             pass
         return None

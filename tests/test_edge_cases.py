@@ -1036,10 +1036,13 @@ class TestRescanCandidates:
         assert "doc.pdf" in m2.delta.rescan_candidates
 
     def test_rescan_candidates_sorted(self, tmp_path: Path) -> None:
+        """rescan_candidates should be sorted and only include files still present."""
         import json
         src = tmp_path / "src"
         src.mkdir()
-        (src / "a.txt").write_text("a")
+        # Create files that match the previous manifest paths
+        (src / "z.pdf").write_bytes(b"%PDF-1.4\x00")
+        (src / "a.pdf").write_bytes(b"%PDF-1.4\x00")
         prev_data = {
             "meta": {"scan_id": "id", "generated_at": "", "source_dir": str(src), "config": {}},
             "stats": {"total_files": 2, "supported_files": 2, "unsupported_files": 0,
@@ -1058,3 +1061,30 @@ class TestRescanCandidates:
         config = ScannerConfig(previous_manifest=str(prev))
         m2 = Scanner(source_dir=src, config=config).scan()
         assert m2.delta.rescan_candidates == ["a.pdf", "z.pdf"]
+
+    def test_rescan_candidates_excludes_deleted_files(self, tmp_path: Path) -> None:
+        """Files with prior failures that no longer exist should not be rescan candidates."""
+        import json
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "still_here.pdf").write_bytes(b"%PDF-1.4\x00")
+        # deleted.pdf is NOT created — it was in the previous manifest but no longer exists
+        prev_data = {
+            "meta": {"scan_id": "id", "generated_at": "", "source_dir": str(src), "config": {}},
+            "stats": {"total_files": 2, "supported_files": 2, "unsupported_files": 0,
+                       "text_files": 0, "binary_files": 2, "requires_vision": 0, "requires_specialist_tool": 2},
+            "routing_summary": {"baseline_ready": 0, "binary_only": 0, "requires_vision": 0, "requires_specialist_tool": 2},
+            "context": {"logic_version": "0.3.0", "scanner_version": "0.3.0", "python_version": "3.12", "platform": "linux", "dependencies": {}},
+            "delta": None,
+            "manifest_checksum": "",
+            "files": [
+                {"path": "still_here.pdf", "checksum_sha256": "", "errors": [{"code": "specialist_probe_failed", "message": "", "stage": "specialist"}]},
+                {"path": "deleted.pdf", "checksum_sha256": "", "errors": [{"code": "specialist_probe_failed", "message": "", "stage": "specialist"}]},
+            ],
+        }
+        prev = tmp_path / "prev.json"
+        prev.write_text(json.dumps(prev_data))
+        config = ScannerConfig(previous_manifest=str(prev))
+        m2 = Scanner(source_dir=src, config=config).scan()
+        assert m2.delta.rescan_candidates == ["still_here.pdf"]
+        assert "deleted.pdf" not in m2.delta.rescan_candidates
