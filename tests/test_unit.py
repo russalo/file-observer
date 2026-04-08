@@ -652,8 +652,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.3.0"
-        assert ctx.logic_version == "0.3.0"
+        assert ctx.scanner_version == "0.4.0"
+        assert ctx.logic_version == "0.4.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -691,7 +691,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.3.0"
+        assert data["context"]["scanner_version"] == "0.4.0"
 
 
 # ---------------------------------------------------------------------------
@@ -923,8 +923,203 @@ class TestMsgMetadata:
 
     def test_msg_specialist_tool_registered(self) -> None:
         from scanner.scanner import SPECIALIST_TOOLS
-        assert SPECIALIST_TOOLS.get(".msg") == "msg_envelope"
+        assert SPECIALIST_TOOLS.get(".msg") == "email_envelope"
 
     def test_png_specialist_tool_registered(self) -> None:
         from scanner.scanner import SPECIALIST_TOOLS
-        assert SPECIALIST_TOOLS.get(".png") == "png_header"
+        assert SPECIALIST_TOOLS.get(".png") == "image_structure"
+
+
+# ---------------------------------------------------------------------------
+# v0.4: Semantic specialist tool names
+# ---------------------------------------------------------------------------
+
+class TestSemanticToolNames:
+    def test_all_tool_values_semantic(self) -> None:
+        from scanner.scanner import SPECIALIST_TOOLS
+        for ext, tool in SPECIALIST_TOOLS.items():
+            # No implementation-leak names (no _scanner, _parser, _header, _envelope suffixes)
+            assert "_scanner" not in tool, f"{ext}: {tool}"
+            assert "_parser" not in tool, f"{ext}: {tool}"
+            assert "_header" not in tool, f"{ext}: {tool}"
+
+    def test_tool_name_mapping(self) -> None:
+        from scanner.scanner import SPECIALIST_TOOLS
+        assert SPECIALIST_TOOLS[".pdf"] == "pdf_extraction"
+        assert SPECIALIST_TOOLS[".png"] == "image_structure"
+        assert SPECIALIST_TOOLS[".jpg"] == "image_structure"
+        assert SPECIALIST_TOOLS[".jpeg"] == "image_structure"
+        assert SPECIALIST_TOOLS[".msg"] == "email_envelope"
+        assert SPECIALIST_TOOLS[".eml"] == "email_envelope"
+        assert SPECIALIST_TOOLS[".docx"] == "document_extraction"
+        assert SPECIALIST_TOOLS[".rtf"] == "document_extraction"
+        assert SPECIALIST_TOOLS[".xlsx"] == "spreadsheet_structure"
+
+    def test_version_is_0_4(self) -> None:
+        from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
+        assert SCANNER_VERSION == "0.4.0"
+        assert LOGIC_VERSION == "0.4.0"
+
+
+# ---------------------------------------------------------------------------
+# v0.4: JPEG SOF specialist
+# ---------------------------------------------------------------------------
+
+class TestJpegMetadata:
+    def _make_jpeg_sof0(self, width: int, height: int) -> bytes:
+        # Minimal JPEG: SOI + SOF0 marker
+        soi = b"\xff\xd8"
+        # SOF0: FF C0, length (2), precision (1), height (2), width (2), components...
+        sof_data = struct.pack(">HBH H", 11, 8, height, width) + b"\x01\x11\x00"
+        sof = b"\xff\xc0" + sof_data
+        return soi + sof
+
+    def test_valid_jpeg_sof0(self, scanner: Scanner) -> None:
+        sample = self._make_jpeg_sof0(1920, 1080)
+        meta = scanner._extract_jpeg_metadata(sample)
+        assert meta["width"] == 1920
+        assert meta["height"] == 1080
+
+    def test_valid_jpeg_progressive(self, scanner: Scanner) -> None:
+        # SOF2 (progressive) marker
+        soi = b"\xff\xd8"
+        sof_data = struct.pack(">HBH H", 11, 8, 600, 800) + b"\x01\x11\x00"
+        sof = b"\xff\xc2" + sof_data
+        sample = soi + sof
+        meta = scanner._extract_jpeg_metadata(sample)
+        assert meta["width"] == 800
+        assert meta["height"] == 600
+
+    def test_no_sof_marker(self, scanner: Scanner) -> None:
+        # Just SOI + some EXIF data, no SOF
+        sample = b"\xff\xd8\xff\xe1\x00\x10" + b"\x00" * 14
+        meta = scanner._extract_jpeg_metadata(sample)
+        assert meta["width"] is None
+        assert meta["height"] is None
+
+    def test_truncated_sof(self, scanner: Scanner) -> None:
+        # SOI + SOF marker but truncated before dimensions
+        sample = b"\xff\xd8\xff\xc0\x00\x0b\x08"
+        meta = scanner._extract_jpeg_metadata(sample)
+        assert meta["width"] is None
+
+    def test_jpeg_through_scan(self, tmp_path: Path) -> None:
+        sample = self._make_jpeg_sof0(640, 480)
+        (tmp_path / "photo.jpg").write_bytes(sample)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata["width"] == 640
+        assert rec.specialist_metadata["height"] == 480
+        assert rec.specialist_tool == "image_structure"
+
+
+# ---------------------------------------------------------------------------
+# v0.4: EML specialist
+# ---------------------------------------------------------------------------
+
+class TestEmlMetadata:
+    def test_basic_eml(self, scanner: Scanner) -> None:
+        eml = (
+            b"From: alice@example.com\r\n"
+            b"To: bob@example.com\r\n"
+            b"Subject: Test Email\r\n"
+            b"Date: Mon, 15 Mar 2026 10:30:00 +0000\r\n"
+            b"Message-ID: <abc123@example.com>\r\n"
+            b"\r\n"
+            b"Body text here\r\n"
+        )
+        meta = scanner._extract_eml_metadata(eml)
+        assert meta is not None
+        assert meta["subject"] == "Test Email"
+        assert "alice@example.com" in meta["from"]
+        assert "bob@example.com" in meta["to"]
+        assert meta["message_id"] is not None
+        assert meta["has_attachments"] is False
+
+    def test_eml_with_attachment(self, scanner: Scanner) -> None:
+        eml = (
+            b"From: alice@example.com\r\n"
+            b"To: bob@example.com\r\n"
+            b"Subject: With Attachment\r\n"
+            b"Content-Type: multipart/mixed; boundary=boundary\r\n"
+            b"\r\n"
+            b"--boundary\r\n"
+            b"Content-Type: text/plain\r\n\r\nHi\r\n"
+            b"--boundary\r\n"
+            b"Content-Disposition: attachment; filename=doc.pdf\r\n\r\ndata\r\n"
+            b"--boundary--\r\n"
+        )
+        meta = scanner._extract_eml_metadata(eml)
+        assert meta["has_attachments"] is True
+
+    def test_eml_missing_headers(self, scanner: Scanner) -> None:
+        eml = b"Just some text without headers\r\n"
+        meta = scanner._extract_eml_metadata(eml)
+        assert meta is not None
+        assert meta["subject"] is None
+
+    def test_eml_through_scan(self, tmp_path: Path) -> None:
+        eml = b"From: test@test.com\r\nSubject: Hello\r\n\r\nBody\r\n"
+        (tmp_path / "email.eml").write_bytes(eml)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_tool == "email_envelope"
+        assert rec.specialist_metadata["subject"] == "Hello"
+
+
+# ---------------------------------------------------------------------------
+# v0.4: XLSX specialist
+# ---------------------------------------------------------------------------
+
+class TestXlsxMetadata:
+    def test_xlsx_specialist_tool(self) -> None:
+        from scanner.scanner import SPECIALIST_TOOLS
+        assert SPECIALIST_TOOLS[".xlsx"] == "spreadsheet_structure"
+
+    def test_xlsx_invalid_file(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.xlsx").write_bytes(b"not a zip file")
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_xlsx_no_metadata_when_disabled(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xlsx").write_bytes(b"PK\x03\x04" + b"\x00" * 100)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_xlsx_deviation_provenance(self, tmp_path: Path) -> None:
+        """XLSX provenance should show bounded_deviation trigger."""
+        # Create a minimal valid xlsx-like zip (won't have real sheets but tests provenance)
+        import zipfile
+        from io import BytesIO
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1"/></sheets></workbook>')
+        (tmp_path / "test.xlsx").write_bytes(buf.getvalue())
+        scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
+        rec = scanner.scan().files[0]
+        if rec.specialist_metadata:
+            prov = rec.signal_provenance.get("specialist_metadata.sheet_names", {})
+            assert prov.get("trigger") == "bounded_deviation"
+            assert prov.get("detail", {}).get("read_budget_bytes") == 131072
+
+
+# ---------------------------------------------------------------------------
+# v0.4: ZIP entry validation
+# ---------------------------------------------------------------------------
+
+class TestZipEntryValidation:
+    def test_safe_entries(self) -> None:
+        assert Scanner._is_safe_zip_entry("xl/workbook.xml") is True
+        assert Scanner._is_safe_zip_entry("xl/worksheets/sheet1.xml") is True
+
+    def test_path_traversal_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("../../etc/passwd") is False
+        assert Scanner._is_safe_zip_entry("xl/../../../secret") is False
+
+    def test_absolute_path_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("/etc/passwd") is False
+        assert Scanner._is_safe_zip_entry("\\windows\\system32") is False

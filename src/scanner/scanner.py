@@ -40,16 +40,22 @@ try:
 except ImportError:
     tomllib = None  # type: ignore[assignment]
 
-import xml.etree.ElementTree as ET
+try:
+    from defusedxml.ElementTree import fromstring as xml_fromstring
+    _defusedxml_available = True
+except ImportError:
+    from xml.etree.ElementTree import fromstring as xml_fromstring
+    _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.3.0"
-LOGIC_VERSION = "0.3.0"
+SCANNER_VERSION = "0.4.0"
+LOGIC_VERSION = "0.4.0"
 
 
 SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
+    ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -97,11 +103,15 @@ TECHNOLOGY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 SPECIALIST_TOOLS: dict[str, str] = {
-    ".pdf": "pdf_scanner",
-    ".docx": "docx_parser",
-    ".rtf": "rtf_parser",
-    ".png": "png_header",
-    ".msg": "msg_envelope",
+    ".pdf": "pdf_extraction",
+    ".docx": "document_extraction",
+    ".rtf": "document_extraction",
+    ".png": "image_structure",
+    ".jpg": "image_structure",
+    ".jpeg": "image_structure",
+    ".msg": "email_envelope",
+    ".eml": "email_envelope",
+    ".xlsx": "spreadsheet_structure",
 }
 
 # Error code constants
@@ -388,6 +398,16 @@ class Scanner:
             deps["olefile"] = {"available": True, "version": olefile_ver}
         else:
             deps["olefile"] = {"available": False, "version": None}
+        # defusedxml
+        if _defusedxml_available:
+            try:
+                import defusedxml
+                dxml_ver = getattr(defusedxml, "__version__", "unknown")
+            except Exception:
+                dxml_ver = "unknown"
+            deps["defusedxml"] = {"available": True, "version": dxml_ver}
+        else:
+            deps["defusedxml"] = {"available": False, "version": None}
 
         return ScanContext(
             logic_version=LOGIC_VERSION,
@@ -611,7 +631,7 @@ class Scanner:
                 elif extension == ".json":
                     structural.document_keys = self.extract_json_keys(text)
 
-                elif extension == ".xml":
+                elif extension in {".xml", ".vx"}:
                     structural.document_keys = self.extract_xml_keys(text)
 
                 elif extension == ".toml":
@@ -645,16 +665,23 @@ class Scanner:
                 specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
                 if specialist_metadata is not None:
                     tool = SPECIALIST_TOOLS.get(extension, "unknown")
+                    is_deviation = extension == ".xlsx"
                     for key in specialist_metadata:
                         prov_key = f"specialist_metadata.{key}"
-                        trigger = "bounded_sample"
+                        trigger = "bounded_deviation" if is_deviation else "bounded_sample"
                         if specialist_metadata[key] is None:
                             trigger = "missing_from_bounds"
+                        prov_detail: dict[str, Any] = {"tool": tool}
+                        if is_deviation:
+                            prov_detail["read_budget_bytes"] = 131072
+                            prov_detail["reason"] = "zip_central_directory_required"
+                        else:
+                            prov_detail["sample_size"] = len(sample)
                         provenance[prov_key] = asdict(ProvenanceEntry(
                             layer="derived",
                             method=f"_{extension.lstrip('.')}_specialist",
                             trigger=trigger,
-                            detail={"tool": tool, "sample_size": len(sample)},
+                            detail=prov_detail,
                         ))
             except Exception as exc:
                 errors.append(ErrorRecord(
@@ -749,8 +776,14 @@ class Scanner:
             return self._extract_pdf_metadata(sample)
         if extension == ".png":
             return self._extract_png_metadata(sample)
+        if extension in {".jpg", ".jpeg"}:
+            return self._extract_jpeg_metadata(sample)
         if extension == ".msg":
             return self._extract_msg_metadata(sample)
+        if extension == ".eml":
+            return self._extract_eml_metadata(sample)
+        if extension == ".xlsx":
+            return self._extract_xlsx_metadata(path)
         return None
 
     def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
@@ -824,6 +857,118 @@ class Scanner:
         bit_depth = sample[24]
         return {"width": width, "height": height, "bit_depth": bit_depth}
 
+    def _extract_jpeg_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        # Scan for SOF0 (0xFFC0) or SOF2 (0xFFC2) markers
+        i = 0
+        while i < len(sample) - 1:
+            if sample[i] != 0xFF:
+                i += 1
+                continue
+            marker = sample[i + 1]
+            if marker in (0xC0, 0xC2):  # SOF0 or SOF2
+                # SOF frame: 2 bytes length, 1 byte precision, 2 bytes height, 2 bytes width
+                if i + 9 > len(sample):
+                    return {"width": None, "height": None}
+                height = struct.unpack(">H", sample[i + 5:i + 7])[0]
+                width = struct.unpack(">H", sample[i + 7:i + 9])[0]
+                return {"width": width, "height": height}
+            if marker == 0xD8 or marker == 0xD9:  # SOI or EOI
+                i += 2
+                continue
+            if marker == 0x00:  # stuffed byte
+                i += 2
+                continue
+            # Other markers: skip length
+            if i + 3 < len(sample):
+                seg_len = struct.unpack(">H", sample[i + 2:i + 4])[0]
+                i += 2 + seg_len
+            else:
+                break
+        return {"width": None, "height": None}
+
+    def _extract_eml_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        try:
+            from email.parser import BytesParser
+            from email.policy import default as email_policy
+            msg = BytesParser(policy=email_policy).parsebytes(sample)
+            subject = msg.get("Subject")
+            from_addr = msg.get("From")
+            to_addr = msg.get("To")
+            date_str = msg.get("Date")
+            message_id = msg.get("Message-ID")
+            # Detect attachments
+            has_attachments = False
+            content_type = msg.get_content_type() or ""
+            if "multipart/mixed" in content_type:
+                has_attachments = True
+            elif sample.find(b"Content-Disposition: attachment") != -1:
+                has_attachments = True
+            return {
+                "subject": str(subject) if subject else None,
+                "from": str(from_addr) if from_addr else None,
+                "to": str(to_addr) if to_addr else None,
+                "date": str(date_str) if date_str else None,
+                "message_id": str(message_id) if message_id else None,
+                "has_attachments": has_attachments,
+            }
+        except Exception:
+            return None
+
+    def _extract_xlsx_metadata(self, path: Path) -> dict[str, Any] | None:
+        import zipfile
+        from io import BytesIO
+        # Read up to deviation budget (128KB)
+        deviation_budget = 131072
+        try:
+            raw = path.read_bytes()[:deviation_budget]
+        except Exception:
+            return None
+        try:
+            zf = zipfile.ZipFile(BytesIO(raw))
+        except (zipfile.BadZipFile, Exception):
+            return None
+        try:
+            sheet_names: list[str] = []
+            header_rows: dict[str, list[str]] = {}
+            # Extract sheet names from workbook.xml
+            if "xl/workbook.xml" in zf.namelist():
+                if not self._is_safe_zip_entry("xl/workbook.xml"):
+                    return None
+                wb_xml = zf.read("xl/workbook.xml").decode("utf-8", errors="replace")
+                try:
+                    root = xml_fromstring(wb_xml)
+                    ns = {"": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+                    for sheet in root.iter("{http://schemas.openxmlformats.org/spreadsheetml/2006/main}sheet"):
+                        name = sheet.get("name")
+                        if name:
+                            sheet_names.append(name)
+                except Exception:
+                    pass
+            # Extract header rows from sheet XML files
+            for i, sheet_name in enumerate(sheet_names[:10], start=1):  # cap at 10 sheets
+                sheet_path = f"xl/worksheets/sheet{i}.xml"
+                if sheet_path not in zf.namelist():
+                    continue
+                if not self._is_safe_zip_entry(sheet_path):
+                    continue
+                try:
+                    sheet_xml = zf.read(sheet_path).decode("utf-8", errors="replace")
+                    sroot = xml_fromstring(sheet_xml)
+                    ns_main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                    rows = list(sroot.iter(f"{{{ns_main}}}row"))
+                    if rows:
+                        first_row = rows[0]
+                        cells = []
+                        for cell in first_row.iter(f"{{{ns_main}}}v"):
+                            cells.append(cell.text or "")
+                        if cells:
+                            header_rows[sheet_name] = cells
+                except Exception:
+                    continue
+            return {"sheet_names": sheet_names, "header_rows": header_rows}
+        finally:
+            zf.close()
+
     def _extract_msg_metadata(self, sample: bytes) -> dict[str, Any] | None:
         if not olefile:
             return None
@@ -843,10 +988,20 @@ class Scanner:
                             self._msg_read_property(ole, "__substg1.0_0042001E")
                 to_addr = self._msg_read_property(ole, "__substg1.0_0E04001F") or \
                           self._msg_read_property(ole, "__substg1.0_0E04001E")
+                # v0.4: enriched fields for EML parity
+                date_val = self._msg_read_property(ole, "__substg1.0_0047001F") or \
+                           self._msg_read_property(ole, "__substg1.0_0047001E")
+                message_id = self._msg_read_property(ole, "__substg1.0_1035001F") or \
+                             self._msg_read_property(ole, "__substg1.0_1035001E")
+                # has_attachments from PR_HASATTACH (0x0E1B) — boolean property
+                has_attachments = ole.exists("__attach_version1.0_#00000000")
                 return {
                     "subject": subject,
                     "from": from_addr,
                     "to": to_addr,
+                    "date": date_val,
+                    "message_id": message_id,
+                    "has_attachments": has_attachments,
                 }
             finally:
                 ole.close()
@@ -864,6 +1019,14 @@ class Scanner:
         except Exception:
             pass
         return None
+
+    @staticmethod
+    def _is_safe_zip_entry(name: str) -> bool:
+        if name.startswith("/") or name.startswith("\\"):
+            return False
+        if ".." in name.split("/") or ".." in name.split("\\"):
+            return False
+        return True
 
     def hash_file(self, path: Path) -> str:
         digest = sha256()
@@ -1107,13 +1270,12 @@ class Scanner:
 
     def extract_xml_keys(self, text: str) -> list[str]:
         try:
-            root = ET.fromstring(text)
-            # Root element name + sorted unique direct child tag names
+            root = xml_fromstring(text)
             keys = [root.tag]
             child_tags = sorted({child.tag for child in root})
             keys.extend(child_tags)
             return keys
-        except ET.ParseError:
+        except Exception:
             return []
 
     def extract_toml_keys(self, text: str) -> list[str]:

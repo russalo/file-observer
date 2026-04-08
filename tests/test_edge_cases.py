@@ -807,7 +807,7 @@ class TestPngEdgeCases:
         scanner = Scanner(source_dir=tmp_path)
         rec = scanner.scan().files[0]
         assert rec.requires_specialist_tool is True
-        assert rec.specialist_tool == "png_header"
+        assert rec.specialist_tool == "image_structure"
 
     def test_png_no_metadata_when_specialists_disabled(self, tmp_path: Path) -> None:
         (tmp_path / "test.png").write_bytes(self._make_png(100, 100))
@@ -842,7 +842,7 @@ class TestMsgEdgeCases:
         scanner = Scanner(source_dir=tmp_path)
         rec = scanner.scan().files[0]
         assert rec.requires_specialist_tool is True
-        assert rec.specialist_tool == "msg_envelope"
+        assert rec.specialist_tool == "email_envelope"
 
     def test_msg_no_metadata_when_specialists_disabled(self, tmp_path: Path) -> None:
         (tmp_path / "email.msg").write_bytes(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)

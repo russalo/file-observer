@@ -165,7 +165,7 @@ class TestRoutingFlags:
         rec = _find(manifest, "20250718.pdf")
         assert rec.is_binary is True
         assert rec.requires_specialist_tool is True
-        assert rec.specialist_tool == "pdf_scanner"
+        assert rec.specialist_tool == "pdf_extraction"
 
     def test_txt_is_text(self, manifest: ScanManifest) -> None:
         rec = _find(manifest, "codepw.txt")
@@ -186,10 +186,10 @@ class TestRoutingFlags:
     def test_docx_requires_specialist(self, manifest: ScanManifest) -> None:
         rec = _find(manifest, "PS-GEN-idx.docx")
         assert rec.requires_specialist_tool is True
-        assert rec.specialist_tool == "docx_parser"
+        assert rec.specialist_tool == "document_extraction"
 
     def test_unsupported_extension_marked(self, manifest: ScanManifest) -> None:
-        rec = _find(manifest, "AAA Garden Grove Intersection Imp.xlsx")
+        rec = _find(manifest, "Job SS.xlsx.filepart")
         codes = [e.code for e in rec.errors]
         assert "unsupported_extension" in codes
 

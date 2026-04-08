@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "scanner"
-version = "0.3.0"
+version = "0.4.0"
 requires-python = ">=3.12"
 dependencies = ["python-magic", "chardet"]
 
 [project.optional-dependencies]
 yaml = ["PyYAML"]
 msg = ["olefile"]
-dev = ["pytest", "PyYAML", "olefile"]
+security = ["defusedxml"]
+dev = ["pytest", "PyYAML", "olefile", "defusedxml"]
 
 [project.scripts]
 scanner = "scanner.scanner:main"

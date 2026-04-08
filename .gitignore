@@ -16,6 +16,12 @@ src/scanner/manifests/
 # pytest
 .pytest_cache/
 
+# Scratch / working notes
+scratch/
+
+# Generated manifests (local output)
+manifests/
+
 # OS
 .DS_Store
 Thumbs.db
