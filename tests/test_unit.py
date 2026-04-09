@@ -95,6 +95,18 @@ class TestExtractFrontmatter:
         fm = scanner.extract_frontmatter(text)
         assert fm.exists is False
 
+    def test_frontmatter_crlf(self, scanner: Scanner) -> None:
+        text = "---\r\ntitle: Hello\r\ndate: 2026-01-01\r\n---\r\nBody text"
+        fm = scanner.extract_frontmatter(text)
+        assert fm.exists is True
+        assert "title" in fm.keys
+
+    def test_frontmatter_malformed_crlf(self, scanner: Scanner) -> None:
+        text = "---\r\ntitle: Broken\r\nThis never closes"
+        fm = scanner.extract_frontmatter(text)
+        assert fm.exists is False
+        assert fm.raw is not None
+
 
 # ---------------------------------------------------------------------------
 # extract_assets
@@ -304,6 +316,12 @@ class TestDetectRequiresVision:
 
     def test_pdf_with_text_markers(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 /Font /Text BT\n"
+        result, prov = scanner.detect_requires_vision(sample, "application/pdf", ".pdf", True)
+        assert result is False
+        assert prov.trigger == "pdf_has_text_markers"
+
+    def test_pdf_with_crlf_text_markers(self, scanner: Scanner) -> None:
+        sample = b"%PDF-1.4 BT\r\n some text ET\r\n"
         result, prov = scanner.detect_requires_vision(sample, "application/pdf", ".pdf", True)
         assert result is False
         assert prov.trigger == "pdf_has_text_markers"
@@ -1124,6 +1142,23 @@ class TestZipEntryValidation:
     def test_absolute_path_rejected(self) -> None:
         assert Scanner._is_safe_zip_entry("/etc/passwd") is False
         assert Scanner._is_safe_zip_entry("\\windows\\system32") is False
+
+    def test_drive_letter_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("C:\\evil.txt") is False
+        assert Scanner._is_safe_zip_entry("D:/path/file") is False
+
+    def test_mixed_separator_traversal_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("foo\\../bar") is False
+        assert Scanner._is_safe_zip_entry("foo\\..\\bar") is False
+
+    def test_current_dir_reference_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("./hidden") is False
+        assert Scanner._is_safe_zip_entry("foo/./bar") is False
+
+    def test_normal_nested_paths_safe(self) -> None:
+        assert Scanner._is_safe_zip_entry("word/document.xml") is True
+        assert Scanner._is_safe_zip_entry("docProps/core.xml") is True
+        assert Scanner._is_safe_zip_entry("xl/worksheets/sheet1.xml") is True
 
 
 # ---------------------------------------------------------------------------

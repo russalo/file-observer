@@ -91,8 +91,8 @@ CODE_STRIP_RE = re.compile(
     r"|`[^`]+`",           # inline code spans
     re.DOTALL,
 )
-FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
-FRONTMATTER_OPEN_RE = re.compile(r"\A---\n", re.DOTALL)
+FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
+FRONTMATTER_OPEN_RE = re.compile(r"\A---\r?\n", re.DOTALL)
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f]")
 ASSET_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 FILENAME_DATE_RE = re.compile(r"(\d{4})[-_](\d{2})[-_](\d{2})")
@@ -352,7 +352,7 @@ class Scanner:
         return patterns
 
     def _is_ignored(self, rel_path: Path) -> bool:
-        rel_str = str(rel_path).replace("\\", "/")
+        rel_str = rel_path.as_posix()
         for pattern in self._ignore_patterns:
             # Directory pattern (ends with /)
             if pattern.endswith("/"):
@@ -565,7 +565,7 @@ class Scanner:
                 stage="universal",
             ))
             return FileRecord(
-                path=str(rel_path).replace("\\", "/"),
+                path=rel_path.as_posix(),
                 filename=path.name,
                 extension=path.suffix.lower(),
                 mime_type="application/octet-stream",
@@ -740,7 +740,7 @@ class Scanner:
                 ))
 
         return FileRecord(
-            path=str(rel_path).replace("\\", "/"),
+            path=rel_path.as_posix(),
             filename=path.name,
             extension=extension,
             mime_type=mime_type,
@@ -847,6 +847,7 @@ class Scanner:
         has_text_streams = (
             b"/Text" in sample
             or b"BT\n" in sample
+            or b"BT\r\n" in sample
             or b"BT\r" in sample
             or b"/Font" in sample
         )
@@ -1222,9 +1223,19 @@ class Scanner:
 
     @staticmethod
     def _is_safe_zip_entry(name: str) -> bool:
-        if name.startswith("/") or name.startswith("\\"):
+        # Normalize separators
+        normalized = name.replace("\\", "/")
+        # Reject absolute paths
+        if normalized.startswith("/"):
             return False
-        if ".." in name.split("/") or ".." in name.split("\\"):
+        # Reject drive letters (e.g. C:/, D:\)
+        if len(normalized) > 1 and normalized[1] == ":":
+            return False
+        # Reject parent directory traversal
+        if ".." in normalized.split("/"):
+            return False
+        # Reject current directory references
+        if normalized.startswith("./") or "/./" in normalized:
             return False
         return True
 
@@ -1297,6 +1308,7 @@ class Scanner:
             has_text_markers = (
                 b"/Text" in sample
                 or b"BT\n" in sample
+                or b"BT\r\n" in sample
                 or b"BT\r" in sample
                 or b"/Font" in sample
             )
@@ -1373,7 +1385,9 @@ class Scanner:
             return FrontmatterRecord(exists=True, keys=keys, raw=raw)
         # Detect malformed frontmatter: opening --- without closing ---
         if FRONTMATTER_OPEN_RE.match(text):
-            raw = text.split("\n", 1)[1] if "\n" in text else ""
+            # Normalize line endings then split
+            normalized = text.replace("\r\n", "\n")
+            raw = normalized.split("\n", 1)[1] if "\n" in normalized else ""
             return FrontmatterRecord(exists=False, keys=[], raw=raw)
         return FrontmatterRecord()
 
