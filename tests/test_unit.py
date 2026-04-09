@@ -652,8 +652,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.4.0"
-        assert ctx.logic_version == "0.4.0"
+        assert ctx.scanner_version == "0.4.1"
+        assert ctx.logic_version == "0.4.1"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -691,7 +691,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.4.0"
+        assert data["context"]["scanner_version"] == "0.4.1"
 
 
 # ---------------------------------------------------------------------------
@@ -957,8 +957,8 @@ class TestSemanticToolNames:
 
     def test_version_is_0_4(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.4.0"
-        assert LOGIC_VERSION == "0.4.0"
+        assert SCANNER_VERSION == "0.4.1"
+        assert LOGIC_VERSION == "0.4.1"
 
 
 # ---------------------------------------------------------------------------
