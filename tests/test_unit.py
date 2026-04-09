@@ -653,7 +653,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
         assert ctx.scanner_version == "0.4.1"
-        assert ctx.logic_version == "0.4.1"
+        assert ctx.logic_version == "0.4.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -958,7 +958,7 @@ class TestSemanticToolNames:
     def test_version_is_0_4(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
         assert SCANNER_VERSION == "0.4.1"
-        assert LOGIC_VERSION == "0.4.1"
+        assert LOGIC_VERSION == "0.4.0"  # routing logic unchanged in patch
 
 
 # ---------------------------------------------------------------------------

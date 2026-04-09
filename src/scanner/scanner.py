@@ -71,7 +71,7 @@ except ImportError:
 
 
 SCANNER_VERSION = "0.4.1"
-LOGIC_VERSION = "0.4.1"
+LOGIC_VERSION = "0.4.0"
 
 
 SUPPORTED_EXTENSIONS = {

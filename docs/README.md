@@ -917,7 +917,6 @@ python -m pytest tests/test_unit.py::TestExtractTags::test_basic_hashtags -v
 ### Project conventions
 
 - Single-module implementation: all scanner logic lives in `src/scanner/scanner.py`.
-- `docs/SPEC.md` is authoritative. RFC normative language applies.
-- `docs/v0.4.0_RFC_Specification.md` is the current authoritative spec. Prior versions: `docs/v0.3.0 RFC_Specification.md`, `docs/COMPLIANCE-v0.3.md`, `docs/COMPLIANCE-v0.2.md`, `docs/COMPLIANCE.md`.
+- `docs/v0.4.0_RFC_Specification.md` is the current authoritative spec. RFC normative language applies (BCP 14). Prior specs: `docs/v0.3.0 RFC_Specification.md`, `docs/SPEC.md` (v0.1).
 - External dependencies (`python-magic`, `chardet`, `PyYAML`) are imported with graceful fallbacks.
 - All outputs are deterministic: sorted file iteration, sorted tags, sorted keys.
