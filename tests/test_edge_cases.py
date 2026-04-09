@@ -816,20 +816,20 @@ class TestPngEdgeCases:
         assert rec.specialist_metadata is None
 
     def test_real_png_fixture(self) -> None:
-        """Test against the real PNG fixture file."""
+        """Test against the sample PNG fixture file."""
         from pathlib import Path as P
-        fixture = P(__file__).parent / "fixtures" / "SIG.png"
+        fixture = P(__file__).parent / "fixtures" / "sample_logo.png"
         if not fixture.exists():
-            pytest.skip("SIG.png fixture not present")
+            pytest.skip("sample_logo.png fixture not present")
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=fixture.parent, config=config)
         manifest = scanner.scan()
-        recs = [f for f in manifest.files if f.filename == "SIG.png"]
+        recs = [f for f in manifest.files if f.filename == "sample_logo.png"]
         assert len(recs) == 1
         rec = recs[0]
-        if rec.specialist_metadata and rec.specialist_metadata.get("width"):
-            assert rec.specialist_metadata["width"] > 0
-            assert rec.specialist_metadata["height"] > 0
+        assert rec.specialist_metadata is not None
+        assert rec.specialist_metadata["width"] == 200
+        assert rec.specialist_metadata["height"] == 100
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,8 @@
+domains:
+  - example.com
+  - test.org
+settings:
+  timeout: 30
+  retries: 3
+logging:
+  level: info

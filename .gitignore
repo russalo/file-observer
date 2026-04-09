@@ -19,6 +19,30 @@ src/scanner/manifests/
 # Scratch / working notes
 scratch/
 
+# Personal/project-specific test fixtures (keep only sample_* and edge_cases/)
+tests/fixtures/*.pdf
+tests/fixtures/*.docx
+tests/fixtures/*.xlsx
+tests/fixtures/*.doc
+tests/fixtures/*.png
+tests/fixtures/*.jpg
+tests/fixtures/*.txt
+tests/fixtures/*.md
+tests/fixtures/*.csv
+tests/fixtures/*.html
+tests/fixtures/*.yaml
+tests/fixtures/*.json
+tests/fixtures/*.mdx
+tests/fixtures/*.filepart
+# Whitelist the clean sample fixtures
+!tests/fixtures/sample_*
+!tests/fixtures/README.md
+# Whitelist the generated test data sets
+!tests/fixtures/csv_*
+!tests/fixtures/json_*
+!tests/fixtures/md_*
+!tests/fixtures/mdx_*
+
 # Generated manifests (local output)
 manifests/
 

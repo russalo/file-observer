@@ -1,0 +1,10 @@
+{
+  "name": "core-plugins",
+  "version": "1.0",
+  "plugins": [
+    "auth",
+    "logging",
+    "cache"
+  ],
+  "enabled": true
+}
