@@ -1467,3 +1467,78 @@ class TestDipSwitches:
         manifest = scanner.scan()
         assert manifest.meta.config["specialist_budget"] == 262144
         assert manifest.meta.config["extension_overrides"] == {".csv": {"baseline_max_bytes": 999999}}
+
+
+# ---------------------------------------------------------------------------
+# v0.6: Structural signatures and polyglot detection
+# ---------------------------------------------------------------------------
+
+class TestStructuralSignatures:
+    def test_file_signature_present(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("Hello world")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.file_signature is not None
+        assert "magic_bytes" in rec.file_signature
+        assert rec.file_signature["magic_length"] > 0
+
+    def test_file_signature_null_for_empty(self, tmp_path: Path) -> None:
+        (tmp_path / "empty.txt").write_bytes(b"")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.file_signature is None
+
+    def test_file_signature_hex_format(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_bytes(b"\xff\xd8\xff\xe0test")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.file_signature["magic_bytes"].startswith("ffd8ffe0")
+
+    def test_format_signatures_png(self, tmp_path: Path) -> None:
+        import struct as st
+        sig = b"\x89PNG\r\n\x1a\n"
+        ihdr = st.pack(">I", 13) + b"IHDR" + st.pack(">II", 10, 10) + bytes([8, 2, 0, 0, 0])
+        (tmp_path / "img.png").write_bytes(sig + ihdr)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert len(rec.format_signatures) >= 1
+        assert rec.format_signatures[0]["format"] == "image/png"
+
+    def test_format_signatures_empty_for_unknown(self, tmp_path: Path) -> None:
+        (tmp_path / "random.dat").write_bytes(bytes(range(50, 100)))
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.format_signatures == []
+
+    def test_polyglot_detected(self, tmp_path: Path) -> None:
+        # JPEG header + PDF content
+        poly = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 5 + b"%PDF-1.4 content"
+        (tmp_path / "poly.jpg").write_bytes(poly)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.is_polyglot is True
+        assert len(rec.format_signatures) >= 2
+
+    def test_not_polyglot_single_format(self, tmp_path: Path) -> None:
+        (tmp_path / "plain.txt").write_text("Just plain text nothing special")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.is_polyglot is False
+
+
+class TestSpecialistMimeGuard:
+    def test_text_file_as_pdf_skipped(self, tmp_path: Path) -> None:
+        (tmp_path / "fake.pdf").write_text("This is just text")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+        codes = [e.code for e in rec.errors]
+        assert "specialist_probe_failed" in codes
+
+    def test_real_pdf_not_skipped(self, tmp_path: Path) -> None:
+        (tmp_path / "real.pdf").write_bytes(b"%PDF-1.4\x00" + b"\x00" * 50)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is not None

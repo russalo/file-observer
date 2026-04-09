@@ -247,6 +247,9 @@ class FileRecord:
     structural: StructuralRecord
     mime_analysis: MimeAnalysisRecord
     specialist_metadata: dict[str, Any] | None
+    file_signature: dict[str, Any] | None = None
+    format_signatures: list[dict[str, Any]] = field(default_factory=list)
+    is_polyglot: bool = False
     signal_provenance: dict[str, Any] = field(default_factory=dict)
     errors: list[ErrorRecord] = field(default_factory=list)
 
@@ -312,6 +315,32 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".docx": "document",
     ".doc": "document",
     ".rtf": "document",
+}
+
+
+# Magic byte signatures for polyglot/multi-format detection
+# (pattern, offset, format_mime) — offset=None means scan entire sample
+MAGIC_SIGNATURES: list[tuple[bytes, int | None, str]] = [
+    (b"\x89PNG\r\n\x1a\n", 0, "image/png"),
+    (b"\xff\xd8\xff", 0, "image/jpeg"),
+    (b"%PDF-", None, "application/pdf"),
+    (b"PK\x03\x04", 0, "application/zip"),
+    (b"\xd0\xcf\x11\xe0", 0, "application/x-ole-storage"),
+    (b"{\\rtf", 0, "application/rtf"),
+    (b"GIF87a", 0, "image/gif"),
+    (b"GIF89a", 0, "image/gif"),
+    (b"RIFF", 0, "riff_container"),
+]
+
+# MIME types a specialist namespace accepts — skip if mime_type doesn't match
+SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
+    "pdf": {"application/pdf"},
+    "image": {"image/png", "image/jpeg", "image/gif", "image/webp"},
+    "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
+    "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"},
+    "document": {"application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                 "application/msword", "application/x-ole-storage", "text/rtf", "application/rtf",
+                 "application/CDFV2", "application/octet-stream"},
 }
 
 
@@ -651,6 +680,7 @@ class Scanner:
         sidecar_exists = self.detect_sidecar(path)
 
         sample = self.read_sample(path)
+        file_signature, format_signatures, is_polyglot = self.scan_signatures(sample)
         is_binary, binary_prov = self.detect_binary(sample, mime_type)
         provenance["is_binary"] = asdict(binary_prov)
         specialist_tool = SPECIALIST_TOOLS.get(extension)
@@ -786,8 +816,19 @@ class Scanner:
                     stage="specialist",
                 ))
             try:
-                raw_metadata = self.extract_specialist_metadata(path, extension, sample, eff["specialist_budget"])
-                if raw_metadata is None and extension in SPECIALIST_TOOLS:
+                # MIME guard: skip specialist if mime_type doesn't match expected format
+                ns = SPECIALIST_NAMESPACE.get(extension)
+                guard = SPECIALIST_MIME_GUARD.get(ns, set()) if ns else set()
+                if guard and mime_type not in guard:
+                    errors.append(ErrorRecord(
+                        code=ERR_SPECIALIST_PROBE_FAILED,
+                        message=f"mime_type {mime_type} does not match expected formats for {ns} specialist — skipped",
+                        stage="specialist",
+                    ))
+                    raw_metadata = None
+                else:
+                    raw_metadata = self.extract_specialist_metadata(path, extension, sample, eff["specialist_budget"])
+                if raw_metadata is None and extension in SPECIALIST_TOOLS and (not guard or mime_type in guard):
                     errors.append(ErrorRecord(
                         code=ERR_SPECIALIST_PROBE_FAILED,
                         message=f"specialist returned null for {extension}",
@@ -850,6 +891,9 @@ class Scanner:
             structural=structural,
             mime_analysis=mime_analysis,
             specialist_metadata=specialist_metadata,
+            file_signature=file_signature,
+            format_signatures=format_signatures,
+            is_polyglot=is_polyglot,
             signal_provenance=provenance,
             errors=errors,
         )
@@ -1595,6 +1639,30 @@ class Scanner:
             if pattern.search(text):
                 found.add(name)
         return sorted(found)
+
+    def scan_signatures(self, sample: bytes) -> tuple[dict[str, Any] | None, list[dict[str, Any]], bool]:
+        """Scan sample for magic byte signatures. Returns (file_signature, format_signatures, is_polyglot)."""
+        if not sample:
+            return None, [], False
+        # Raw file signature (first 16 bytes as hex)
+        sig_len = min(16, len(sample))
+        file_sig = {"magic_bytes": sample[:sig_len].hex(), "magic_length": sig_len}
+        # Scan for known format signatures
+        found: list[dict[str, Any]] = []
+        seen_formats: set[str] = set()
+        for pattern, offset, fmt in MAGIC_SIGNATURES:
+            if offset is not None:
+                if sample[offset:offset + len(pattern)] == pattern:
+                    found.append({"format": fmt, "offset": offset})
+                    seen_formats.add(fmt)
+            else:
+                idx = sample.find(pattern)
+                if idx >= 0:
+                    found.append({"format": fmt, "offset": idx})
+                    seen_formats.add(fmt)
+        found.sort(key=lambda x: x["offset"])
+        is_polyglot = len(seen_formats) > 1
+        return file_sig, found, is_polyglot
 
     def detect_sidecar(self, path: Path) -> bool:
         candidates = [
