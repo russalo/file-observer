@@ -967,11 +967,11 @@ class TestSemanticToolNames:
 
 class TestJpegMetadata:
     def _make_jpeg_sof0(self, width: int, height: int) -> bytes:
-        # Minimal JPEG: SOI + SOF0 marker
+        # SOF0: FF C0 + length(2) + precision(1) + height(2) + width(2) + components
         soi = b"\xff\xd8"
-        # SOF0: FF C0, length (2), precision (1), height (2), width (2), components...
-        sof_data = struct.pack(">HBH H", 11, 8, height, width) + b"\x01\x11\x00"
-        sof = b"\xff\xc0" + sof_data
+        components = b"\x01\x11\x00"
+        seg_length = 2 + 1 + 2 + 2 + len(components)
+        sof = b"\xff\xc0" + struct.pack(">H", seg_length) + struct.pack(">B", 8) + struct.pack(">HH", height, width) + components
         return soi + sof
 
     def test_valid_jpeg_sof0(self, scanner: Scanner) -> None:
@@ -983,8 +983,9 @@ class TestJpegMetadata:
     def test_valid_jpeg_progressive(self, scanner: Scanner) -> None:
         # SOF2 (progressive) marker
         soi = b"\xff\xd8"
-        sof_data = struct.pack(">HBH H", 11, 8, 600, 800) + b"\x01\x11\x00"
-        sof = b"\xff\xc2" + sof_data
+        components = b"\x01\x11\x00"
+        seg_length = 2 + 1 + 2 + 2 + len(components)
+        sof = b"\xff\xc2" + struct.pack(">H", seg_length) + struct.pack(">B", 8) + struct.pack(">HH", 600, 800) + components
         sample = soi + sof
         meta = scanner._extract_jpeg_metadata(sample)
         assert meta["width"] == 800

