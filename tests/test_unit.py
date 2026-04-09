@@ -740,8 +740,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.5.0"
-        assert ctx.logic_version == "0.5.0"
+        assert ctx.scanner_version == "0.6.0"
+        assert ctx.logic_version == "0.6.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -779,7 +779,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.5.0"
+        assert data["context"]["scanner_version"] == "0.6.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1045,8 +1045,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.5.0"
-        assert LOGIC_VERSION == "0.5.0"  # routing logic unchanged in patch
+        assert SCANNER_VERSION == "0.6.0"
+        assert LOGIC_VERSION == "0.6.0"  # routing logic unchanged in patch
 
 
 # ---------------------------------------------------------------------------
@@ -1384,3 +1384,86 @@ class TestRtfMetadata:
         assert rec.specialist_tool == "document_extraction"
         assert rec.specialist_metadata["document"]["title"] == "Test Doc"
         assert rec.specialist_metadata["document"]["author"] == "Alice"
+
+
+# ---------------------------------------------------------------------------
+# v0.6: Dip switches — configurable depth
+# ---------------------------------------------------------------------------
+
+class TestDipSwitches:
+    def test_specialist_budget_in_config(self) -> None:
+        config = ScannerConfig()
+        assert config.specialist_budget == 131072
+
+    def test_extension_overrides_default_empty(self) -> None:
+        config = ScannerConfig()
+        assert config.extension_overrides == {}
+
+    def test_effective_config_no_override(self) -> None:
+        config = ScannerConfig(baseline_max_bytes=65536)
+        eff = config.effective_for(".txt")
+        assert eff["baseline_max_bytes"] == 65536
+        assert eff["specialist_budget"] == 131072
+
+    def test_effective_config_with_override(self) -> None:
+        config = ScannerConfig(
+            baseline_max_bytes=65536,
+            extension_overrides={".csv": {"baseline_max_bytes": 1048576}}
+        )
+        eff_csv = config.effective_for(".csv")
+        eff_txt = config.effective_for(".txt")
+        assert eff_csv["baseline_max_bytes"] == 1048576
+        assert eff_txt["baseline_max_bytes"] == 65536
+
+    def test_effective_enforces_sample_size_minimum(self) -> None:
+        config = ScannerConfig(
+            sample_size=8192,
+            extension_overrides={".txt": {"baseline_max_bytes": 100}}
+        )
+        eff = config.effective_for(".txt")
+        assert eff["baseline_max_bytes"] == 8192  # enforced minimum
+
+    def test_specialist_budget_override(self) -> None:
+        config = ScannerConfig(
+            specialist_budget=131072,
+            extension_overrides={".pdf": {"specialist_budget": 524288}}
+        )
+        eff = config.effective_for(".pdf")
+        assert eff["specialist_budget"] == 524288
+
+    def test_deep_extract_profile(self, tmp_path: Path) -> None:
+        from scanner.scanner import SCAN_PROFILES
+        profile = SCAN_PROFILES["deep_extract"]
+        assert profile["baseline_max_bytes"] == 1048576
+        assert profile["specialist_budget"] == 524288
+        assert profile["enable_specialists"] is True
+
+    def test_fast_sort_profile(self) -> None:
+        from scanner.scanner import SCAN_PROFILES
+        profile = SCAN_PROFILES["fast_sort"]
+        assert profile["baseline_max_bytes"] == 8192
+        assert profile["enable_specialists"] is False
+
+    def test_override_applies_to_scan(self, tmp_path: Path) -> None:
+        # Create a file larger than 100 bytes
+        (tmp_path / "big.txt").write_text("x" * 500)
+        config = ScannerConfig(
+            baseline_max_bytes=100,
+            extension_overrides={".txt": {"baseline_max_bytes": 50000}}
+        )
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        # Should have extracted content (override gives enough bytes)
+        assert rec.content_preview is not None
+        assert len(rec.content_preview) > 0
+
+    def test_config_in_manifest(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(
+            specialist_budget=262144,
+            extension_overrides={".csv": {"baseline_max_bytes": 999999}}
+        )
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        manifest = scanner.scan()
+        assert manifest.meta.config["specialist_budget"] == 262144
+        assert manifest.meta.config["extension_overrides"] == {".csv": {"baseline_max_bytes": 999999}}

@@ -5,10 +5,10 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.5.0
-    Schema:     0.5
+    Version:    0.6.0
+    Schema:     0.6
     Python:     >= 3.12
-    Spec:       docs/v0.5.0_RFC_Specification.md (current)
+    Spec:       docs/v0.6.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -70,9 +70,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.5.0"
-LOGIC_VERSION = "0.5.0"
-SCHEMA_VERSION = "0.5"
+SCANNER_VERSION = "0.6.0"
+LOGIC_VERSION = "0.6.0"
+SCHEMA_VERSION = "0.6"
 
 
 SUPPORTED_EXTENSIONS = {
@@ -315,16 +315,50 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
 }
 
 
+SCAN_PROFILES: dict[str, dict[str, Any]] = {
+    "fast_sort": {
+        "baseline_max_bytes": 8192,
+        "enable_specialists": False,
+    },
+    "general": {
+        "baseline_max_bytes": 65536,
+        "enable_specialists": False,
+    },
+    "deep_extract": {
+        "baseline_max_bytes": 1048576,
+        "specialist_budget": 524288,
+        "enable_specialists": True,
+    },
+}
+
+
 @dataclass
 class ScannerConfig:
     preview_max_chars: int = 1000
     sample_size: int = 8192
     baseline_max_bytes: int = 65536
+    specialist_budget: int = 131072
     enable_specialists: bool = False
     exclude_hidden: bool = False
     format: str = "json"
     ignore_file: str | None = None
     previous_manifest: str | None = None
+    extension_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    def effective_for(self, extension: str) -> dict[str, Any]:
+        """Resolve effective config values for a given extension."""
+        base = {
+            "preview_max_chars": self.preview_max_chars,
+            "baseline_max_bytes": self.baseline_max_bytes,
+            "specialist_budget": self.specialist_budget,
+        }
+        overrides = self.extension_overrides.get(extension, {})
+        for key in ("preview_max_chars", "baseline_max_bytes", "specialist_budget"):
+            if key in overrides:
+                base[key] = overrides[key]
+        # Enforce: baseline_max_bytes >= sample_size
+        base["baseline_max_bytes"] = max(base["baseline_max_bytes"], self.sample_size)
+        return base
 
 
 class Scanner:
@@ -598,6 +632,7 @@ class Scanner:
 
         extension = path.suffix.lower()
         provenance: dict[str, Any] = {}
+        eff = self.config.effective_for(extension)
 
         mime_type, mime_prov = self.detect_mime(path, errors)
         provenance["mime_type"] = asdict(mime_prov)
@@ -648,7 +683,7 @@ class Scanner:
 
         if not is_binary:
             try:
-                encoding, text, enc_prov = self.decode_text(sample, path)
+                encoding, text, enc_prov = self.decode_text(sample, path, eff["baseline_max_bytes"])
                 provenance["encoding"] = asdict(enc_prov)
                 preview = self.make_preview(text)
                 tags = self.extract_tags(text)
@@ -751,7 +786,7 @@ class Scanner:
                     stage="specialist",
                 ))
             try:
-                raw_metadata = self.extract_specialist_metadata(path, extension, sample)
+                raw_metadata = self.extract_specialist_metadata(path, extension, sample, eff["specialist_budget"])
                 if raw_metadata is None and extension in SPECIALIST_TOOLS:
                     errors.append(ErrorRecord(
                         code=ERR_SPECIALIST_PROBE_FAILED,
@@ -774,7 +809,7 @@ class Scanner:
                             trigger = "missing_from_bounds"
                         prov_detail: dict[str, Any] = {"tool": tool}
                         if is_deviation:
-                            prov_detail["read_budget_bytes"] = 131072
+                            prov_detail["read_budget_bytes"] = eff["specialist_budget"]
                             prov_detail["reason"] = "zip_central_directory_required"
                         else:
                             prov_detail["sample_size"] = len(sample)
@@ -871,7 +906,7 @@ class Scanner:
         )
 
     def extract_specialist_metadata(
-        self, path: Path, extension: str, sample: bytes
+        self, path: Path, extension: str, sample: bytes, budget: int = 131072
     ) -> dict[str, Any] | None:
         if extension == ".pdf":
             return self._extract_pdf_metadata(sample)
@@ -884,9 +919,9 @@ class Scanner:
         if extension == ".eml":
             return self._extract_eml_metadata(sample)
         if extension == ".xlsx":
-            return self._extract_xlsx_metadata(path)
+            return self._extract_xlsx_metadata(path, budget)
         if extension == ".docx":
-            return self._extract_docx_metadata(path)
+            return self._extract_docx_metadata(path, budget)
         if extension == ".doc":
             return self._extract_doc_metadata(sample)
         if extension == ".rtf":
@@ -1022,11 +1057,10 @@ class Scanner:
         except Exception:
             return None
 
-    def _extract_xlsx_metadata(self, path: Path) -> dict[str, Any] | None:
+    def _extract_xlsx_metadata(self, path: Path, budget: int = 131072) -> dict[str, Any] | None:
         import zipfile
         from io import BytesIO
-        # Read up to deviation budget (128KB)
-        deviation_budget = 131072
+        deviation_budget = budget
         try:
             raw = path.read_bytes()[:deviation_budget]
         except Exception:
@@ -1079,10 +1113,10 @@ class Scanner:
         finally:
             zf.close()
 
-    def _extract_docx_metadata(self, path: Path) -> dict[str, Any] | None:
+    def _extract_docx_metadata(self, path: Path, budget: int = 131072) -> dict[str, Any] | None:
         import zipfile
         from io import BytesIO
-        deviation_budget = 131072  # same as xlsx
+        deviation_budget = budget
         try:
             with path.open("rb") as f:
                 raw = f.read(deviation_budget)
@@ -1378,7 +1412,7 @@ class Scanner:
             trigger="not_applicable", inputs=["mime_type"],
         )
 
-    def decode_text(self, sample: bytes, path: Path) -> tuple[str, str, ProvenanceEntry]:
+    def decode_text(self, sample: bytes, path: Path, max_read: int | None = None) -> tuple[str, str, ProvenanceEntry]:
         detected_enc: str | None = None
         chardet_confidence: float = 0.0
         if chardet:
@@ -1388,7 +1422,7 @@ class Scanner:
                 chardet_confidence = detected.get("confidence", 0) or 0
                 if chardet_confidence >= 0.5:
                     detected_enc = enc
-        max_bytes = max(self.config.baseline_max_bytes, self.config.sample_size)
+        max_bytes = max_read or max(self.config.baseline_max_bytes, self.config.sample_size)
         with path.open("rb") as f:
             raw = f.read(max_bytes)
         if detected_enc:
@@ -1649,15 +1683,33 @@ def main() -> None:
     parser.add_argument("--format", choices=["json", "jsonl"], default="json", help="Output format (default: json)")
     parser.add_argument("--ignore-file", default=None, help="Path to ignore file (default: .scannerignore in source dir)")
     parser.add_argument("--previous-manifest", default=None, help="Path to previous manifest for delta comparison")
+    parser.add_argument("--profile", choices=list(SCAN_PROFILES.keys()), default=None, help="Named scan profile (fast_sort, general, deep_extract)")
+    parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
+    parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
     args = parser.parse_args()
 
+    # Build config from profile + explicit args + overrides
+    profile_values = SCAN_PROFILES.get(args.profile, {}) if args.profile else {}
+
+    # Parse --override flags into extension_overrides dict
+    ext_overrides: dict[str, dict[str, Any]] = {}
+    for ov in args.override:
+        # Format: .ext:field=value
+        if ":" in ov and "=" in ov:
+            ext_part, kv = ov.split(":", 1)
+            key, val = kv.split("=", 1)
+            ext_overrides.setdefault(ext_part, {})[key] = int(val) if val.isdigit() else val
+
     config = ScannerConfig(
-        enable_specialists=args.specialists,
+        enable_specialists=profile_values.get("enable_specialists", args.specialists),
         exclude_hidden=args.exclude_hidden,
         preview_max_chars=args.preview_max,
+        baseline_max_bytes=profile_values.get("baseline_max_bytes", 65536),
+        specialist_budget=args.specialist_budget or profile_values.get("specialist_budget", 131072),
         format=args.format,
         ignore_file=args.ignore_file,
         previous_manifest=args.previous_manifest,
+        extension_overrides=ext_overrides,
     )
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()
