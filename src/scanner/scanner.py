@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.4.1
+    Version:    0.5.0
     Python:     >= 3.12
     Spec:       docs/v0.3.0 RFC_Specification.md (base contract)
                 docs/v0.4.0_RFC_Specification.md (current)
@@ -70,8 +70,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.4.1"
-LOGIC_VERSION = "0.4.0"
+SCANNER_VERSION = "0.5.0"
+LOGIC_VERSION = "0.5.0"
+SCHEMA_VERSION = "0.5"
 
 
 SUPPORTED_EXTENSIONS = {
@@ -90,8 +91,8 @@ CODE_STRIP_RE = re.compile(
     r"|`[^`]+`",           # inline code spans
     re.DOTALL,
 )
-FRONTMATTER_RE = re.compile(r"\A---\n(.*?)\n---\n", re.DOTALL)
-FRONTMATTER_OPEN_RE = re.compile(r"\A---\n", re.DOTALL)
+FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
+FRONTMATTER_OPEN_RE = re.compile(r"\A---\r?\n", re.DOTALL)
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f]")
 ASSET_RE = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 FILENAME_DATE_RE = re.compile(r"(\d{4})[-_](\d{2})[-_](\d{2})")
@@ -289,6 +290,7 @@ class DeltaRecord:
 
 @dataclass
 class ScanManifest:
+    schema_version: str
     context: ScanContext
     meta: ScanMeta
     stats: ScanStats
@@ -298,10 +300,26 @@ class ScanManifest:
     files: list[FileRecord]
 
 
+# Extension-to-specialist-namespace mapping
+SPECIALIST_NAMESPACE: dict[str, str] = {
+    ".pdf": "pdf",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".msg": "email",
+    ".eml": "email",
+    ".xlsx": "spreadsheet",
+    ".docx": "document",
+    ".doc": "document",
+    ".rtf": "document",
+}
+
+
 @dataclass
 class ScannerConfig:
     preview_max_chars: int = 1000
     sample_size: int = 8192
+    baseline_max_bytes: int = 65536
     enable_specialists: bool = False
     exclude_hidden: bool = False
     format: str = "json"
@@ -334,7 +352,7 @@ class Scanner:
         return patterns
 
     def _is_ignored(self, rel_path: Path) -> bool:
-        rel_str = str(rel_path).replace("\\", "/")
+        rel_str = rel_path.as_posix()
         for pattern in self._ignore_patterns:
             # Directory pattern (ends with /)
             if pattern.endswith("/"):
@@ -374,6 +392,7 @@ class Scanner:
 
         # Build manifest without checksum first, then compute it
         manifest = ScanManifest(
+            schema_version=SCHEMA_VERSION,
             context=context,
             meta=meta,
             stats=stats,
@@ -546,7 +565,7 @@ class Scanner:
                 stage="universal",
             ))
             return FileRecord(
-                path=str(rel_path).replace("\\", "/"),
+                path=rel_path.as_posix(),
                 filename=path.name,
                 extension=path.suffix.lower(),
                 mime_type="application/octet-stream",
@@ -642,24 +661,70 @@ class Scanner:
                     structural.heading_structure = self.extract_heading_structure(text)
                     if frontmatter.exists:
                         tags = sorted(set(tags + self.tags_from_frontmatter(frontmatter.raw or "")))
+                    provenance["structural.title"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_md_title",
+                        trigger="markdown_h1",
+                    ))
 
                 elif extension in {".html", ".htm"}:
                     structural.title = self.extract_html_title(text)
+                    provenance["structural.title"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_html_title",
+                        trigger="html_title_tag",
+                    ))
 
                 elif extension == ".csv":
                     structural.csv_headers = self.extract_csv_headers(text)
 
                 elif extension in {".yaml", ".yml"}:
                     structural.document_keys = self.extract_yaml_keys(text)
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_yaml_keys",
+                        trigger="yaml_line_parse",
+                    ))
 
                 elif extension == ".json":
                     structural.document_keys = self.extract_json_keys(text)
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_json_keys",
+                        trigger="json_loads",
+                    ))
 
                 elif extension in {".xml", ".vx"}:
                     structural.document_keys = self.extract_xml_keys(text)
+                    # Only record parse error if file wasn't truncated by baseline cap
+                    file_was_truncated = stat.st_size > max(self.config.baseline_max_bytes, self.config.sample_size)
+                    if not structural.document_keys and not file_was_truncated:
+                        try:
+                            xml_fromstring(text)
+                        except Exception as xml_exc:
+                            errors.append(ErrorRecord(
+                                code="xml_parse_failed",
+                                message=f"XML parsing failed: {type(xml_exc).__name__}",
+                                stage="structural",
+                            ))
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_xml_keys",
+                        trigger="xml_etree",
+                    ))
 
                 elif extension == ".toml":
                     structural.document_keys = self.extract_toml_keys(text)
+                    file_was_truncated = stat.st_size > max(self.config.baseline_max_bytes, self.config.sample_size)
+                    if not structural.document_keys and text.strip() and not file_was_truncated:
+                        if tomllib:
+                            try:
+                                tomllib.loads(text)
+                            except Exception as toml_exc:
+                                errors.append(ErrorRecord(
+                                    code="toml_parse_failed",
+                                    message=f"TOML parsing failed: {type(toml_exc).__name__}",
+                                    stage="structural",
+                                ))
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_toml_keys",
+                        trigger="tomllib",
+                    ))
 
             except Exception as exc:
                 errors.append(ErrorRecord(
@@ -686,14 +751,26 @@ class Scanner:
                     stage="specialist",
                 ))
             try:
-                specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
-                if specialist_metadata is not None:
+                raw_metadata = self.extract_specialist_metadata(path, extension, sample)
+                if raw_metadata is None and extension in SPECIALIST_TOOLS:
+                    errors.append(ErrorRecord(
+                        code=ERR_SPECIALIST_PROBE_FAILED,
+                        message=f"specialist returned null for {extension}",
+                        stage="specialist",
+                    ))
+                if raw_metadata is not None:
+                    ns = SPECIALIST_NAMESPACE.get(extension)
+                    if ns:
+                        specialist_metadata = {ns: raw_metadata}
+                    else:
+                        specialist_metadata = raw_metadata
                     tool = SPECIALIST_TOOLS.get(extension, "unknown")
                     is_deviation = extension in {".xlsx", ".docx"}
-                    for key in specialist_metadata:
-                        prov_key = f"specialist_metadata.{key}"
+                    ns_prefix = f"specialist_metadata.{ns}." if ns else "specialist_metadata."
+                    for key in raw_metadata:
+                        prov_key = f"{ns_prefix}{key}"
                         trigger = "bounded_deviation" if is_deviation else "bounded_sample"
-                        if specialist_metadata[key] is None:
+                        if raw_metadata[key] is None:
                             trigger = "missing_from_bounds"
                         prov_detail: dict[str, Any] = {"tool": tool}
                         if is_deviation:
@@ -715,7 +792,7 @@ class Scanner:
                 ))
 
         return FileRecord(
-            path=str(rel_path).replace("\\", "/"),
+            path=rel_path.as_posix(),
             filename=path.name,
             extension=extension,
             mime_type=mime_type,
@@ -822,6 +899,7 @@ class Scanner:
         has_text_streams = (
             b"/Text" in sample
             or b"BT\n" in sample
+            or b"BT\r\n" in sample
             or b"BT\r" in sample
             or b"/Font" in sample
         )
@@ -1197,9 +1275,19 @@ class Scanner:
 
     @staticmethod
     def _is_safe_zip_entry(name: str) -> bool:
-        if name.startswith("/") or name.startswith("\\"):
+        # Normalize separators
+        normalized = name.replace("\\", "/")
+        # Reject absolute paths
+        if normalized.startswith("/"):
             return False
-        if ".." in name.split("/") or ".." in name.split("\\"):
+        # Reject drive letters (e.g. C:/, D:\)
+        if len(normalized) > 1 and normalized[1] == ":":
+            return False
+        # Reject parent directory traversal
+        if ".." in normalized.split("/"):
+            return False
+        # Reject current directory references
+        if normalized.startswith("./") or "/./" in normalized:
             return False
         return True
 
@@ -1272,6 +1360,7 @@ class Scanner:
             has_text_markers = (
                 b"/Text" in sample
                 or b"BT\n" in sample
+                or b"BT\r\n" in sample
                 or b"BT\r" in sample
                 or b"/Font" in sample
             )
@@ -1299,7 +1388,9 @@ class Scanner:
                 chardet_confidence = detected.get("confidence", 0) or 0
                 if chardet_confidence >= 0.5:
                     detected_enc = enc
-        raw = path.read_bytes()
+        max_bytes = max(self.config.baseline_max_bytes, self.config.sample_size)
+        with path.open("rb") as f:
+            raw = f.read(max_bytes)
         if detected_enc:
             try:
                 prov = ProvenanceEntry(
@@ -1346,7 +1437,9 @@ class Scanner:
             return FrontmatterRecord(exists=True, keys=keys, raw=raw)
         # Detect malformed frontmatter: opening --- without closing ---
         if FRONTMATTER_OPEN_RE.match(text):
-            raw = text.split("\n", 1)[1] if "\n" in text else ""
+            # Normalize line endings then split
+            normalized = text.replace("\r\n", "\n")
+            raw = normalized.split("\n", 1)[1] if "\n" in normalized else ""
             return FrontmatterRecord(exists=False, keys=[], raw=raw)
         return FrontmatterRecord()
 
@@ -1525,8 +1618,9 @@ def manifest_to_json(manifest: ScanManifest) -> str:
 
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
-    # Header line with context, meta, stats, routing_summary, delta, manifest_checksum
+    # Header line with schema_version, context, meta, stats, routing_summary, delta, manifest_checksum
     header: dict[str, Any] = {
+        "schema_version": manifest.schema_version,
         "context": asdict(manifest.context),
         "meta": asdict(manifest.meta),
         "stats": asdict(manifest.stats),

@@ -95,6 +95,18 @@ class TestExtractFrontmatter:
         fm = scanner.extract_frontmatter(text)
         assert fm.exists is False
 
+    def test_frontmatter_crlf(self, scanner: Scanner) -> None:
+        text = "---\r\ntitle: Hello\r\ndate: 2026-01-01\r\n---\r\nBody text"
+        fm = scanner.extract_frontmatter(text)
+        assert fm.exists is True
+        assert "title" in fm.keys
+
+    def test_frontmatter_malformed_crlf(self, scanner: Scanner) -> None:
+        text = "---\r\ntitle: Broken\r\nThis never closes"
+        fm = scanner.extract_frontmatter(text)
+        assert fm.exists is False
+        assert fm.raw is not None
+
 
 # ---------------------------------------------------------------------------
 # extract_assets
@@ -180,6 +192,76 @@ class TestExtractYamlKeys:
         text = "---\nname: test"
         keys = scanner.extract_yaml_keys(text)
         assert keys == ["name"]
+
+
+# ---------------------------------------------------------------------------
+# Silent failure recording (v0.5)
+# ---------------------------------------------------------------------------
+
+class TestSilentFailureRecording:
+    def test_xml_parse_failure_records_error(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.xml").write_text("<broken><no closing tag")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "xml_parse_failed" in codes
+
+    def test_xml_valid_no_error(self, tmp_path: Path) -> None:
+        (tmp_path / "good.xml").write_text("<root><child/></root>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "xml_parse_failed" not in codes
+
+    def test_toml_parse_failure_records_error(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.toml").write_text("invalid [[[")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "toml_parse_failed" in codes
+
+    def test_toml_valid_no_error(self, tmp_path: Path) -> None:
+        (tmp_path / "good.toml").write_text('name = "test"\n')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "toml_parse_failed" not in codes
+
+    def test_specialist_null_records_error(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.xlsx").write_bytes(b"not a zip")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "specialist_probe_failed" in codes
+
+    def test_structural_title_provenance_md(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.md").write_text("# Title\n\nContent\n")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.title" in rec.signal_provenance
+        assert rec.signal_provenance["structural.title"]["method"] == "extract_md_title"
+
+    def test_structural_title_provenance_html(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>Test</title></head></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.title" in rec.signal_provenance
+        assert rec.signal_provenance["structural.title"]["method"] == "extract_html_title"
+
+    def test_structural_keys_provenance_json(self, tmp_path: Path) -> None:
+        (tmp_path / "data.json").write_text('{"key": "val"}')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.document_keys" in rec.signal_provenance
+        assert rec.signal_provenance["structural.document_keys"]["method"] == "extract_json_keys"
+
+    def test_structural_keys_provenance_xml(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text("<root><child/></root>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.document_keys" in rec.signal_provenance
+        assert rec.signal_provenance["structural.document_keys"]["method"] == "extract_xml_keys"
 
 
 # ---------------------------------------------------------------------------
@@ -304,6 +386,12 @@ class TestDetectRequiresVision:
 
     def test_pdf_with_text_markers(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 /Font /Text BT\n"
+        result, prov = scanner.detect_requires_vision(sample, "application/pdf", ".pdf", True)
+        assert result is False
+        assert prov.trigger == "pdf_has_text_markers"
+
+    def test_pdf_with_crlf_text_markers(self, scanner: Scanner) -> None:
+        sample = b"%PDF-1.4 BT\r\n some text ET\r\n"
         result, prov = scanner.detect_requires_vision(sample, "application/pdf", ".pdf", True)
         assert result is False
         assert prov.trigger == "pdf_has_text_markers"
@@ -652,8 +740,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.4.1"
-        assert ctx.logic_version == "0.4.0"
+        assert ctx.scanner_version == "0.5.0"
+        assert ctx.logic_version == "0.5.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -691,7 +779,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.4.1"
+        assert data["context"]["scanner_version"] == "0.5.0"
 
 
 # ---------------------------------------------------------------------------
@@ -894,8 +982,8 @@ class TestPngMetadata:
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
         assert rec.specialist_metadata is not None
-        assert rec.specialist_metadata["width"] == 800
-        assert rec.specialist_metadata["height"] == 600
+        assert rec.specialist_metadata["image"]["width"] == 800
+        assert rec.specialist_metadata["image"]["height"] == 600
 
 
 # ---------------------------------------------------------------------------
@@ -955,10 +1043,10 @@ class TestSemanticToolNames:
         assert SPECIALIST_TOOLS[".rtf"] == "document_extraction"
         assert SPECIALIST_TOOLS[".xlsx"] == "spreadsheet_structure"
 
-    def test_version_is_0_4(self) -> None:
+    def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.4.1"
-        assert LOGIC_VERSION == "0.4.0"  # routing logic unchanged in patch
+        assert SCANNER_VERSION == "0.5.0"
+        assert LOGIC_VERSION == "0.5.0"  # routing logic unchanged in patch
 
 
 # ---------------------------------------------------------------------------
@@ -1010,8 +1098,8 @@ class TestJpegMetadata:
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
-        assert rec.specialist_metadata["width"] == 640
-        assert rec.specialist_metadata["height"] == 480
+        assert rec.specialist_metadata["image"]["width"] == 640
+        assert rec.specialist_metadata["image"]["height"] == 480
         assert rec.specialist_tool == "image_structure"
 
 
@@ -1067,7 +1155,7 @@ class TestEmlMetadata:
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
         assert rec.specialist_tool == "email_envelope"
-        assert rec.specialist_metadata["subject"] == "Hello"
+        assert rec.specialist_metadata["email"]["subject"] == "Hello"
 
 
 # ---------------------------------------------------------------------------
@@ -1103,7 +1191,7 @@ class TestXlsxMetadata:
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
         rec = scanner.scan().files[0]
         if rec.specialist_metadata:
-            prov = rec.signal_provenance.get("specialist_metadata.sheet_names", {})
+            prov = rec.signal_provenance.get("specialist_metadata.spreadsheet.sheet_names", {})
             assert prov.get("trigger") == "bounded_deviation"
             assert prov.get("detail", {}).get("read_budget_bytes") == 131072
 
@@ -1124,6 +1212,23 @@ class TestZipEntryValidation:
     def test_absolute_path_rejected(self) -> None:
         assert Scanner._is_safe_zip_entry("/etc/passwd") is False
         assert Scanner._is_safe_zip_entry("\\windows\\system32") is False
+
+    def test_drive_letter_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("C:\\evil.txt") is False
+        assert Scanner._is_safe_zip_entry("D:/path/file") is False
+
+    def test_mixed_separator_traversal_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("foo\\../bar") is False
+        assert Scanner._is_safe_zip_entry("foo\\..\\bar") is False
+
+    def test_current_dir_reference_rejected(self) -> None:
+        assert Scanner._is_safe_zip_entry("./hidden") is False
+        assert Scanner._is_safe_zip_entry("foo/./bar") is False
+
+    def test_normal_nested_paths_safe(self) -> None:
+        assert Scanner._is_safe_zip_entry("word/document.xml") is True
+        assert Scanner._is_safe_zip_entry("docProps/core.xml") is True
+        assert Scanner._is_safe_zip_entry("xl/worksheets/sheet1.xml") is True
 
 
 # ---------------------------------------------------------------------------
@@ -1156,23 +1261,23 @@ class TestDocxMetadata:
         (tmp_path / "doc.docx").write_bytes(self._make_docx(title="My Report", author="Jane"))
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
         rec = scanner.scan().files[0]
-        assert rec.specialist_metadata["title"] == "My Report"
-        assert rec.specialist_metadata["author"] == "Jane"
+        assert rec.specialist_metadata["document"]["title"] == "My Report"
+        assert rec.specialist_metadata["document"]["author"] == "Jane"
 
     def test_docx_word_count(self, tmp_path: Path) -> None:
         (tmp_path / "doc.docx").write_bytes(self._make_docx(words=1500))
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
         rec = scanner.scan().files[0]
-        assert rec.specialist_metadata["word_count"] == 1500
+        assert rec.specialist_metadata["document"]["word_count"] == 1500
 
     def test_docx_no_metadata(self, tmp_path: Path) -> None:
         (tmp_path / "doc.docx").write_bytes(self._make_docx())
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
         rec = scanner.scan().files[0]
         assert rec.specialist_metadata is not None
-        # All fields should be present even if null
-        assert "title" in rec.specialist_metadata
-        assert "author" in rec.specialist_metadata
+        assert "document" in rec.specialist_metadata
+        assert "title" in rec.specialist_metadata["document"]
+        assert "author" in rec.specialist_metadata["document"]
 
     def test_docx_heading_count(self, tmp_path: Path) -> None:
         import zipfile
@@ -1191,7 +1296,7 @@ class TestDocxMetadata:
         (tmp_path / "doc.docx").write_bytes(buf.getvalue())
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
         rec = scanner.scan().files[0]
-        assert rec.specialist_metadata["heading_count"] == 3
+        assert rec.specialist_metadata["document"]["heading_count"] == 3
 
     def test_docx_invalid_zip(self, tmp_path: Path) -> None:
         (tmp_path / "bad.docx").write_bytes(b"not a zip")
@@ -1205,7 +1310,7 @@ class TestDocxMetadata:
         scanner = Scanner(source_dir=fixtures, config=ScannerConfig(enable_specialists=True))
         manifest = scanner.scan()
         docx_with_author = [f for f in manifest.files if f.extension == ".docx"
-                           and f.specialist_metadata and f.specialist_metadata.get("author")]
+                           and f.specialist_metadata and f.specialist_metadata.get("document", {}).get("author")]
         assert len(docx_with_author) > 0
 
 
@@ -1277,5 +1382,5 @@ class TestRtfMetadata:
         scanner = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True))
         rec = scanner.scan().files[0]
         assert rec.specialist_tool == "document_extraction"
-        assert rec.specialist_metadata["title"] == "Test Doc"
-        assert rec.specialist_metadata["author"] == "Alice"
+        assert rec.specialist_metadata["document"]["title"] == "Test Doc"
+        assert rec.specialist_metadata["document"]["author"] == "Alice"

@@ -63,6 +63,12 @@ pip install python-magic-bin
 
 If `libmagic` or `chardet` are unavailable, the scanner degrades gracefully to extension-based MIME detection and a fixed encoding cascade.
 
+### Platform notes
+
+- **Windows:** Use `python-magic-bin` instead of `python-magic` (bundles libmagic DLLs). The `--exclude-hidden` flag uses Unix dot-prefix convention only; Windows NTFS hidden attributes are not detected.
+- **Linux:** `created_at` is always `null` (most filesystems lack `st_birthtime`).
+- **macOS:** Full feature support.
+
 ---
 
 ## Quick Start

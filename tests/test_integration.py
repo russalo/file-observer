@@ -86,6 +86,7 @@ class TestJsonSerialization:
         import json
         output = manifest_to_json(manifest)
         data = json.loads(output)
+        assert "schema_version" in data
         assert "context" in data
         assert "meta" in data
         assert "stats" in data
