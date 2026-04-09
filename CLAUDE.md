@@ -8,15 +8,15 @@ File capability scanner — observation layer only. Recursively discovers files,
 
 ## Spec
 
-- `docs/SPEC.md` — v0.1 base contract (field semantics, null rules, capability tiers)
-- `docs/v0.2Spec.md` — v0.2 additions (manifest metadata, stats, delta, JSONL, MIME mismatch)
-- `docs/v0.3.0 RFC_Specification.md` — **authoritative v0.3 spec**. Defines capability-locked determinism, signal layering (raw/derived/semantic-local), structured provenance, bounded observation mandate, and specialist expansions.
+- `docs/v0.4.0_RFC_Specification.md` — **current authoritative spec**. Semantic naming, deviation policy, coverage expansion (JPEG, EML, XLSX, DOCX, DOC, RTF), security hardening.
+- `docs/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering (raw/derived/semantic-local), structured provenance, bounded observation mandate.
+- `docs/SPEC.md` — v0.1 foundation. `docs/v0.2Spec.md` — v0.2 additions.
 
-RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.3 RFC before making changes to scanner behavior.
+RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.4 RFC before making changes to scanner behavior.
 
 ## Stack
 
-Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (frontmatter), olefile (MSG). Virtual env at `.venv`.
+Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (frontmatter), olefile (MSG/DOC), defusedxml (hardened XML). Virtual env at `.venv`.
 
 ## Commands
 
@@ -69,14 +69,18 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 - `StructuralRecord` — structural signals (title, headings, keys, etc.)
 - `ErrorRecord` — non-fatal errors captured per file per stage
 
-### Specialist tools
+### Specialist tools (semantic names — describe downstream need, not scanner implementation)
 | Extension | Tool | What it extracts |
 |-----------|------|-----------------|
-| `.pdf` | `pdf_scanner` | page count, text streams, doc info, encrypted, pdf_version, sample_text_marker_density |
-| `.png` | `png_header` | width, height, bit_depth (IHDR chunk via struct) |
-| `.msg` | `msg_envelope` | subject, from, to (OLE2 properties via olefile) |
-| `.docx` | `docx_parser` | downstream routing only (no scanner-side extraction) |
-| `.rtf` | `rtf_parser` | downstream routing only (no scanner-side extraction) |
+| `.pdf` | `pdf_extraction` | page count, text streams, doc info, encrypted, pdf_version, sample_text_marker_density |
+| `.png` | `image_structure` | width, height, bit_depth (IHDR chunk via struct) |
+| `.jpg`/`.jpeg` | `image_structure` | width, height (SOF0/SOF2 markers via struct) |
+| `.msg` | `email_envelope` | subject, from, to, date, message_id, has_attachments (OLE2 via olefile) |
+| `.eml` | `email_envelope` | subject, from, to, date, message_id, has_attachments (stdlib email.parser) |
+| `.xlsx` | `spreadsheet_structure` | sheet_names, header_rows (stdlib zipfile + XML, 128KB deviation) |
+| `.docx` | `document_extraction` | title, author, word_count, heading_count (OOXML ZIP, 128KB deviation) |
+| `.doc` | `document_extraction` | title, author (OLE2 SummaryInformation via olefile) |
+| `.rtf` | `document_extraction` | title, author ({\info} group regex on sample) |
 
 ## Known decisions
 
@@ -86,14 +90,20 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 - MIME detection: content-based (python-magic/libmagic) primary, extension-based fallback with diagnostic error
 - Encoding: chardet (confidence >= 0.50) then cascade: utf-8 → utf-8-sig → cp1252 → latin-1 → replace
 - Manifest checksum excludes `scan_id` and `generated_at` (volatile fields)
+- Manifest filename includes version: `manifest_v{VERSION}_{timestamp}.json`
 - ScanContext excludes hostname and timestamps (not causally linked to outputs)
 - Signal provenance replaces process_log — per-field, not per-tier
+- Specialist tool names are semantic (describe downstream need, not scanner implementation)
 - PDF sample_text_marker_density is a quantitative float, not qualitative labels
-- PNG extraction uses stdlib struct, not Pillow
-- MSG extraction uses optional olefile, graceful degradation when unavailable
+- PNG/JPEG extraction uses stdlib struct, not Pillow
+- MSG/DOC extraction uses optional olefile, graceful degradation when unavailable
+- EML extraction uses stdlib email.parser, no external dependencies
+- XLSX/DOCX use 128KB deviation budget (declared exception to 8KB bounded observation)
+- ZIP entries validated against path traversal (_is_safe_zip_entry), decompressed size capped at 1MB (_safe_zip_read)
+- XML parsing uses defusedxml when available, stdlib fallback with documented risk
 
 ## Test fixtures
 
 `tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). Use these for integration tests.
 
-Test suite: 258 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py`.
+Test suite: 320 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py`.

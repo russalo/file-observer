@@ -1,3 +1,25 @@
+"""
+scanner.py — File capability scanner
+
+Observation layer for the PKP document pipeline. Recursively discovers
+files, extracts metadata and signals, emits a deterministic JSON manifest.
+
+    Package:    scanner
+    Version:    0.4.1
+    Python:     >= 3.12
+    Spec:       docs/v0.3.0 RFC_Specification.md (base contract)
+                docs/v0.4.0_RFC_Specification.md (current)
+    Repository: pkp.russalo.com/scanner/
+
+Design pillars:
+    - Capability-locked determinism (ScanContext)
+    - Signal layering (raw / derived / semantic-local)
+    - Structured provenance (per-field derivation map)
+    - Bounded observation (sample_size default 8KB, deviations declared)
+
+Domains are products. Subdomains are responsibilities. Paths are capabilities.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
@@ -48,7 +70,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.4.0"
+SCANNER_VERSION = "0.4.1"
 LOGIC_VERSION = "0.4.0"
 
 
@@ -1556,7 +1578,7 @@ def main() -> None:
     manifest_dir = Path(args.output) if args.output else Path(__file__).resolve().parent / "manifests"
     manifest_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-    manifest_path = manifest_dir / f"manifest_{timestamp}.{ext}"
+    manifest_path = manifest_dir / f"manifest_v{SCANNER_VERSION}_{timestamp}.{ext}"
     manifest_path.write_text(output, encoding="utf-8")
     print(f"Manifest written to {manifest_path}")
 
