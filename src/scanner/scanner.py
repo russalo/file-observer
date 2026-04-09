@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.4.1
+    Version:    0.5.0
     Python:     >= 3.12
     Spec:       docs/v0.3.0 RFC_Specification.md (base contract)
                 docs/v0.4.0_RFC_Specification.md (current)
@@ -70,8 +70,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.4.1"
-LOGIC_VERSION = "0.4.0"
+SCANNER_VERSION = "0.5.0"
+LOGIC_VERSION = "0.5.0"
+SCHEMA_VERSION = "0.5"
 
 
 SUPPORTED_EXTENSIONS = {
@@ -289,6 +290,7 @@ class DeltaRecord:
 
 @dataclass
 class ScanManifest:
+    schema_version: str
     context: ScanContext
     meta: ScanMeta
     stats: ScanStats
@@ -298,10 +300,26 @@ class ScanManifest:
     files: list[FileRecord]
 
 
+# Extension-to-specialist-namespace mapping
+SPECIALIST_NAMESPACE: dict[str, str] = {
+    ".pdf": "pdf",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".msg": "email",
+    ".eml": "email",
+    ".xlsx": "spreadsheet",
+    ".docx": "document",
+    ".doc": "document",
+    ".rtf": "document",
+}
+
+
 @dataclass
 class ScannerConfig:
     preview_max_chars: int = 1000
     sample_size: int = 8192
+    baseline_max_bytes: int = 65536
     enable_specialists: bool = False
     exclude_hidden: bool = False
     format: str = "json"
@@ -374,6 +392,7 @@ class Scanner:
 
         # Build manifest without checksum first, then compute it
         manifest = ScanManifest(
+            schema_version=SCHEMA_VERSION,
             context=context,
             meta=meta,
             stats=stats,
@@ -686,14 +705,20 @@ class Scanner:
                     stage="specialist",
                 ))
             try:
-                specialist_metadata = self.extract_specialist_metadata(path, extension, sample)
-                if specialist_metadata is not None:
+                raw_metadata = self.extract_specialist_metadata(path, extension, sample)
+                if raw_metadata is not None:
+                    ns = SPECIALIST_NAMESPACE.get(extension)
+                    if ns:
+                        specialist_metadata = {ns: raw_metadata}
+                    else:
+                        specialist_metadata = raw_metadata
                     tool = SPECIALIST_TOOLS.get(extension, "unknown")
                     is_deviation = extension in {".xlsx", ".docx"}
-                    for key in specialist_metadata:
-                        prov_key = f"specialist_metadata.{key}"
+                    ns_prefix = f"specialist_metadata.{ns}." if ns else "specialist_metadata."
+                    for key in raw_metadata:
+                        prov_key = f"{ns_prefix}{key}"
                         trigger = "bounded_deviation" if is_deviation else "bounded_sample"
-                        if specialist_metadata[key] is None:
+                        if raw_metadata[key] is None:
                             trigger = "missing_from_bounds"
                         prov_detail: dict[str, Any] = {"tool": tool}
                         if is_deviation:
@@ -1299,7 +1324,9 @@ class Scanner:
                 chardet_confidence = detected.get("confidence", 0) or 0
                 if chardet_confidence >= 0.5:
                     detected_enc = enc
-        raw = path.read_bytes()
+        max_bytes = max(self.config.baseline_max_bytes, self.config.sample_size)
+        with path.open("rb") as f:
+            raw = f.read(max_bytes)
         if detected_enc:
             try:
                 prov = ProvenanceEntry(
@@ -1525,8 +1552,9 @@ def manifest_to_json(manifest: ScanManifest) -> str:
 
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
-    # Header line with context, meta, stats, routing_summary, delta, manifest_checksum
+    # Header line with schema_version, context, meta, stats, routing_summary, delta, manifest_checksum
     header: dict[str, Any] = {
+        "schema_version": manifest.schema_version,
         "context": asdict(manifest.context),
         "meta": asdict(manifest.meta),
         "stats": asdict(manifest.stats),

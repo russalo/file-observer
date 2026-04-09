@@ -8,15 +8,21 @@ File capability scanner — observation layer only. Recursively discovers files,
 
 ## Spec
 
-- `docs/v0.4.0_RFC_Specification.md` — **current authoritative spec**. Semantic naming, deviation policy, coverage expansion (JPEG, EML, XLSX, DOCX, DOC, RTF), security hardening.
-- `docs/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering (raw/derived/semantic-local), structured provenance, bounded observation mandate.
-- `docs/SPEC.md` — v0.1 foundation. `docs/v0.2Spec.md` — v0.2 additions.
+- `docs/v0.5.0_RFC_Specification.md` — **current target spec**. Schema reshaping (namespaced specialists, schema_version, baseline_max_bytes), cross-platform hardening, silent failure fixes. Last breaking release before v1.0 schema freeze.
+- `docs/v1.0.0_RFC_DRAFT.md` — schema freeze draft. v1.0 = v0.5 shape + version bump + backward compatibility policy.
+- `docs/v0.4.0_RFC_Specification.md` — prior release. Semantic naming, deviation policy, coverage expansion.
+- `docs/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering, provenance, bounded observation.
 
-RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.4 RFC before making changes to scanner behavior.
+RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.5 RFC before making changes to scanner behavior.
 
 ## Stack
 
 Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (frontmatter), olefile (MSG/DOC), defusedxml (hardened XML). Virtual env at `.venv`.
+
+## Version roadmap
+
+- v0.5.0 (in progress): schema reshaping — namespaced specialist_metadata, schema_version field, baseline_max_bytes cap, CRLF hardening, silent failure fixes. Last breaking release.
+- v1.0.0 (next): schema freeze — same shape as v0.5, version bump, backward compatibility policy. No code changes beyond version constants.
 
 ## Commands
 

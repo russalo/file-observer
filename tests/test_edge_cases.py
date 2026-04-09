@@ -670,10 +670,10 @@ class TestSpecialistMetadata:
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
         assert rec.specialist_metadata is not None
-        assert rec.specialist_metadata["has_text_streams"] is True
-        assert rec.specialist_metadata["page_count"] == 3
-        assert rec.specialist_metadata["title"] == "Test Doc"
-        assert rec.specialist_metadata["author"] == "Alice"
+        assert rec.specialist_metadata["pdf"]["has_text_streams"] is True
+        assert rec.specialist_metadata["pdf"]["page_count"] == 3
+        assert rec.specialist_metadata["pdf"]["title"] == "Test Doc"
+        assert rec.specialist_metadata["pdf"]["author"] == "Alice"
 
     def test_pdf_no_text_streams(self, tmp_path: Path) -> None:
         pdf_content = b"%PDF-1.4 just image data no text markers here"
@@ -682,7 +682,7 @@ class TestSpecialistMetadata:
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
         assert rec.specialist_metadata is not None
-        assert rec.specialist_metadata["has_text_streams"] is False
+        assert rec.specialist_metadata["pdf"]["has_text_streams"] is False
 
     def test_pdf_missing_page_count(self, tmp_path: Path) -> None:
         pdf_content = b"%PDF-1.4 /Font"
@@ -690,7 +690,7 @@ class TestSpecialistMetadata:
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
-        assert rec.specialist_metadata["page_count"] is None
+        assert rec.specialist_metadata["pdf"]["page_count"] is None
 
     def test_non_pdf_specialist_metadata_null(self, tmp_path: Path) -> None:
         (tmp_path / "readme.txt").write_text("Hello")
@@ -705,7 +705,7 @@ class TestSpecialistMetadata:
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
-        assert rec.specialist_metadata["creation_date"] == "D:20260101120000"
+        assert rec.specialist_metadata["pdf"]["creation_date"] == "D:20260101120000"
 
     def test_specialist_metadata_deterministic(self, tmp_path: Path) -> None:
         pdf_content = b"%PDF-1.4 /Font /Count 5 /Title (Report) /Author (Bob)"
@@ -769,9 +769,9 @@ class TestPdfDeepenedEdgeCases:
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
-        assert rec.specialist_metadata["encrypted"] is True
-        assert rec.specialist_metadata["pdf_version"] == "1.4"
-        assert rec.specialist_metadata["sample_text_marker_density"] > 0
+        assert rec.specialist_metadata["pdf"]["encrypted"] is True
+        assert rec.specialist_metadata["pdf"]["pdf_version"] == "1.4"
+        assert rec.specialist_metadata["pdf"]["sample_text_marker_density"] > 0
 
     def test_pdf_density_deterministic(self, tmp_path: Path) -> None:
         content = b"%PDF-1.4 BT text ET BT more ET"
@@ -779,7 +779,7 @@ class TestPdfDeepenedEdgeCases:
         config = ScannerConfig(enable_specialists=True)
         m1 = Scanner(source_dir=tmp_path, config=config).scan().files[0].specialist_metadata
         m2 = Scanner(source_dir=tmp_path, config=config).scan().files[0].specialist_metadata
-        assert m1["sample_text_marker_density"] == m2["sample_text_marker_density"]
+        assert m1["pdf"]["sample_text_marker_density"] == m2["pdf"]["sample_text_marker_density"]
 
 
 # ---------------------------------------------------------------------------
@@ -828,8 +828,8 @@ class TestPngEdgeCases:
         assert len(recs) == 1
         rec = recs[0]
         assert rec.specialist_metadata is not None
-        assert rec.specialist_metadata["width"] == 200
-        assert rec.specialist_metadata["height"] == 100
+        assert rec.specialist_metadata["image"]["width"] == 200
+        assert rec.specialist_metadata["image"]["height"] == 100
 
 
 # ---------------------------------------------------------------------------
