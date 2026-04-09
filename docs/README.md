@@ -7,10 +7,11 @@ Recursively discovers files under a source directory, extracts universal and for
 | | |
 |---|---|
 | **Package** | `scanner` |
-| **Version** | `0.4.1` |
+| **Version** | `0.5.0` |
+| **Schema** | `0.5` |
 | **Python** | `>= 3.12` |
 | **License** | Private |
-| **Spec** | [`docs/v0.4.0_RFC_Specification.md`](v0.4.0_RFC_Specification.md) (current), [`docs/v0.3.0 RFC_Specification.md`](v0.3.0%20RFC_Specification.md) (base contract) |
+| **Spec** | [`docs/v0.5.0_RFC_Specification.md`](v0.5.0_RFC_Specification.md) (current) |
 | **Repository** | `pkp.russalo.com/scanner/` |
 
 ---
@@ -880,7 +881,7 @@ The JSON manifest follows this structure:
 }
 ```
 
-See [`docs/v0.4.0_RFC_Specification.md`](v0.4.0_RFC_Specification.md) for the current spec — semantic naming, deviation policy, specialist contracts, and security requirements.
+See [`docs/v0.5.0_RFC_Specification.md`](v0.5.0_RFC_Specification.md) for the current spec — namespaced specialists, schema version, bounded baseline, cross-platform hardening.
 
 ---
 
@@ -901,7 +902,7 @@ pip install -e ".[dev]"
 ### Running tests
 
 ```bash
-# Full suite (320 tests)
+# Full suite (337 tests)
 python -m pytest tests/ -v
 
 # Single test file
@@ -923,6 +924,6 @@ python -m pytest tests/test_unit.py::TestExtractTags::test_basic_hashtags -v
 ### Project conventions
 
 - Single-module implementation: all scanner logic lives in `src/scanner/scanner.py`.
-- `docs/v0.4.0_RFC_Specification.md` is the current authoritative spec. RFC normative language applies (BCP 14). Prior specs: `docs/v0.3.0 RFC_Specification.md`, `docs/SPEC.md` (v0.1).
+- `docs/v0.5.0_RFC_Specification.md` is the current authoritative spec. RFC normative language applies (BCP 14). Prior: `docs/v0.4.0_RFC_Specification.md`, `docs/v0.3.0 RFC_Specification.md`.
 - External dependencies (`python-magic`, `chardet`, `PyYAML`) are imported with graceful fallbacks.
 - All outputs are deterministic: sorted file iteration, sorted tags, sorted keys.

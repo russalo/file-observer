@@ -6,9 +6,9 @@ files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
     Version:    0.5.0
+    Schema:     0.5
     Python:     >= 3.12
-    Spec:       docs/v0.3.0 RFC_Specification.md (base contract)
-                docs/v0.4.0_RFC_Specification.md (current)
+    Spec:       docs/v0.5.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
