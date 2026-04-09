@@ -692,7 +692,9 @@ class Scanner:
 
                 elif extension in {".xml", ".vx"}:
                     structural.document_keys = self.extract_xml_keys(text)
-                    if not structural.document_keys:
+                    # Only record parse error if file wasn't truncated by baseline cap
+                    file_was_truncated = stat.st_size > max(self.config.baseline_max_bytes, self.config.sample_size)
+                    if not structural.document_keys and not file_was_truncated:
                         try:
                             xml_fromstring(text)
                         except Exception as xml_exc:
@@ -708,7 +710,8 @@ class Scanner:
 
                 elif extension == ".toml":
                     structural.document_keys = self.extract_toml_keys(text)
-                    if not structural.document_keys and text.strip():
+                    file_was_truncated = stat.st_size > max(self.config.baseline_max_bytes, self.config.sample_size)
+                    if not structural.document_keys and text.strip() and not file_was_truncated:
                         if tomllib:
                             try:
                                 tomllib.loads(text)

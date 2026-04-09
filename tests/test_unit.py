@@ -1043,7 +1043,7 @@ class TestSemanticToolNames:
         assert SPECIALIST_TOOLS[".rtf"] == "document_extraction"
         assert SPECIALIST_TOOLS[".xlsx"] == "spreadsheet_structure"
 
-    def test_version_is_0_4(self) -> None:
+    def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
         assert SCANNER_VERSION == "0.5.0"
         assert LOGIC_VERSION == "0.5.0"  # routing logic unchanged in patch
