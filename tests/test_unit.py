@@ -195,6 +195,76 @@ class TestExtractYamlKeys:
 
 
 # ---------------------------------------------------------------------------
+# Silent failure recording (v0.5)
+# ---------------------------------------------------------------------------
+
+class TestSilentFailureRecording:
+    def test_xml_parse_failure_records_error(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.xml").write_text("<broken><no closing tag")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "xml_parse_failed" in codes
+
+    def test_xml_valid_no_error(self, tmp_path: Path) -> None:
+        (tmp_path / "good.xml").write_text("<root><child/></root>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "xml_parse_failed" not in codes
+
+    def test_toml_parse_failure_records_error(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.toml").write_text("invalid [[[")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "toml_parse_failed" in codes
+
+    def test_toml_valid_no_error(self, tmp_path: Path) -> None:
+        (tmp_path / "good.toml").write_text('name = "test"\n')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "toml_parse_failed" not in codes
+
+    def test_specialist_null_records_error(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.xlsx").write_bytes(b"not a zip")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        codes = [e.code for e in rec.errors]
+        assert "specialist_probe_failed" in codes
+
+    def test_structural_title_provenance_md(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.md").write_text("# Title\n\nContent\n")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.title" in rec.signal_provenance
+        assert rec.signal_provenance["structural.title"]["method"] == "extract_md_title"
+
+    def test_structural_title_provenance_html(self, tmp_path: Path) -> None:
+        (tmp_path / "page.html").write_text("<html><head><title>Test</title></head></html>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.title" in rec.signal_provenance
+        assert rec.signal_provenance["structural.title"]["method"] == "extract_html_title"
+
+    def test_structural_keys_provenance_json(self, tmp_path: Path) -> None:
+        (tmp_path / "data.json").write_text('{"key": "val"}')
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.document_keys" in rec.signal_provenance
+        assert rec.signal_provenance["structural.document_keys"]["method"] == "extract_json_keys"
+
+    def test_structural_keys_provenance_xml(self, tmp_path: Path) -> None:
+        (tmp_path / "data.xml").write_text("<root><child/></root>")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "structural.document_keys" in rec.signal_provenance
+        assert rec.signal_provenance["structural.document_keys"]["method"] == "extract_xml_keys"
+
+
+# ---------------------------------------------------------------------------
 # extract_xml_keys
 # ---------------------------------------------------------------------------
 

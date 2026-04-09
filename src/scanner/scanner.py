@@ -661,24 +661,67 @@ class Scanner:
                     structural.heading_structure = self.extract_heading_structure(text)
                     if frontmatter.exists:
                         tags = sorted(set(tags + self.tags_from_frontmatter(frontmatter.raw or "")))
+                    provenance["structural.title"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_md_title",
+                        trigger="markdown_h1",
+                    ))
 
                 elif extension in {".html", ".htm"}:
                     structural.title = self.extract_html_title(text)
+                    provenance["structural.title"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_html_title",
+                        trigger="html_title_tag",
+                    ))
 
                 elif extension == ".csv":
                     structural.csv_headers = self.extract_csv_headers(text)
 
                 elif extension in {".yaml", ".yml"}:
                     structural.document_keys = self.extract_yaml_keys(text)
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_yaml_keys",
+                        trigger="yaml_line_parse",
+                    ))
 
                 elif extension == ".json":
                     structural.document_keys = self.extract_json_keys(text)
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_json_keys",
+                        trigger="json_loads",
+                    ))
 
                 elif extension in {".xml", ".vx"}:
                     structural.document_keys = self.extract_xml_keys(text)
+                    if not structural.document_keys:
+                        try:
+                            xml_fromstring(text)
+                        except Exception as xml_exc:
+                            errors.append(ErrorRecord(
+                                code="xml_parse_failed",
+                                message=f"XML parsing failed: {type(xml_exc).__name__}",
+                                stage="structural",
+                            ))
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_xml_keys",
+                        trigger="xml_etree",
+                    ))
 
                 elif extension == ".toml":
                     structural.document_keys = self.extract_toml_keys(text)
+                    if not structural.document_keys and text.strip():
+                        if tomllib:
+                            try:
+                                tomllib.loads(text)
+                            except Exception as toml_exc:
+                                errors.append(ErrorRecord(
+                                    code="toml_parse_failed",
+                                    message=f"TOML parsing failed: {type(toml_exc).__name__}",
+                                    stage="structural",
+                                ))
+                    provenance["structural.document_keys"] = asdict(ProvenanceEntry(
+                        layer="derived", method="extract_toml_keys",
+                        trigger="tomllib",
+                    ))
 
             except Exception as exc:
                 errors.append(ErrorRecord(
@@ -706,6 +749,12 @@ class Scanner:
                 ))
             try:
                 raw_metadata = self.extract_specialist_metadata(path, extension, sample)
+                if raw_metadata is None and extension in SPECIALIST_TOOLS:
+                    errors.append(ErrorRecord(
+                        code=ERR_SPECIALIST_PROBE_FAILED,
+                        message=f"specialist returned null for {extension}",
+                        stage="specialist",
+                    ))
                 if raw_metadata is not None:
                     ns = SPECIALIST_NAMESPACE.get(extension)
                     if ns:
