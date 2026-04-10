@@ -54,7 +54,13 @@ We have known gaps in compliance reports:
 - **v0.4.0** — no compliance report exists. v0.4 shipped before the per-version compliance discipline was fully established.
 - **v0.7.0** — no compliance report exists. Slipped during the v0.7 release cycle.
 
-These gaps are acknowledged. They could be backfilled if needed for audit purposes, but they are not required for the current workflow. The CONVENTIONS.md release checklist now includes a compliance report as a per-minor-version requirement to prevent future gaps.
+These gaps are acknowledged but **not** scheduled for backfill. They are evidence of when the per-version discipline was still forming, and retrofitting them would obscure how the project actually matured. The CONVENTIONS.md release checklist now includes a compliance report as a per-minor-version requirement to prevent future gaps.
+
+## On the Muddle
+
+Pre-1.0 history is messy, inconsistent, and reflects a project figuring itself out. The naming conventions changed (v0.1 used `SPEC.md`, v0.2 used `v0.2Spec.md`, v0.3+ used `v{X}.0_RFC_Specification.md`). The compliance discipline was uneven. The schema was reshaped twice before stabilizing at v0.5. v1.0 was prematurely declared and walked back. Personal files lived in fixtures for five versions before being sanitized.
+
+This is not retroactively cleaned up. It's left as it actually happened. The muddle *is* the history.
 
 ---
 
