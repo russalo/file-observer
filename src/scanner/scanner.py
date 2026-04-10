@@ -284,6 +284,7 @@ class RoutingSummary:
 @dataclass
 class DeltaRecord:
     previous_scan_id: str
+    previous_manifest_checksum: str | None
     added: list[str]
     modified: list[str]
     unchanged: list[str]
@@ -300,6 +301,7 @@ class ScanManifest:
     routing_summary: RoutingSummary
     delta: DeltaRecord | None
     manifest_checksum: str
+    manifest_signature: dict[str, str] | None
     files: list[FileRecord]
 
 
@@ -373,6 +375,8 @@ class ScannerConfig:
     ignore_file: str | None = None
     previous_manifest: str | None = None
     extension_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
+    signing_key: str | None = None
+    signing_key_id: str | None = None
 
     def effective_for(self, extension: str) -> dict[str, Any]:
         """Resolve effective config values for a given extension."""
@@ -462,9 +466,23 @@ class Scanner:
             routing_summary=routing,
             delta=delta,
             manifest_checksum="",
+            manifest_signature=None,
             files=records,
         )
         manifest.manifest_checksum = compute_manifest_checksum(manifest)
+        # Optional HMAC signing
+        if self.config.signing_key:
+            import hmac
+            sig = hmac.new(
+                self.config.signing_key.encode("utf-8"),
+                manifest.manifest_checksum.encode("utf-8"),
+                "sha256",
+            ).hexdigest()
+            manifest.manifest_signature = {
+                "algorithm": "hmac-sha256",
+                "key_id": self.config.signing_key_id or "default",
+                "value": sig,
+            }
         return manifest
 
     def _build_context(self) -> ScanContext:
@@ -559,6 +577,7 @@ class Scanner:
             return None
 
         prev_scan_id = prev_data.get("meta", {}).get("scan_id", "")
+        prev_checksum = prev_data.get("manifest_checksum")
         prev_files: dict[str, str] = {}
         for f in prev_data.get("files", []):
             p = f.get("path")
@@ -594,6 +613,7 @@ class Scanner:
 
         return DeltaRecord(
             previous_scan_id=prev_scan_id,
+            previous_manifest_checksum=prev_checksum,
             added=added,
             modified=modified,
             unchanged=unchanged,
@@ -1707,6 +1727,7 @@ def compute_manifest_checksum(manifest: ScanManifest) -> str:
     """Compute SHA-256 of the manifest content, excluding volatile fields."""
     d = asdict(manifest)
     d["manifest_checksum"] = ""
+    d["manifest_signature"] = None  # signature depends on checksum, excluded
     # Exclude volatile fields from deterministic checksum per RFC §Deterministic serialization
     d["meta"]["scan_id"] = ""
     d["meta"]["generated_at"] = ""
@@ -1729,6 +1750,7 @@ def manifest_to_jsonl(manifest: ScanManifest) -> str:
         "routing_summary": asdict(manifest.routing_summary),
         "delta": asdict(manifest.delta) if manifest.delta else None,
         "manifest_checksum": manifest.manifest_checksum,
+        "manifest_signature": manifest.manifest_signature,
     }
     lines.append(json.dumps(header, ensure_ascii=False))
     # One line per file record

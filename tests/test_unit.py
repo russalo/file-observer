@@ -1542,3 +1542,66 @@ class TestSpecialistMimeGuard:
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
         assert rec.specialist_metadata is not None
+
+
+# ---------------------------------------------------------------------------
+# v0.6: Data integrity envelope
+# ---------------------------------------------------------------------------
+
+class TestIntegrityEnvelope:
+    def test_manifest_signature_null_by_default(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.manifest_signature is None
+
+    def test_manifest_signature_present_with_key(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(signing_key="test-secret", signing_key_id="test-key-1")
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        assert manifest.manifest_signature is not None
+        assert manifest.manifest_signature["algorithm"] == "hmac-sha256"
+        assert manifest.manifest_signature["key_id"] == "test-key-1"
+        assert len(manifest.manifest_signature["value"]) == 64  # sha256 hex
+
+    def test_signature_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(signing_key="secret")
+        m1 = Scanner(source_dir=tmp_path, config=config).scan()
+        m2 = Scanner(source_dir=tmp_path, config=config).scan()
+        assert m1.manifest_signature["value"] == m2.manifest_signature["value"]
+
+    def test_signature_changes_with_content(self, tmp_path: Path) -> None:
+        f = tmp_path / "a.txt"
+        config = ScannerConfig(signing_key="secret")
+        f.write_text("v1")
+        s1 = Scanner(source_dir=tmp_path, config=config).scan().manifest_signature["value"]
+        f.write_text("v2")
+        s2 = Scanner(source_dir=tmp_path, config=config).scan().manifest_signature["value"]
+        assert s1 != s2
+
+    def test_previous_manifest_checksum_in_delta(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_json
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        m1 = Scanner(source_dir=src).scan()
+        prev = tmp_path / "prev.json"
+        prev.write_text(manifest_to_json(m1))
+        config = ScannerConfig(previous_manifest=str(prev))
+        m2 = Scanner(source_dir=src, config=config).scan()
+        assert m2.delta is not None
+        assert m2.delta.previous_manifest_checksum == m1.manifest_checksum
+
+    def test_previous_manifest_checksum_null_without_delta(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.delta is None
+
+    def test_signature_in_json_output(self, tmp_path: Path) -> None:
+        import json as json_mod
+        from scanner.scanner import manifest_to_json
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(signing_key="secret", signing_key_id="k1")
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        data = json_mod.loads(manifest_to_json(manifest))
+        assert data["manifest_signature"]["key_id"] == "k1"
