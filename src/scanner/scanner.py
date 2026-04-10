@@ -778,7 +778,7 @@ class Scanner:
                 elif extension in {".xml", ".vx"}:
                     structural.document_keys = self.extract_xml_keys(text)
                     # Only record parse error if file wasn't truncated by baseline cap
-                    file_was_truncated = stat.st_size > max(self.config.baseline_max_bytes, self.config.sample_size)
+                    file_was_truncated = stat.st_size > max(eff["baseline_max_bytes"], self.config.sample_size)
                     if not structural.document_keys and not file_was_truncated:
                         try:
                             xml_fromstring(text)
@@ -795,7 +795,7 @@ class Scanner:
 
                 elif extension == ".toml":
                     structural.document_keys = self.extract_toml_keys(text)
-                    file_was_truncated = stat.st_size > max(self.config.baseline_max_bytes, self.config.sample_size)
+                    file_was_truncated = stat.st_size > max(eff["baseline_max_bytes"], self.config.sample_size)
                     if not structural.document_keys and text.strip() and not file_was_truncated:
                         if tomllib:
                             try:
@@ -836,10 +836,26 @@ class Scanner:
                     stage="specialist",
                 ))
             try:
-                # MIME guard: skip specialist if mime_type doesn't match expected format
+                # MIME guard: skip specialist if content doesn't match expected format
                 ns = SPECIALIST_NAMESPACE.get(extension)
                 guard = SPECIALIST_MIME_GUARD.get(ns, set()) if ns else set()
-                if guard and mime_type not in guard:
+                # When MIME was extension-derived (fallback), also verify via format_signatures
+                mime_from_extension = provenance.get("mime_type", {}).get("trigger") == "extension_fallback"
+                if mime_from_extension and guard and format_signatures:
+                    # Check if any detected signature matches what the guard expects
+                    detected_formats = {s["format"] for s in format_signatures}
+                    if not detected_formats & guard:
+                        guard_failed = True
+                    else:
+                        guard_failed = False
+                elif mime_from_extension and guard and not format_signatures:
+                    # No signatures detected and MIME is just extension echo — not trustworthy
+                    guard_failed = True
+                elif guard and mime_type not in guard:
+                    guard_failed = True
+                else:
+                    guard_failed = False
+                if guard_failed:
                     errors.append(ErrorRecord(
                         code=ERR_SPECIALIST_PROBE_FAILED,
                         message=f"mime_type {mime_type} does not match expected formats for {ns} specialist — skipped",
