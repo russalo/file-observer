@@ -740,8 +740,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.5.0"
-        assert ctx.logic_version == "0.5.0"
+        assert ctx.scanner_version == "0.6.0"
+        assert ctx.logic_version == "0.6.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -779,7 +779,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.5.0"
+        assert data["context"]["scanner_version"] == "0.6.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1045,8 +1045,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.5.0"
-        assert LOGIC_VERSION == "0.5.0"  # routing logic unchanged in patch
+        assert SCANNER_VERSION == "0.6.0"
+        assert LOGIC_VERSION == "0.6.0"  # routing logic unchanged in patch
 
 
 # ---------------------------------------------------------------------------
@@ -1384,3 +1384,224 @@ class TestRtfMetadata:
         assert rec.specialist_tool == "document_extraction"
         assert rec.specialist_metadata["document"]["title"] == "Test Doc"
         assert rec.specialist_metadata["document"]["author"] == "Alice"
+
+
+# ---------------------------------------------------------------------------
+# v0.6: Dip switches — configurable depth
+# ---------------------------------------------------------------------------
+
+class TestDipSwitches:
+    def test_specialist_budget_in_config(self) -> None:
+        config = ScannerConfig()
+        assert config.specialist_budget == 131072
+
+    def test_extension_overrides_default_empty(self) -> None:
+        config = ScannerConfig()
+        assert config.extension_overrides == {}
+
+    def test_effective_config_no_override(self) -> None:
+        config = ScannerConfig(baseline_max_bytes=65536)
+        eff = config.effective_for(".txt")
+        assert eff["baseline_max_bytes"] == 65536
+        assert eff["specialist_budget"] == 131072
+
+    def test_effective_config_with_override(self) -> None:
+        config = ScannerConfig(
+            baseline_max_bytes=65536,
+            extension_overrides={".csv": {"baseline_max_bytes": 1048576}}
+        )
+        eff_csv = config.effective_for(".csv")
+        eff_txt = config.effective_for(".txt")
+        assert eff_csv["baseline_max_bytes"] == 1048576
+        assert eff_txt["baseline_max_bytes"] == 65536
+
+    def test_effective_enforces_sample_size_minimum(self) -> None:
+        config = ScannerConfig(
+            sample_size=8192,
+            extension_overrides={".txt": {"baseline_max_bytes": 100}}
+        )
+        eff = config.effective_for(".txt")
+        assert eff["baseline_max_bytes"] == 8192  # enforced minimum
+
+    def test_specialist_budget_override(self) -> None:
+        config = ScannerConfig(
+            specialist_budget=131072,
+            extension_overrides={".pdf": {"specialist_budget": 524288}}
+        )
+        eff = config.effective_for(".pdf")
+        assert eff["specialist_budget"] == 524288
+
+    def test_deep_extract_profile(self, tmp_path: Path) -> None:
+        from scanner.scanner import SCAN_PROFILES
+        profile = SCAN_PROFILES["deep_extract"]
+        assert profile["baseline_max_bytes"] == 1048576
+        assert profile["specialist_budget"] == 524288
+        assert profile["enable_specialists"] is True
+
+    def test_fast_sort_profile(self) -> None:
+        from scanner.scanner import SCAN_PROFILES
+        profile = SCAN_PROFILES["fast_sort"]
+        assert profile["baseline_max_bytes"] == 8192
+        assert profile["enable_specialists"] is False
+
+    def test_override_applies_to_scan(self, tmp_path: Path) -> None:
+        # Create a file larger than 100 bytes
+        (tmp_path / "big.txt").write_text("x" * 500)
+        config = ScannerConfig(
+            baseline_max_bytes=100,
+            extension_overrides={".txt": {"baseline_max_bytes": 50000}}
+        )
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        # Should have extracted content (override gives enough bytes)
+        assert rec.content_preview is not None
+        assert len(rec.content_preview) > 0
+
+    def test_config_in_manifest(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(
+            specialist_budget=262144,
+            extension_overrides={".csv": {"baseline_max_bytes": 999999}}
+        )
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        manifest = scanner.scan()
+        assert manifest.meta.config["specialist_budget"] == 262144
+        assert manifest.meta.config["extension_overrides"] == {".csv": {"baseline_max_bytes": 999999}}
+
+
+# ---------------------------------------------------------------------------
+# v0.6: Structural signatures and polyglot detection
+# ---------------------------------------------------------------------------
+
+class TestStructuralSignatures:
+    def test_file_signature_present(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("Hello world")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.file_signature is not None
+        assert "magic_bytes" in rec.file_signature
+        assert rec.file_signature["magic_length"] > 0
+
+    def test_file_signature_null_for_empty(self, tmp_path: Path) -> None:
+        (tmp_path / "empty.txt").write_bytes(b"")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.file_signature is None
+
+    def test_file_signature_hex_format(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_bytes(b"\xff\xd8\xff\xe0test")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.file_signature["magic_bytes"].startswith("ffd8ffe0")
+
+    def test_format_signatures_png(self, tmp_path: Path) -> None:
+        import struct as st
+        sig = b"\x89PNG\r\n\x1a\n"
+        ihdr = st.pack(">I", 13) + b"IHDR" + st.pack(">II", 10, 10) + bytes([8, 2, 0, 0, 0])
+        (tmp_path / "img.png").write_bytes(sig + ihdr)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert len(rec.format_signatures) >= 1
+        assert rec.format_signatures[0]["format"] == "image/png"
+
+    def test_format_signatures_empty_for_unknown(self, tmp_path: Path) -> None:
+        (tmp_path / "random.dat").write_bytes(bytes(range(50, 100)))
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.format_signatures == []
+
+    def test_polyglot_detected(self, tmp_path: Path) -> None:
+        # JPEG header + PDF content
+        poly = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 5 + b"%PDF-1.4 content"
+        (tmp_path / "poly.jpg").write_bytes(poly)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.is_polyglot is True
+        assert len(rec.format_signatures) >= 2
+
+    def test_not_polyglot_single_format(self, tmp_path: Path) -> None:
+        (tmp_path / "plain.txt").write_text("Just plain text nothing special")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.is_polyglot is False
+
+
+class TestSpecialistMimeGuard:
+    def test_text_file_as_pdf_skipped(self, tmp_path: Path) -> None:
+        (tmp_path / "fake.pdf").write_text("This is just text")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+        codes = [e.code for e in rec.errors]
+        assert "specialist_probe_failed" in codes
+
+    def test_real_pdf_not_skipped(self, tmp_path: Path) -> None:
+        (tmp_path / "real.pdf").write_bytes(b"%PDF-1.4\x00" + b"\x00" * 50)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is not None
+
+
+# ---------------------------------------------------------------------------
+# v0.6: Data integrity envelope
+# ---------------------------------------------------------------------------
+
+class TestIntegrityEnvelope:
+    def test_manifest_signature_null_by_default(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.manifest_signature is None
+
+    def test_manifest_signature_present_with_key(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(signing_key="test-secret", signing_key_id="test-key-1")
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        assert manifest.manifest_signature is not None
+        assert manifest.manifest_signature["algorithm"] == "hmac-sha256"
+        assert manifest.manifest_signature["key_id"] == "test-key-1"
+        assert len(manifest.manifest_signature["value"]) == 64  # sha256 hex
+
+    def test_signature_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(signing_key="secret")
+        m1 = Scanner(source_dir=tmp_path, config=config).scan()
+        m2 = Scanner(source_dir=tmp_path, config=config).scan()
+        assert m1.manifest_signature["value"] == m2.manifest_signature["value"]
+
+    def test_signature_changes_with_content(self, tmp_path: Path) -> None:
+        f = tmp_path / "a.txt"
+        config = ScannerConfig(signing_key="secret")
+        f.write_text("v1")
+        s1 = Scanner(source_dir=tmp_path, config=config).scan().manifest_signature["value"]
+        f.write_text("v2")
+        s2 = Scanner(source_dir=tmp_path, config=config).scan().manifest_signature["value"]
+        assert s1 != s2
+
+    def test_previous_manifest_checksum_in_delta(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_json
+        src = tmp_path / "src"
+        src.mkdir()
+        (src / "a.txt").write_text("hello")
+        m1 = Scanner(source_dir=src).scan()
+        prev = tmp_path / "prev.json"
+        prev.write_text(manifest_to_json(m1))
+        config = ScannerConfig(previous_manifest=str(prev))
+        m2 = Scanner(source_dir=src, config=config).scan()
+        assert m2.delta is not None
+        assert m2.delta.previous_manifest_checksum == m1.manifest_checksum
+
+    def test_previous_manifest_checksum_null_without_delta(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.delta is None
+
+    def test_signature_in_json_output(self, tmp_path: Path) -> None:
+        import json as json_mod
+        from scanner.scanner import manifest_to_json
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(signing_key="secret", signing_key_id="k1")
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        data = json_mod.loads(manifest_to_json(manifest))
+        assert data["manifest_signature"]["key_id"] == "k1"
