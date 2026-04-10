@@ -1046,7 +1046,7 @@ class TestSemanticToolNames:
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
         assert SCANNER_VERSION == "0.7.0"
-        assert LOGIC_VERSION == "0.7.0"  # routing logic unchanged in patch
+        assert LOGIC_VERSION == "0.7.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1645,8 +1645,8 @@ class TestXlsSpecialist:
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
-        if rec.specialist_metadata:
-            assert rec.specialist_metadata["spreadsheet"]["format"] == "ooxml"
+        assert rec.specialist_metadata is not None
+        assert rec.specialist_metadata["spreadsheet"]["format"] == "ooxml"
 
 
 # ---------------------------------------------------------------------------
@@ -1680,7 +1680,9 @@ class TestSafetyFlags:
             zf.writestr("word/document.xml", "<doc/>")
             zf.writestr("word/vbaProject.bin", b"\xd0\xcf\x11\xe0")
         (tmp_path / "macro.docx").write_bytes(buf.getvalue())
-        scanner = Scanner(source_dir=tmp_path)
+        # DOCX macro detection requires specialists enabled (gated to avoid extra I/O)
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
         rec = scanner.scan().files[0]
         assert "has_macros" in rec.safety_flags
 

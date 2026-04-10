@@ -295,7 +295,6 @@ class DeltaRecord:
 
 
 @dataclass
-@dataclass
 class ScanQuality:
     total_files: int
     clean_files: int
@@ -871,9 +870,11 @@ class Scanner:
                 detail="binary_file",
             ))
 
-        # Safety flags — checked before specialist, independent of MIME guard
+        # Safety flags — checked before specialist, independent of MIME guard.
+        # DOCX macro detection requires reading the ZIP central directory; this
+        # is gated behind enable_specialists to avoid extra I/O on baseline scans.
         zip_entries = None
-        if extension == ".docx":
+        if extension == ".docx" and self.config.enable_specialists:
             zip_entries = self._get_zip_entries(path, eff["specialist_budget"])
         safety_flags = self.detect_safety_flags(extension, sample, zip_entries)
 
@@ -1821,16 +1822,31 @@ class Scanner:
         return sorted(flags)
 
     def _get_zip_entries(self, path: Path, budget: int) -> list[str] | None:
-        """Get ZIP entry names within budget for safety flag checking."""
+        """Get ZIP entry names by reading the central directory from end of file.
+
+        ZIP central directory is at the end of the archive. We let zipfile seek
+        to it directly. zipfile.ZipFile only reads the central directory bytes
+        for namelist() — it does not read entry content. This is bounded by
+        the size of the central directory itself, not the full archive.
+
+        Files smaller than budget bytes are also handled correctly (zipfile
+        will read what it needs).
+        """
         import zipfile
-        from io import BytesIO
         try:
-            with path.open("rb") as f:
-                raw = f.read(budget)
-            zf = zipfile.ZipFile(BytesIO(raw))
-            entries = zf.namelist()
-            zf.close()
-            return entries
+            # Skip reading if file is enormous and we'd cause memory pressure
+            # via the central directory. In practice, central directories are
+            # tiny (KB range). budget is used here only as a safety ceiling
+            # against pathological archives.
+            try:
+                file_size = path.stat().st_size
+            except Exception:
+                return None
+            if file_size > 10 * budget:
+                # Pathological size — refuse rather than risk OOM on a malformed CD
+                return None
+            with zipfile.ZipFile(str(path)) as zf:
+                return zf.namelist()
         except Exception:
             return None
 
