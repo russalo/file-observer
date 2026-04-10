@@ -109,6 +109,7 @@ When LOGIC_VERSION or SCHEMA_VERSION bump, those constants update independently 
 ### 2.3 Other Documents
 
 - `docs/README.md` — user-facing project README
+- `docs/HISTORY.md` — running index of all versions, specs, and compliance reports (with links to archived items post-v1.0)
 - `docs/CONVENTIONS.md` — this file (internal)
 - `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments
 - `docs/STANDARDS_TRACKING.md` — awareness of adjacent standards, formats, obligations
@@ -254,6 +255,7 @@ Required before merge:
 - [ ] `docs/v{VERSION}.0_RFC_Specification.md` — approved spec
 - [ ] `docs/COMPLIANCE-v{VERSION}.md` — compliance report
 - [ ] `docs/README.md` — version, schema, feature table updated
+- [ ] `docs/HISTORY.md` — new version row added; "Drafts in Flight" updated
 - [ ] `CLAUDE.md` — spec references and roadmap updated
 - [ ] `docs/CONVENTIONS.md` (this file) — tracking inventory updated for any new specialists, fields, signatures, flags, error codes, vectors
 - [ ] `docs/PUBLIC_CONTRACT.md` — updated only if a public contract field changed
@@ -281,6 +283,8 @@ All of the above for minor, plus:
 - [ ] Deprecation notice in previous minor (one full minor cycle of warning)
 - [ ] `SCHEMA_VERSION` MAJOR bump
 - [ ] `PUBLIC_CONTRACT.md` updated with breaking change notice
+- [ ] **Archive trigger:** All previous major version's RFCs and compliance reports moved to `docs/archive/{previous_major}.x/`. `docs/HISTORY.md` updated with new archive paths. Working `docs/` directory shrinks to: current spec, current compliance, three companion docs (CONVENTIONS/PUBLIC_CONTRACT/STANDARDS_TRACKING), README, HISTORY, and pre-RFC historical documents (SPEC.md, v0.2Spec.md, COMPLIANCE.md).
+- [ ] **First major (v1.0) special case:** The v1.0 release is when archival begins. v0.3-v0.x specs and compliance reports move to `docs/archive/0.x/`. Pre-RFC documents (SPEC.md, v0.2Spec.md, COMPLIANCE.md) stay in `docs/` as historical anchors.
 
 ---
 
