@@ -111,6 +111,7 @@ When LOGIC_VERSION or SCHEMA_VERSION bump, those constants update independently 
 - `docs/README.md` — user-facing project README
 - `docs/CONVENTIONS.md` — this file (internal)
 - `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments
+- `docs/STANDARDS_TRACKING.md` — awareness of adjacent standards, formats, obligations
 - `docs/SPEC.md` — historical v0.1 base contract (do not modify)
 - `CLAUDE.md` — agent instructions (root, not docs/)
 
@@ -256,11 +257,13 @@ Required before merge:
 - [ ] `CLAUDE.md` — spec references and roadmap updated
 - [ ] `docs/CONVENTIONS.md` (this file) — tracking inventory updated for any new specialists, fields, signatures, flags, error codes, vectors
 - [ ] `docs/PUBLIC_CONTRACT.md` — updated only if a public contract field changed
+- [ ] `docs/STANDARDS_TRACKING.md` — touch point pass: review Awareness, Moving toward, Obligations against this version's scope
 - [ ] `pyproject.toml` — version bumped
 - [ ] Module docstring — version, schema, spec reference updated
 - [ ] All version constants — bumped
 - [ ] Test version assertions — updated
 - [ ] Tests passing
+- [ ] Documentation audit (see STANDARDS_TRACKING.md §3.1) — every constant, error code, safety flag, namespace verified against docs
 - [ ] PR description summarizing changes
 
 ### 5.2 Patch release (0.x.y)
