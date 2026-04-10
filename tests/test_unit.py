@@ -371,6 +371,77 @@ class TestDetectBinary:
         assert result is True
         assert prov.trigger == "text_ratio_failure"
 
+    def test_utf16_le_bom_not_binary(self, scanner: Scanner) -> None:
+        # UTF-16 LE encoding of "[List 1]\nfoo=bar" — interleaved NULs by design.
+        sample = "[List 1]\nfoo=bar".encode("utf-16-le")
+        sample = b"\xff\xfe" + sample  # add BOM
+        result, prov = scanner.detect_binary(sample, "text/plain")
+        assert result is False
+        assert prov.trigger == "unicode_bom"
+        assert prov.detail == {"bom": "utf-16-le"}
+
+    def test_utf16_be_bom_not_binary(self, scanner: Scanner) -> None:
+        sample = b"\xfe\xff" + "Hello".encode("utf-16-be")
+        result, prov = scanner.detect_binary(sample, "text/plain")
+        assert result is False
+        assert prov.trigger == "unicode_bom"
+        assert prov.detail == {"bom": "utf-16-be"}
+
+    def test_utf32_le_bom_not_binary(self, scanner: Scanner) -> None:
+        sample = b"\xff\xfe\x00\x00" + "Hello".encode("utf-32-le")
+        result, prov = scanner.detect_binary(sample, "text/plain")
+        assert result is False
+        assert prov.trigger == "unicode_bom"
+        assert prov.detail == {"bom": "utf-32-le"}
+
+    def test_utf32_be_bom_not_binary(self, scanner: Scanner) -> None:
+        sample = b"\x00\x00\xfe\xff" + "Hello".encode("utf-32-be")
+        result, prov = scanner.detect_binary(sample, "text/plain")
+        assert result is False
+        assert prov.trigger == "unicode_bom"
+        assert prov.detail == {"bom": "utf-32-be"}
+
+    def test_utf32_le_bom_takes_precedence_over_utf16_le(self, scanner: Scanner) -> None:
+        # UTF-32 LE BOM ff fe 00 00 starts with the UTF-16 LE BOM ff fe.
+        # The 4-byte BOM must be checked first or it would be misclassified.
+        sample = b"\xff\xfe\x00\x00" + "X".encode("utf-32-le")
+        result, prov = scanner.detect_binary(sample, "text/plain")
+        assert result is False
+        assert prov.detail == {"bom": "utf-32-le"}
+
+    def test_bom_overrides_image_mime(self, scanner: Scanner) -> None:
+        # A BOM-prefixed sample should be treated as text even if the MIME would
+        # otherwise route to binary. This is intentional: the BOM is a stronger
+        # signal than the MIME (which can be wrong on extension-fallback paths).
+        sample = b"\xff\xfe" + "txt".encode("utf-16-le")
+        result, prov = scanner.detect_binary(sample, "image/png")
+        assert result is False
+        assert prov.trigger == "unicode_bom"
+
+
+# ---------------------------------------------------------------------------
+# _detect_unicode_bom
+# ---------------------------------------------------------------------------
+
+class TestDetectUnicodeBom:
+    def test_no_bom_returns_none(self) -> None:
+        from scanner.scanner import _detect_unicode_bom
+        assert _detect_unicode_bom(b"hello") is None
+        assert _detect_unicode_bom(b"") is None
+
+    def test_utf8_bom_not_unicode_bom(self) -> None:
+        # UTF-8 BOM (ef bb bf) is intentionally NOT in the table — UTF-8 has no
+        # NUL-byte problem, so it never trips detect_binary the wrong way.
+        from scanner.scanner import _detect_unicode_bom
+        assert _detect_unicode_bom(b"\xef\xbb\xbfhello") is None
+
+    def test_each_unicode_bom(self) -> None:
+        from scanner.scanner import _detect_unicode_bom
+        assert _detect_unicode_bom(b"\xff\xfe") == "utf-16-le"
+        assert _detect_unicode_bom(b"\xfe\xff") == "utf-16-be"
+        assert _detect_unicode_bom(b"\xff\xfe\x00\x00") == "utf-32-le"
+        assert _detect_unicode_bom(b"\x00\x00\xfe\xff") == "utf-32-be"
+
 
 # ---------------------------------------------------------------------------
 # detect_requires_vision
@@ -740,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.7.0"
-        assert ctx.logic_version == "0.7.0"
+        assert ctx.scanner_version == "0.7.1"
+        assert ctx.logic_version == "0.7.1"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -779,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.7.0"
+        assert data["context"]["scanner_version"] == "0.7.1"
 
 
 # ---------------------------------------------------------------------------
@@ -833,6 +904,18 @@ class TestSignalProvenance:
         manifest = Scanner(source_dir=tmp_path).scan()
         rec = manifest.files[0]
         assert rec.signal_provenance["is_binary"]["trigger"] == "nul_byte"
+
+    def test_provenance_utf16_le_text_file(self, tmp_path: Path) -> None:
+        # Mimic a NASSCO LACP .lst export: UTF-16 LE with BOM and INI-style content.
+        # Pre-patch this would have been misclassified as binary because of the
+        # interleaved NULs in UTF-16 ASCII content.
+        content = "[List 1]\r\nKey=Value\r\nKey2=Value2\r\n"
+        (tmp_path / "report.txt").write_bytes(b"\xff\xfe" + content.encode("utf-16-le"))
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_binary is False
+        assert rec.signal_provenance["is_binary"]["trigger"] == "unicode_bom"
+        assert rec.signal_provenance["is_binary"]["detail"]["bom"] == "utf-16-le"
 
     def test_provenance_encoding_binary_file(self, tmp_path: Path) -> None:
         (tmp_path / "a.bin").write_bytes(b"\x00\x01\x02" * 100)
@@ -1003,6 +1086,8 @@ class TestMsgMetadata:
             mod.olefile = original
 
     def test_msg_non_ole_file_returns_none(self, tmp_path: Path) -> None:
+        # Also a regression guard for the v0.7.1 OLE2 sample-vs-path fix:
+        # the extractor must take a Path and reject non-OLE files cleanly.
         (tmp_path / "fake.msg").write_bytes(b"not an OLE file")
         scanner = Scanner(source_dir=tmp_path)
         result = scanner._extract_msg_metadata(tmp_path / "fake.msg")
@@ -1045,8 +1130,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.7.0"
-        assert LOGIC_VERSION == "0.7.0"
+        assert SCANNER_VERSION == "0.7.1"
+        assert LOGIC_VERSION == "0.7.1"
 
 
 # ---------------------------------------------------------------------------
@@ -1315,15 +1400,24 @@ class TestDocxMetadata:
 
 
 class TestDocMetadata:
-    def test_doc_without_olefile_returns_none(self, scanner: Scanner) -> None:
+    def test_doc_without_olefile_returns_none(self, scanner: Scanner, tmp_path: Path) -> None:
         import scanner.scanner as mod
+        (tmp_path / "fake.doc").write_bytes(b"fake content")
         original = mod.olefile
         try:
             mod.olefile = None
-            result = scanner._extract_doc_metadata(b"fake content")
+            result = scanner._extract_doc_metadata(tmp_path / "fake.doc")
             assert result is None
         finally:
             mod.olefile = original
+
+    def test_doc_non_ole_file_returns_none(self, tmp_path: Path) -> None:
+        # Sanity check that the OLE2 path-based extractor rejects non-OLE files
+        # (regression guard for the v0.7.1 OLE2 sample-vs-path fix).
+        (tmp_path / "fake.doc").write_bytes(b"not an OLE file")
+        scanner = Scanner(source_dir=tmp_path)
+        result = scanner._extract_doc_metadata(tmp_path / "fake.doc")
+        assert result is None
 
     def test_doc_invalid_file(self, tmp_path: Path) -> None:
         (tmp_path / "bad.doc").write_bytes(b"not an OLE file")
@@ -1625,15 +1719,24 @@ class TestXlsSpecialist:
         rec = scanner.scan().files[0]
         assert rec.specialist_metadata is None
 
-    def test_xls_without_olefile(self, scanner: Scanner) -> None:
+    def test_xls_without_olefile(self, scanner: Scanner, tmp_path: Path) -> None:
         import scanner.scanner as mod
+        (tmp_path / "fake.xls").write_bytes(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
         original = mod.olefile
         try:
             mod.olefile = None
-            result = scanner._extract_xls_metadata(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
+            result = scanner._extract_xls_metadata(tmp_path / "fake.xls")
             assert result is None
         finally:
             mod.olefile = original
+
+    def test_xls_non_ole_file_returns_none(self, tmp_path: Path) -> None:
+        # Regression guard for the v0.7.1 OLE2 sample-vs-path fix: the path-based
+        # extractor must reject non-OLE files cleanly.
+        (tmp_path / "bad.xls").write_bytes(b"not an OLE file")
+        scanner = Scanner(source_dir=tmp_path)
+        result = scanner._extract_xls_metadata(tmp_path / "bad.xls")
+        assert result is None
 
     def test_xlsx_includes_format_field(self, tmp_path: Path) -> None:
         import zipfile

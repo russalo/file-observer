@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.7.0
+    Version:    0.7.1
     Schema:     0.7
     Python:     >= 3.12
     Spec:       docs/v0.7.0_RFC_Specification.md (current)
@@ -70,8 +70,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.7.0"
-LOGIC_VERSION = "0.7.0"
+SCANNER_VERSION = "0.7.1"
+LOGIC_VERSION = "0.7.1"
 SCHEMA_VERSION = "0.7"
 
 
@@ -172,6 +172,23 @@ TEXT_APP_MIMES = {
     "application/yaml",
     "application/x-yaml",
 }
+
+# Unicode byte-order marks. Order matters: UTF-32 LE (ff fe 00 00) shares its
+# first two bytes with UTF-16 LE (ff fe), so 4-byte BOMs MUST be checked first.
+UNICODE_BOMS: tuple[tuple[bytes, str], ...] = (
+    (b"\x00\x00\xfe\xff", "utf-32-be"),
+    (b"\xff\xfe\x00\x00", "utf-32-le"),
+    (b"\xfe\xff", "utf-16-be"),
+    (b"\xff\xfe", "utf-16-le"),
+)
+
+
+def _detect_unicode_bom(sample: bytes) -> str | None:
+    """Return the Unicode encoding name if `sample` begins with a BOM, else None."""
+    for bom, enc in UNICODE_BOMS:
+        if sample.startswith(bom):
+            return enc
+    return None
 
 
 @dataclass
@@ -1049,7 +1066,7 @@ class Scanner:
         if extension in {".jpg", ".jpeg"}:
             return self._extract_jpeg_metadata(sample)
         if extension == ".msg":
-            return self._extract_msg_metadata(sample)
+            return self._extract_msg_metadata(path)
         if extension == ".eml":
             return self._extract_eml_metadata(sample)
         if extension == ".xlsx":
@@ -1058,11 +1075,11 @@ class Scanner:
                 meta["format"] = "ooxml"
             return meta
         if extension == ".xls":
-            return self._extract_xls_metadata(sample)
+            return self._extract_xls_metadata(path)
         if extension == ".docx":
             return self._extract_docx_metadata(path, budget)
         if extension == ".doc":
-            return self._extract_doc_metadata(sample)
+            return self._extract_doc_metadata(path)
         if extension == ".rtf":
             return self._extract_rtf_metadata(sample)
         return None
@@ -1252,16 +1269,16 @@ class Scanner:
         finally:
             zf.close()
 
-    def _extract_xls_metadata(self, sample: bytes) -> dict[str, Any] | None:
+    def _extract_xls_metadata(self, path: Path) -> dict[str, Any] | None:
+        # See _extract_msg_metadata: OLE2 requires the full file. olefile gets
+        # the path directly; deviation from sample_size is intentional and
+        # bounded by file size on disk.
         if not olefile:
             return None
         try:
-            from io import BytesIO
-            buf = BytesIO(sample)
-            if not olefile.isOleFile(buf):
+            if not olefile.isOleFile(str(path)):
                 return None
-            buf.seek(0)
-            ole = olefile.OleFileIO(buf)
+            ole = olefile.OleFileIO(str(path))
             try:
                 sheet_names: list[str] = []
                 # Try to read sheet names from Workbook stream
@@ -1356,16 +1373,16 @@ class Scanner:
         finally:
             zf.close()
 
-    def _extract_doc_metadata(self, sample: bytes) -> dict[str, Any] | None:
+    def _extract_doc_metadata(self, path: Path) -> dict[str, Any] | None:
+        # See _extract_msg_metadata: OLE2 requires the full file. olefile gets
+        # the path directly; deviation from sample_size is intentional and
+        # bounded by file size on disk.
         if not olefile:
             return None
         try:
-            from io import BytesIO
-            buf = BytesIO(sample)
-            if not olefile.isOleFile(buf):
+            if not olefile.isOleFile(str(path)):
                 return None
-            buf.seek(0)
-            ole = olefile.OleFileIO(buf)
+            ole = olefile.OleFileIO(str(path))
             try:
                 meta: dict[str, Any] = {
                     "title": None, "author": None,
@@ -1423,16 +1440,18 @@ class Scanner:
                     meta[field] = val
         return meta
 
-    def _extract_msg_metadata(self, sample: bytes) -> dict[str, Any] | None:
+    def _extract_msg_metadata(self, path: Path) -> dict[str, Any] | None:
+        # OLE2 compound documents (.msg) cannot be parsed from a head sample
+        # buffer — the FAT sector chains span the whole file. olefile is given
+        # the file path directly. This is an intentional, declared deviation
+        # from the bounded-observation rule (sample_size); the deviation is
+        # bounded by the file size on disk.
         if not olefile:
             return None
         try:
-            from io import BytesIO
-            buf = BytesIO(sample)
-            if not olefile.isOleFile(buf):
+            if not olefile.isOleFile(str(path)):
                 return None
-            buf.seek(0)
-            ole = olefile.OleFileIO(buf)
+            ole = olefile.OleFileIO(str(path))
             try:
                 subject = self._msg_read_property(ole, "__substg1.0_0037001F") or \
                           self._msg_read_property(ole, "__substg1.0_0037001E")
@@ -1518,6 +1537,17 @@ class Scanner:
             return f.read(self.config.sample_size)
 
     def detect_binary(self, sample: bytes, mime_type: str) -> tuple[bool, ProvenanceEntry]:
+        # UTF-16/UTF-32 text files contain interleaved NUL bytes by construction
+        # (every other byte for ASCII content in UTF-16). The NUL-byte heuristic
+        # below would always misclassify them as binary, so check for a leading
+        # Unicode BOM first and treat BOM-prefixed files as text.
+        bom_enc = _detect_unicode_bom(sample)
+        if bom_enc is not None:
+            return False, ProvenanceEntry(
+                layer="derived", method="detect_binary",
+                trigger="unicode_bom", inputs=["mime_type"],
+                detail={"bom": bom_enc},
+            )
         if b"\x00" in sample:
             return True, ProvenanceEntry(
                 layer="derived", method="detect_binary",

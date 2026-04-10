@@ -23,6 +23,7 @@ This is the running index of all scanner versions, their specifications, and the
 | 0.5.0 | 0.5 | 2026-04-08 | Schema reshaping: schema_version field, namespaced specialist_metadata (pdf/image/email/spreadsheet/document), baseline_max_bytes config, CRLF cross-platform handling, as_posix() path normalization, ZIP traversal hardening, XML/TOML parse failure recording | [v0.5.0_RFC_Specification.md](v0.5.0_RFC_Specification.md) | [COMPLIANCE-v0.5.md](COMPLIANCE-v0.5.md) |
 | 0.6.0 | 0.6 | 2026-04-09 | Configurable extraction depth (specialist_budget, extension_overrides, named profiles), structural file signatures (file_signature, format_signatures, is_polyglot), specialist MIME guard, integrity envelope (previous_manifest_checksum, manifest_signature HMAC-SHA256) | [v0.6.0_RFC_Specification.md](v0.6.0_RFC_Specification.md) | [COMPLIANCE-v0.6.md](COMPLIANCE-v0.6.md) |
 | 0.7.0 | 0.7 | 2026-04-10 | XLS specialist (BIFF8 BoundSheet8 parsing), spreadsheet format field (biff/ooxml), safety_flags (has_javascript/has_macros/has_ole_objects/has_external_references), ScanQuality block (clean/degraded/error/mismatch/polyglot/safety counts) | [v0.7.0_RFC_Specification.md](v0.7.0_RFC_Specification.md) | _(no compliance report)_ |
+| 0.7.1 | 0.7 | 2026-04-10 | **Patch release.** UTF-16/UTF-32 BOM detection in `detect_binary` (UTF-16 text files like NASSCO `.lst` exports were being routed to binary_only because of interleaved NULs in UTF-16 ASCII content). OLE2 specialists (`.msg`, `.doc`, `.xls`) now receive the file path instead of the 8KB sample buffer — olefile cannot follow FAT sector chains from a head-only buffer, so all three were 100% failing on real-world files. Both bugs found from the v0.7.0 scan of CP's JOBS corpus. LOGIC_VERSION bumped (routing changes for UTF-16 text; extraction succeeds where it previously failed). | _(part of v0.7)_ | _(part of v0.7)_ |
 | 0.8.0 | 0.8 | 2026-04-10 | Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate). First place rules-vs-tuning distinction is drawn for vector fingerprints. | [v0.8.0_RFC_Specification.md](v0.8.0_RFC_Specification.md) | _(pending)_ |
 
 ---
@@ -88,6 +89,7 @@ For each version, the corresponding code constants:
 | 0.5.0 | 0.5.0 | 0.5.0 | 0.5 |
 | 0.6.0 | 0.6.0 | 0.6.0 | 0.6 |
 | 0.7.0 | 0.7.0 | 0.7.0 | 0.7 |
+| 0.7.1 | 0.7.1 | 0.7.1 | 0.7 |
 
 ---
 
