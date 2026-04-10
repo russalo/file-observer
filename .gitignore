@@ -46,6 +46,13 @@ tests/fixtures/*.filepart
 # Generated manifests (local output)
 manifests/
 
+# Session changelog (chat logs)
+changelog/
+
+# File server inbox/outbox folders
+inbox/
+outbox/
+
 # OS
 .DS_Store
 Thumbs.db
