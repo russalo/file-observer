@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.7.1
+    Version:    0.7.2
     Schema:     0.7
     Python:     >= 3.12
     Spec:       docs/v0.7.0_RFC_Specification.md (current)
@@ -70,8 +70,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.7.1"
-LOGIC_VERSION = "0.7.1"
+SCANNER_VERSION = "0.7.2"
+LOGIC_VERSION = "0.7.2"
 SCHEMA_VERSION = "0.7"
 
 
@@ -1455,15 +1455,25 @@ class Scanner:
             try:
                 subject = self._msg_read_property(ole, "__substg1.0_0037001F") or \
                           self._msg_read_property(ole, "__substg1.0_0037001E")
-                from_addr = self._msg_read_property(ole, "__substg1.0_0C1F001F") or \
+                # v0.7.2: prefer PR_SENDER_NAME (0x0C1A — always a display name)
+                # over PR_SENDER_EMAIL_ADDRESS (0x0C1F), which returns the
+                # ugly Exchange legacyDN for Exchange-sourced messages.
+                from_addr = self._msg_read_property(ole, "__substg1.0_0C1A001F") or \
+                            self._msg_read_property(ole, "__substg1.0_0C1A001E") or \
+                            self._msg_read_property(ole, "__substg1.0_0C1F001F") or \
                             self._msg_read_property(ole, "__substg1.0_0C1F001E") or \
                             self._msg_read_property(ole, "__substg1.0_0042001F") or \
                             self._msg_read_property(ole, "__substg1.0_0042001E")
                 to_addr = self._msg_read_property(ole, "__substg1.0_0E04001F") or \
                           self._msg_read_property(ole, "__substg1.0_0E04001E")
-                # v0.4: enriched fields for EML parity
-                date_val = self._msg_read_property(ole, "__substg1.0_0047001F") or \
-                           self._msg_read_property(ole, "__substg1.0_0047001E")
+                # v0.7.2: read PR_CLIENT_SUBMIT_TIME (0x0039, PT_SYSTIME) from
+                # the MAPI properties stream. The previous implementation read
+                # from a substg stream, which can never work — fixed-length
+                # properties (FILETIME, INT32, etc.) live inline in the
+                # properties stream, not in substg streams. Falls back to
+                # PR_MESSAGE_DELIVERY_TIME (0x0E06) if the submit time is absent.
+                date_val = self._msg_read_filetime_property(ole, 0x0039) or \
+                           self._msg_read_filetime_property(ole, 0x0E06)
                 message_id = self._msg_read_property(ole, "__substg1.0_1035001F") or \
                              self._msg_read_property(ole, "__substg1.0_1035001E")
                 # has_attachments from PR_HASATTACH (0x0E1B) — boolean property
@@ -1492,6 +1502,53 @@ class Scanner:
         except Exception:
             pass
         return None
+
+    # Top-level message header in __properties_version1.0 is 32 bytes.
+    # Format reference: MS-OXMSG §2.4.
+    _MSG_TOPLEVEL_HEADER_SIZE = 32
+    _MSG_PROPERTY_ENTRY_SIZE = 16
+    _MSG_PT_SYSTIME = 0x0040
+
+    def _msg_read_filetime_property(self, ole: Any, prop_id: int) -> str | None:
+        """Read a PT_SYSTIME property from a .msg file's __properties_version1.0
+        stream and return its ISO 8601 string. Returns None if absent.
+
+        The .msg property table is the MAPI/MS-OXMSG format, NOT the OLE2
+        PropertySetStream format that olefile.getproperties() handles. We parse
+        the 16-byte property entries directly. Each entry is:
+            4 bytes  property tag (LE; low 16 bits = type, high 16 = ID)
+            4 bytes  flags
+            8 bytes  value (for PT_SYSTIME, an 8-byte Windows FILETIME)
+        """
+        try:
+            if not ole.exists("__properties_version1.0"):
+                return None
+            data = ole.openstream("__properties_version1.0").read()
+        except Exception:
+            return None
+        target_tag = (prop_id << 16) | self._MSG_PT_SYSTIME
+        pos = self._MSG_TOPLEVEL_HEADER_SIZE
+        end = len(data)
+        while pos + self._MSG_PROPERTY_ENTRY_SIZE <= end:
+            tag = int.from_bytes(data[pos:pos + 4], "little")
+            if tag == target_tag:
+                ft = int.from_bytes(data[pos + 8:pos + 16], "little")
+                return self._filetime_to_iso(ft)
+            pos += self._MSG_PROPERTY_ENTRY_SIZE
+        return None
+
+    @staticmethod
+    def _filetime_to_iso(ft: int) -> str | None:
+        """Convert a Windows FILETIME (100-ns intervals since 1601-01-01 UTC)
+        to an ISO 8601 timestamp. Returns None for zero/invalid values."""
+        if ft <= 0:
+            return None
+        try:
+            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            epoch = _dt(1601, 1, 1, tzinfo=_tz.utc)
+            return (epoch + _td(seconds=ft / 10_000_000)).isoformat()
+        except (OverflowError, ValueError):
+            return None
 
     _ZIP_MAX_DECOMPRESS = 1048576  # 1MB max decompressed size per entry
 

@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.7.1"
-        assert ctx.logic_version == "0.7.1"
+        assert ctx.scanner_version == "0.7.2"
+        assert ctx.logic_version == "0.7.2"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.7.1"
+        assert data["context"]["scanner_version"] == "0.7.2"
 
 
 # ---------------------------------------------------------------------------
@@ -1104,6 +1104,157 @@ class TestMsgMetadata:
 
 
 # ---------------------------------------------------------------------------
+# v0.7.2: MSG date and from-name fixes
+# ---------------------------------------------------------------------------
+
+class TestMsgFiletimeConversion:
+    """The static FILETIME → ISO 8601 helper, exercised without any .msg file."""
+
+    def test_zero_returns_none(self, scanner: Scanner) -> None:
+        assert scanner._filetime_to_iso(0) is None
+
+    def test_negative_returns_none(self, scanner: Scanner) -> None:
+        assert scanner._filetime_to_iso(-1) is None
+
+    def test_known_value_2024(self, scanner: Scanner) -> None:
+        # 2024-01-15 12:34:56 UTC as a Windows FILETIME.
+        # FILETIME = (datetime(2024,1,15,12,34,56,tzinfo=utc) - datetime(1601,1,1,tzinfo=utc)).total_seconds() * 10_000_000
+        from datetime import datetime, timezone
+        target = datetime(2024, 1, 15, 12, 34, 56, tzinfo=timezone.utc)
+        epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+        ft = int((target - epoch).total_seconds() * 10_000_000)
+        result = scanner._filetime_to_iso(ft)
+        assert result is not None
+        assert result.startswith("2024-01-15T12:34:56")
+
+    def test_known_value_1990(self, scanner: Scanner) -> None:
+        from datetime import datetime, timezone
+        target = datetime(1990, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
+        epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+        ft = int((target - epoch).total_seconds() * 10_000_000)
+        result = scanner._filetime_to_iso(ft)
+        assert result is not None
+        assert result.startswith("1990-06-01")
+
+    def test_overflow_returns_none(self, scanner: Scanner) -> None:
+        # Astronomically large value should not raise.
+        result = scanner._filetime_to_iso(2 ** 63 - 1)
+        # Either returns None or a valid ISO string in the far future, but
+        # MUST NOT raise.
+        assert result is None or isinstance(result, str)
+
+
+class TestMsgFiletimePropertyReader:
+    """Synthetic __properties_version1.0 stream parsing without a real .msg."""
+
+    def test_missing_stream_returns_none(self, scanner: Scanner) -> None:
+        # Stub OLE object with no streams.
+        class StubOle:
+            def exists(self, name: str) -> bool:
+                return False
+        assert scanner._msg_read_filetime_property(StubOle(), 0x0039) is None
+
+    def test_empty_stream_returns_none(self, scanner: Scanner) -> None:
+        from io import BytesIO
+        class StubOle:
+            def exists(self, name: str) -> bool:
+                return name == "__properties_version1.0"
+            def openstream(self, name: str):
+                return BytesIO(b"")
+        assert scanner._msg_read_filetime_property(StubOle(), 0x0039) is None
+
+    def test_header_only_returns_none(self, scanner: Scanner) -> None:
+        # 32-byte header with no entries → no matching property.
+        from io import BytesIO
+        class StubOle:
+            def exists(self, name: str) -> bool:
+                return name == "__properties_version1.0"
+            def openstream(self, name: str):
+                return BytesIO(b"\x00" * 32)
+        assert scanner._msg_read_filetime_property(StubOle(), 0x0039) is None
+
+    def test_synthetic_filetime_property_round_trip(self, scanner: Scanner) -> None:
+        # Build a minimal __properties_version1.0 stream:
+        #   32-byte top-level header
+        #   one 16-byte entry: tag=0x00390040 (PR_CLIENT_SUBMIT_TIME), flags=0,
+        #     value=FILETIME for 2023-07-04 18:30:00 UTC
+        from datetime import datetime, timezone
+        from io import BytesIO
+
+        target = datetime(2023, 7, 4, 18, 30, 0, tzinfo=timezone.utc)
+        epoch = datetime(1601, 1, 1, tzinfo=timezone.utc)
+        ft = int((target - epoch).total_seconds() * 10_000_000)
+
+        header = b"\x00" * 32
+        tag = (0x0039 << 16) | 0x0040  # = 0x00390040
+        entry = tag.to_bytes(4, "little") + (0).to_bytes(4, "little") + ft.to_bytes(8, "little")
+        stream_bytes = header + entry
+
+        class StubOle:
+            def __init__(self, data: bytes) -> None:
+                self.data = data
+            def exists(self, name: str) -> bool:
+                return name == "__properties_version1.0"
+            def openstream(self, name: str):
+                return BytesIO(self.data)
+
+        result = scanner._msg_read_filetime_property(StubOle(stream_bytes), 0x0039)
+        assert result is not None
+        assert result.startswith("2023-07-04T18:30:00")
+
+    def test_synthetic_property_not_found_returns_none(self, scanner: Scanner) -> None:
+        # Build a stream containing a property that's NOT the one we're looking for.
+        from io import BytesIO
+        header = b"\x00" * 32
+        # Some unrelated tag, e.g. 0x00010040 (made-up)
+        wrong_tag = (0x0001 << 16) | 0x0040
+        entry = wrong_tag.to_bytes(4, "little") + (0).to_bytes(4, "little") + (0).to_bytes(8, "little")
+        stream_bytes = header + entry
+
+        class StubOle:
+            def exists(self, name: str) -> bool:
+                return name == "__properties_version1.0"
+            def openstream(self, name: str):
+                return BytesIO(stream_bytes)
+
+        # Looking for 0x0039 should miss.
+        assert scanner._msg_read_filetime_property(StubOle(), 0x0039) is None
+
+
+class TestMsgFromFieldOrder:
+    """Verify the from-name preference order: PR_SENDER_NAME (0x0C1A) first.
+
+    These tests use a stub OLE that returns a specific string for each substg
+    stream lookup. We're checking the *order* of fallbacks, not real .msg parsing.
+    """
+
+    def _make_scanner_with_stub(self, scanner: Scanner, present_streams: dict):
+        """Patch _msg_read_property to consult the dict instead of olefile."""
+        original = scanner._msg_read_property
+
+        def fake_read_property(ole, stream_name):
+            return present_streams.get(stream_name)
+
+        scanner._msg_read_property = fake_read_property
+        return original
+
+    def test_sender_name_wins_when_present(self, scanner: Scanner, tmp_path: Path) -> None:
+        # When PR_SENDER_NAME (0x0C1A) is set AND PR_SENDER_EMAIL_ADDRESS
+        # (0x0C1F) is set, the display name should win.
+        # We can't easily test this through _extract_msg_metadata without a
+        # real .msg, so we verify the lookup order via the substg name strings
+        # in the source code.
+        import inspect
+        src = inspect.getsource(scanner._extract_msg_metadata)
+        # Confirm the from chain references 0x0C1A BEFORE 0x0C1F
+        idx_0c1a = src.find("0C1A001F")
+        idx_0c1f = src.find("0C1F001F")
+        assert idx_0c1a != -1, "PR_SENDER_NAME (0x0C1A) lookup must be present"
+        assert idx_0c1f != -1, "PR_SENDER_EMAIL_ADDRESS (0x0C1F) lookup must still be present as fallback"
+        assert idx_0c1a < idx_0c1f, "PR_SENDER_NAME must be tried BEFORE PR_SENDER_EMAIL_ADDRESS"
+
+
+# ---------------------------------------------------------------------------
 # v0.4: Semantic specialist tool names
 # ---------------------------------------------------------------------------
 
@@ -1130,8 +1281,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.7.1"
-        assert LOGIC_VERSION == "0.7.1"
+        assert SCANNER_VERSION == "0.7.2"
+        assert LOGIC_VERSION == "0.7.2"
 
 
 # ---------------------------------------------------------------------------
