@@ -740,8 +740,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.6.0"
-        assert ctx.logic_version == "0.6.0"
+        assert ctx.scanner_version == "0.7.0"
+        assert ctx.logic_version == "0.7.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -779,7 +779,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.6.0"
+        assert data["context"]["scanner_version"] == "0.7.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1045,8 +1045,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.6.0"
-        assert LOGIC_VERSION == "0.6.0"  # routing logic unchanged in patch
+        assert SCANNER_VERSION == "0.7.0"
+        assert LOGIC_VERSION == "0.7.0"  # routing logic unchanged in patch
 
 
 # ---------------------------------------------------------------------------
@@ -1605,3 +1605,148 @@ class TestIntegrityEnvelope:
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert data["manifest_signature"]["key_id"] == "k1"
+
+
+# ---------------------------------------------------------------------------
+# v0.7: XLS specialist
+# ---------------------------------------------------------------------------
+
+class TestXlsSpecialist:
+    def test_xls_in_supported_extensions(self) -> None:
+        from scanner.scanner import SUPPORTED_EXTENSIONS, SPECIALIST_TOOLS, SPECIALIST_NAMESPACE
+        assert ".xls" in SUPPORTED_EXTENSIONS
+        assert SPECIALIST_TOOLS[".xls"] == "spreadsheet_structure"
+        assert SPECIALIST_NAMESPACE[".xls"] == "spreadsheet"
+
+    def test_xls_invalid_file_returns_none(self, tmp_path: Path) -> None:
+        (tmp_path / "bad.xls").write_bytes(b"not an OLE file")
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        assert rec.specialist_metadata is None
+
+    def test_xls_without_olefile(self, scanner: Scanner) -> None:
+        import scanner.scanner as mod
+        original = mod.olefile
+        try:
+            mod.olefile = None
+            result = scanner._extract_xls_metadata(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
+            assert result is None
+        finally:
+            mod.olefile = original
+
+    def test_xlsx_includes_format_field(self, tmp_path: Path) -> None:
+        import zipfile
+        from io import BytesIO
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("xl/workbook.xml", '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1"/></sheets></workbook>')
+        (tmp_path / "test.xlsx").write_bytes(buf.getvalue())
+        config = ScannerConfig(enable_specialists=True)
+        scanner = Scanner(source_dir=tmp_path, config=config)
+        rec = scanner.scan().files[0]
+        if rec.specialist_metadata:
+            assert rec.specialist_metadata["spreadsheet"]["format"] == "ooxml"
+
+
+# ---------------------------------------------------------------------------
+# v0.7: Safety flags
+# ---------------------------------------------------------------------------
+
+class TestSafetyFlags:
+    def test_safety_flags_default_empty(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.safety_flags == []
+
+    def test_pdf_javascript_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n/JavaScript (alert('hi'))\n")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "has_javascript" in rec.safety_flags
+
+    def test_pdf_no_javascript(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n/Font /Text\n")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "has_javascript" not in rec.safety_flags
+
+    def test_docx_macros_detected(self, tmp_path: Path) -> None:
+        import zipfile
+        from io import BytesIO
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("word/document.xml", "<doc/>")
+            zf.writestr("word/vbaProject.bin", b"\xd0\xcf\x11\xe0")
+        (tmp_path / "macro.docx").write_bytes(buf.getvalue())
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "has_macros" in rec.safety_flags
+
+    def test_docx_no_macros(self, tmp_path: Path) -> None:
+        import zipfile
+        from io import BytesIO
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("word/document.xml", "<doc/>")
+        (tmp_path / "clean.docx").write_bytes(buf.getvalue())
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "has_macros" not in rec.safety_flags
+
+    def test_rtf_ole_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.rtf").write_bytes(rb"{\rtf1 {\object\objemb}}")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "has_ole_objects" in rec.safety_flags
+
+    def test_xml_external_entity_detected(self, tmp_path: Path) -> None:
+        xml = b'<?xml version="1.0"?><!DOCTYPE x [<!ENTITY e SYSTEM "file:///etc/passwd">]><x>&e;</x>'
+        (tmp_path / "xxe.xml").write_bytes(xml)
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert "has_external_references" in rec.safety_flags
+
+    def test_safety_flags_sorted(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n/JavaScript /JS\n")
+        scanner = Scanner(source_dir=tmp_path)
+        rec = scanner.scan().files[0]
+        assert rec.safety_flags == sorted(rec.safety_flags)
+
+
+# ---------------------------------------------------------------------------
+# v0.7: Scan quality signals
+# ---------------------------------------------------------------------------
+
+class TestScanQuality:
+    def test_quality_present(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.quality is not None
+        assert manifest.quality.total_files == 1
+
+    def test_quality_clean_count(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        (tmp_path / "b.txt").write_text("world")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.quality.clean_files == 2
+        assert manifest.quality.degraded_files == 0
+
+    def test_quality_totals_consistent(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        (tmp_path / "b.bin").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 30)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        q = manifest.quality
+        assert q.clean_files + q.degraded_files + q.error_files == q.total_files
+
+    def test_quality_mime_mismatch_count(self, tmp_path: Path) -> None:
+        # PNG content in .txt file
+        (tmp_path / "spoof.txt").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 30)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.quality.mime_mismatches >= 1
+
+    def test_quality_safety_count(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n/JavaScript test\n")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.quality.safety_flags >= 1
