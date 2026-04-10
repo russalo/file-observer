@@ -5,10 +5,10 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.6.0
-    Schema:     0.6
+    Version:    0.7.0
+    Schema:     0.7
     Python:     >= 3.12
-    Spec:       docs/v0.6.0_RFC_Specification.md (current)
+    Spec:       docs/v0.7.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -70,16 +70,16 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.6.0"
-LOGIC_VERSION = "0.6.0"
-SCHEMA_VERSION = "0.6"
+SCANNER_VERSION = "0.7.0"
+LOGIC_VERSION = "0.7.0"
+SCHEMA_VERSION = "0.7"
 
 
 SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
     ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
-    ".doc",
+    ".doc", ".xls",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -137,6 +137,7 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".msg": "email_envelope",
     ".eml": "email_envelope",
     ".xlsx": "spreadsheet_structure",
+    ".xls": "spreadsheet_structure",
 }
 
 # Error code constants
@@ -250,6 +251,7 @@ class FileRecord:
     file_signature: dict[str, Any] | None = None
     format_signatures: list[dict[str, Any]] = field(default_factory=list)
     is_polyglot: bool = False
+    safety_flags: list[str] = field(default_factory=list)
     signal_provenance: dict[str, Any] = field(default_factory=dict)
     errors: list[ErrorRecord] = field(default_factory=list)
 
@@ -293,11 +295,25 @@ class DeltaRecord:
 
 
 @dataclass
+class ScanQuality:
+    total_files: int
+    clean_files: int
+    degraded_files: int
+    error_files: int
+    mime_mismatches: int
+    polyglots_detected: int
+    specialist_failures: int
+    unsupported_extensions: int
+    safety_flags: int
+
+
+@dataclass
 class ScanManifest:
     schema_version: str
     context: ScanContext
     meta: ScanMeta
     stats: ScanStats
+    quality: ScanQuality
     routing_summary: RoutingSummary
     delta: DeltaRecord | None
     manifest_checksum: str
@@ -314,6 +330,7 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".msg": "email",
     ".eml": "email",
     ".xlsx": "spreadsheet",
+    ".xls": "spreadsheet",
     ".docx": "document",
     ".doc": "document",
     ".rtf": "document",
@@ -339,7 +356,9 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "pdf": {"application/pdf"},
     "image": {"image/png", "image/jpeg", "image/gif", "image/webp"},
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
-    "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/octet-stream"},
+    "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                     "application/vnd.ms-excel", "application/x-ole-storage", "application/CDFV2",
+                     "application/octet-stream"},
     "document": {"application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                  "application/msword", "application/x-ole-storage", "text/rtf", "application/rtf",
                  "application/CDFV2", "application/octet-stream"},
@@ -454,6 +473,7 @@ class Scanner:
             config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id")},
         )
         stats = self._compute_stats(records)
+        quality = self._compute_quality(records)
         routing = self._compute_routing_summary(records)
         delta = self._compute_delta(records)
 
@@ -463,6 +483,7 @@ class Scanner:
             context=context,
             meta=meta,
             stats=stats,
+            quality=quality,
             routing_summary=routing,
             delta=delta,
             manifest_checksum="",
@@ -555,6 +576,30 @@ class Scanner:
             binary_files=sum(1 for r in records if r.is_binary),
             requires_vision=sum(1 for r in records if r.requires_vision),
             requires_specialist_tool=sum(1 for r in records if r.requires_specialist_tool),
+        )
+
+    def _compute_quality(self, records: list[FileRecord]) -> ScanQuality:
+        total = len(records)
+        error_files = sum(1 for r in records if any(e.code == ERR_UNIVERSAL_STAT_FAILED for e in r.errors))
+        mime_mismatches = sum(1 for r in records if not r.mime_analysis.matches_extension)
+        polyglots = sum(1 for r in records if r.is_polyglot)
+        specialist_failures = sum(1 for r in records if any(e.code == ERR_SPECIALIST_PROBE_FAILED for e in r.errors))
+        unsupported = sum(1 for r in records if any(e.code == ERR_UNSUPPORTED_EXTENSION for e in r.errors))
+        safety = sum(1 for r in records if r.safety_flags)
+        degraded = sum(1 for r in records
+                       if not any(e.code == ERR_UNIVERSAL_STAT_FAILED for e in r.errors)
+                       and (r.errors or not r.mime_analysis.matches_extension))
+        clean = total - degraded - error_files
+        return ScanQuality(
+            total_files=total,
+            clean_files=clean,
+            degraded_files=degraded,
+            error_files=error_files,
+            mime_mismatches=mime_mismatches,
+            polyglots_detected=polyglots,
+            specialist_failures=specialist_failures,
+            unsupported_extensions=unsupported,
+            safety_flags=safety,
         )
 
     def _compute_routing_summary(self, records: list[FileRecord]) -> RoutingSummary:
@@ -825,6 +870,14 @@ class Scanner:
                 detail="binary_file",
             ))
 
+        # Safety flags — checked before specialist, independent of MIME guard.
+        # DOCX macro detection requires reading the ZIP central directory; this
+        # is gated behind enable_specialists to avoid extra I/O on baseline scans.
+        zip_entries = None
+        if extension == ".docx" and self.config.enable_specialists:
+            zip_entries = self._get_zip_entries(path, eff["specialist_budget"])
+        safety_flags = self.detect_safety_flags(extension, sample, zip_entries)
+
         specialist_metadata: dict[str, Any] | None = None
         if self.config.enable_specialists:
             try:
@@ -930,6 +983,7 @@ class Scanner:
             file_signature=file_signature,
             format_signatures=format_signatures,
             is_polyglot=is_polyglot,
+            safety_flags=safety_flags,
             signal_provenance=provenance,
             errors=errors,
         )
@@ -999,7 +1053,12 @@ class Scanner:
         if extension == ".eml":
             return self._extract_eml_metadata(sample)
         if extension == ".xlsx":
-            return self._extract_xlsx_metadata(path, budget)
+            meta = self._extract_xlsx_metadata(path, budget)
+            if meta is not None:
+                meta["format"] = "ooxml"
+            return meta
+        if extension == ".xls":
+            return self._extract_xls_metadata(sample)
         if extension == ".docx":
             return self._extract_docx_metadata(path, budget)
         if extension == ".doc":
@@ -1192,6 +1251,48 @@ class Scanner:
             return {"sheet_names": sheet_names, "header_rows": header_rows}
         finally:
             zf.close()
+
+    def _extract_xls_metadata(self, sample: bytes) -> dict[str, Any] | None:
+        if not olefile:
+            return None
+        try:
+            from io import BytesIO
+            buf = BytesIO(sample)
+            if not olefile.isOleFile(buf):
+                return None
+            buf.seek(0)
+            ole = olefile.OleFileIO(buf)
+            try:
+                sheet_names: list[str] = []
+                # Try to read sheet names from Workbook stream
+                if ole.exists("Workbook"):
+                    try:
+                        wb_data = ole.openstream("Workbook").read()
+                        # BIFF8: scan for BoundSheet8 records (type 0x0085)
+                        pos = 0
+                        while pos < len(wb_data) - 4:
+                            rec_type = int.from_bytes(wb_data[pos:pos + 2], "little")
+                            rec_len = int.from_bytes(wb_data[pos + 2:pos + 4], "little")
+                            if rec_type == 0x0085 and rec_len >= 8:
+                                # BoundSheet8: 4 bytes offset + 1 byte visibility + 1 byte type + name
+                                name_len = wb_data[pos + 10] if pos + 10 < len(wb_data) else 0
+                                flag = wb_data[pos + 11] if pos + 11 < len(wb_data) else 0
+                                name_start = pos + 12
+                                if flag == 0:
+                                    # Compressed (Latin-1)
+                                    name = wb_data[name_start:name_start + name_len].decode("latin-1", errors="replace")
+                                else:
+                                    # UTF-16LE
+                                    name = wb_data[name_start:name_start + name_len * 2].decode("utf-16-le", errors="replace")
+                                sheet_names.append(name.rstrip("\x00"))
+                            pos += 4 + rec_len
+                    except Exception:
+                        pass
+                return {"sheet_names": sheet_names, "format": "biff"}
+            finally:
+                ole.close()
+        except Exception:
+            return None
 
     def _extract_docx_metadata(self, path: Path, budget: int = 131072) -> dict[str, Any] | None:
         import zipfile
@@ -1700,6 +1801,55 @@ class Scanner:
         is_polyglot = len(seen_formats) > 1
         return file_sig, found, is_polyglot
 
+    def detect_safety_flags(self, extension: str, sample: bytes, zip_entries: list[str] | None = None) -> list[str]:
+        flags: list[str] = []
+        # PDF: JavaScript
+        if extension == ".pdf":
+            if b"/JS" in sample or b"/JavaScript" in sample or b"/S/JavaScript" in sample:
+                flags.append("has_javascript")
+        # DOCX: macros
+        if extension == ".docx" and zip_entries:
+            if any(e in ("word/vbaProject.bin", "word/vbaData.xml") for e in zip_entries):
+                flags.append("has_macros")
+        # RTF: embedded OLE objects
+        if extension == ".rtf":
+            if b"\\objemb" in sample or b"\\objlink" in sample:
+                flags.append("has_ole_objects")
+        # XML: external entities
+        if extension in {".xml", ".vx"}:
+            if b"<!ENTITY" in sample and (b"SYSTEM" in sample or b"PUBLIC" in sample):
+                flags.append("has_external_references")
+        return sorted(flags)
+
+    def _get_zip_entries(self, path: Path, budget: int) -> list[str] | None:
+        """Get ZIP entry names by reading the central directory from end of file.
+
+        ZIP central directory is at the end of the archive. We let zipfile seek
+        to it directly. zipfile.ZipFile only reads the central directory bytes
+        for namelist() — it does not read entry content. This is bounded by
+        the size of the central directory itself, not the full archive.
+
+        Files smaller than budget bytes are also handled correctly (zipfile
+        will read what it needs).
+        """
+        import zipfile
+        try:
+            # Skip reading if file is enormous and we'd cause memory pressure
+            # via the central directory. In practice, central directories are
+            # tiny (KB range). budget is used here only as a safety ceiling
+            # against pathological archives.
+            try:
+                file_size = path.stat().st_size
+            except Exception:
+                return None
+            if file_size > 10 * budget:
+                # Pathological size — refuse rather than risk OOM on a malformed CD
+                return None
+            with zipfile.ZipFile(str(path)) as zf:
+                return zf.namelist()
+        except Exception:
+            return None
+
     def detect_sidecar(self, path: Path) -> bool:
         candidates = [
             path.with_suffix(path.suffix + ".json"),
@@ -1763,6 +1913,7 @@ def manifest_to_jsonl(manifest: ScanManifest) -> str:
         "context": asdict(manifest.context),
         "meta": asdict(manifest.meta),
         "stats": asdict(manifest.stats),
+        "quality": asdict(manifest.quality),
         "routing_summary": asdict(manifest.routing_summary),
         "delta": asdict(manifest.delta) if manifest.delta else None,
         "manifest_checksum": manifest.manifest_checksum,
