@@ -451,7 +451,7 @@ class Scanner:
             scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
             source_dir=str(self.source_dir),
-            config=asdict(self.config),
+            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id")},
         )
         stats = self._compute_stats(records)
         routing = self._compute_routing_summary(records)
@@ -735,7 +735,7 @@ class Scanner:
             try:
                 encoding, text, enc_prov = self.decode_text(sample, path, eff["baseline_max_bytes"])
                 provenance["encoding"] = asdict(enc_prov)
-                preview = self.make_preview(text)
+                preview = self.make_preview(text, eff["preview_max_chars"])
                 tags = self.extract_tags(text)
                 structural.technology_hints = self.detect_technology(text)
 
@@ -1516,9 +1516,9 @@ class Scanner:
         )
         return "unknown", raw.decode("utf-8", errors="replace"), prov
 
-    def make_preview(self, text: str) -> str:
+    def make_preview(self, text: str, max_chars: int | None = None) -> str:
         normalized = CONTROL_CHAR_RE.sub("", text).strip()
-        return normalized[: self.config.preview_max_chars]
+        return normalized[: max_chars or self.config.preview_max_chars]
 
     def extract_tags(self, text: str) -> list[str]:
         stripped = CODE_STRIP_RE.sub("", text)
@@ -1795,7 +1795,7 @@ def main() -> None:
         exclude_hidden=args.exclude_hidden,
         preview_max_chars=args.preview_max,
         baseline_max_bytes=profile_values.get("baseline_max_bytes", 65536),
-        specialist_budget=args.specialist_budget or profile_values.get("specialist_budget", 131072),
+        specialist_budget=args.specialist_budget if args.specialist_budget is not None else profile_values.get("specialist_budget", 131072),
         format=args.format,
         ignore_file=args.ignore_file,
         previous_manifest=args.previous_manifest,
