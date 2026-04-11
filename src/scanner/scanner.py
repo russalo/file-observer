@@ -76,6 +76,15 @@ LOGIC_VERSION = "0.8.0"
 SCHEMA_VERSION = "0.8"
 
 
+# v0.8: register markdown extensions in stdlib mimetypes so that when libmagic
+# is unavailable, the extension-fallback path in detect_mime() returns a real
+# text MIME type for .md / .mdx instead of None → application/octet-stream.
+# Without this, .mdx files in a no-libmagic environment would be marked
+# binary, skip the text decode, and never get chatlog detection.
+mimetypes.add_type("text/markdown", ".md")
+mimetypes.add_type("text/markdown", ".mdx")
+
+
 SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
@@ -106,9 +115,17 @@ MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 # that happens to start with `Word: ...` while still catching real speaker
 # labels like `Assistant:`, `User:`, `DM:`, `Russell:`, `Player_2:`.
 CHATLOG_SPEAKER_LABEL_RE = re.compile(r"^([A-Z][a-zA-Z0-9_]{0,15}):\s", re.MULTILINE)
-# Section divider: a line containing 3+ of -, =, *, or # with only whitespace
-# around it. Excludes lines like `### Heading` (those have text after).
-CHATLOG_SECTION_DIVIDER_RE = re.compile(r"^[-=*#]{3,}\s*$", re.MULTILINE)
+# Section divider activation: a line containing 3+ dashes with only whitespace
+# around it. Matches the exact wording of spec §2.3 rule 3 ("3+ `---` section
+# dividers"). Other divider characters (`===`, `***`, `###`) are captured
+# by the EXTRACTION regex below when reporting section_marker_styles, but
+# do NOT participate in content-based detection activation.
+CHATLOG_SECTION_DIVIDER_RE = re.compile(r"^-{3,}\s*$", re.MULTILINE)
+# Markdown H3 header activation: line-anchored so that inline mentions of
+# `### ` in prose or code blocks do not falsely trigger detection. Spec §2.3
+# rule 2 says "3+ `###` headers in the sample"; a header is a line, not a
+# substring. Prose containing the characters `### ` inline does not count.
+CHATLOG_H3_HEADER_RE = re.compile(r"^### ", re.MULTILINE)
 # v0.8 chatlog extraction — used by _extract_chatlog_metadata. The detection
 # regexes above test for the presence of patterns; these capture them.
 # Single-character pure-divider line: same character class repeated 3+ times.
@@ -124,9 +141,10 @@ CHATLOG_MD_HEADER_RE = re.compile(r"^(#{1,6})\s+\S", re.MULTILINE)
 CHATLOG_CAPITALIZED_TOKEN_RE = re.compile(r"\b[A-Z][a-zA-Z0-9_]{2,}\b")
 # Lowercase word tokens for vocabulary size estimation. Operates on
 # text.lower(), so this catches all word-shaped tokens regardless of original
-# case — gives a richer "vocabulary size" signal than only counting tokens
-# that were originally lowercase.
-CHATLOG_LOWERCASE_WORD_RE = re.compile(r"\b[a-z][a-z0-9]{1,}\b")
+# case, including single-character tokens like "a" and "i". Gives a richer
+# "vocabulary size" signal than only counting tokens that were originally
+# lowercase and fewer undercounts on natural prose.
+CHATLOG_LOWERCASE_WORD_RE = re.compile(r"\b[a-z][a-z0-9]*\b")
 # Reference token patterns (per spec §2.5).
 CHATLOG_AT_MENTION_RE = re.compile(r"@[a-zA-Z0-9_]+")
 CHATLOG_WIKI_LINK_RE = re.compile(r"\[\[.+?\]\]")
@@ -1806,7 +1824,7 @@ class Scanner:
             return False
         if len(CHATLOG_SPEAKER_LABEL_RE.findall(text)) >= 3:
             return True
-        if text.count("### ") >= 3:
+        if len(CHATLOG_H3_HEADER_RE.findall(text)) >= 3:
             return True
         if len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
             return True
