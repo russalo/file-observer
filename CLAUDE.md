@@ -27,9 +27,8 @@ Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (fr
 
 ## Version roadmap
 
-- **v0.7.2 (current on `main`):** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both v0.7.1 and v0.7.2 patches found from real CP corpus scanning.
+- **v0.7.2 (current on `main`):** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both patches found from real-world corpus scanning.
 - **v0.8.0 (in flight on branch `v0.8.0`):** chatlog content-based specialist. Phase 1 lands `is_chatlog` flag and detection rules; Phase 2 lands `_extract_chatlog_metadata`; Phase 3 wires provenance + quality counter; Phase 4 ships docs and version bump.
-- **v0.9 / v0.10 (design seeds):** vector fingerprints (`vector_id` + `config_hash` + `dictionary_id` for audit-grade observation), customer dictionaries. The v0.8 chatlog spec draws the first rules-vs-tuning distinction that v0.9 vector fingerprints will formalize.
 - **v1.0.0 (target):** schema freeze + backward compatibility policy. Scanner is a configurable observation engine that's honest, verifiable, and stable.
 
 ## Commands
