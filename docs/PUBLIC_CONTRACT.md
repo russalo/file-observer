@@ -62,6 +62,7 @@ Every entry in `files` has these stable fields:
 | `specialist_metadata` | object or null | **Stable shape** — fields by namespace; namespace keys stable |
 | `signal_provenance` | object | **Stable** — keys are field paths, values are provenance entries |
 | `safety_flags` | array of strings | **Stable** (since 0.7) — flag tokens stable, additions in MINOR |
+| `is_chatlog` | bool | **Stable** (since 0.8) — always present; true when content detection rules match |
 | `errors` | array of objects | **Stable** — error codes stable (see error code registry) |
 
 ### 1.4 Specialist Metadata Namespaces
@@ -75,6 +76,7 @@ Every entry in `files` has these stable fields:
 | `email` | Stable since 0.5 | `.msg`, `.eml` |
 | `spreadsheet` | Stable since 0.5 | `.xlsx`, `.xls` |
 | `document` | Stable since 0.5 | `.docx`, `.doc`, `.rtf` |
+| `chatlog` | Stable since 0.8 | Content-detected in `.txt`, `.md`, `.mdx` — not extension-driven |
 
 **Rules:**
 - Namespace keys will not be removed or renamed in MINOR releases
@@ -94,6 +96,7 @@ The `specialist_tool` field uses semantic names that describe **what kind of dow
 | `email_envelope` | `.msg`, `.eml` |
 | `spreadsheet_structure` | `.xlsx`, `.xls` |
 | `document_extraction` | `.docx`, `.doc`, `.rtf` |
+| `chatlog_signals` | Content-detected in `.txt`, `.md`, `.mdx` (not extension-driven) |
 
 **Stability:** Tool names will not change without a MAJOR schema bump. New tool names may be added for new file types in MINOR releases.
 
@@ -203,7 +206,6 @@ These fields exist in the manifest but are subject to change in MINOR releases w
 
 - `format_signatures` — internal magic signature scan results
 - `is_polyglot` — derived from format_signatures
-- `vectors_collected` (when introduced) — registry of which vectors the scanner version knows
 
 These fields are useful but not yet stabilized. Treat them as informational until they're explicitly listed as stable here.
 
@@ -220,6 +222,7 @@ Files in `scratch/` and any document with `_DRAFT` in the filename are not commi
 | `0.5` | 0.5.0 | Namespaced specialist_metadata, schema_version field, baseline_max_bytes |
 | `0.6` | 0.6.0 | Configurable depth, file_signature, format_signatures, is_polyglot, manifest_signature, previous_manifest_checksum |
 | `0.7` | 0.7.0 | XLS specialist, safety_flags, quality block |
+| `0.8` | 0.8.0 | Chatlog specialist (first content-detected dispatch), `is_chatlog` FileRecord flag, `chatlog` namespace, `chatlog_signals` tool, `quality.chatlog_files` counter |
 
 ---
 
@@ -240,6 +243,34 @@ page_count = file_record["specialist_metadata"]["pdf"]["page_count"]
 ### 4.2 From schema 0.6 to 0.7
 
 `safety_flags` and `quality` fields added. Existing fields unchanged. No code changes required for consumers that ignore unknown fields.
+
+### 4.3 From schema 0.7 to 0.8
+
+Three additive changes. Existing fields unchanged. No code changes required for consumers that ignore unknown fields.
+
+1. **New FileRecord field `is_chatlog`** (bool, always present, default `false`). Set to `true` when content-detection rules match on `.txt` / `.md` / `.mdx` files. Runs even when the specialist tier is disabled.
+
+2. **New specialist namespace `chatlog`** under `specialist_metadata`. Populated only when `enable_specialists=True`, the file is content-detected as a chatlog, and the content MIME type passes the `chatlog` MIME guard (`text/plain`, `text/markdown`, `text/x-markdown`). Fields within the namespace: `turn_count`, `speaker_labels`, `section_marker_count`, `section_marker_styles`, `avg_turn_chars`, `max_turn_chars`, `min_turn_chars`, `reference_tokens` (an object with `at_mentions`, `wiki_links`, `code_fence_blocks`, `url_count`), `top_capitalized_tokens`, `capitalized_token_count`, `vocabulary_size_estimate`.
+
+3. **New ScanQuality field `quality.chatlog_files`** (int). Count of FileRecords with `is_chatlog == true` in the scan.
+
+**Sample migration:**
+
+```python
+# Pre-0.8 consumer (continues to work unchanged — all additions are additive)
+for f in manifest["files"]:
+    if f["requires_specialist_tool"]:
+        route_to_specialist(f["specialist_tool"])
+
+# 0.8+ consumer opting in to chatlog signals
+for f in manifest["files"]:
+    if f["is_chatlog"]:
+        chat = f.get("specialist_metadata", {}).get("chatlog")
+        if chat:
+            route_to_chatlog_pipeline(chat)
+```
+
+Consumers that key on `specialist_tool` values should be aware that `"chatlog_signals"` is a new valid value in 0.8 and MAY appear on `.txt` / `.md` / `.mdx` files. A consumer that switches on the full set of tool names should add a `chatlog_signals` case (or a default) to avoid routing these files nowhere.
 
 ---
 
