@@ -1458,6 +1458,309 @@ class TestIsChatlogIntegration:
 
 
 # ---------------------------------------------------------------------------
+# v0.8 Phase 2: chatlog specialist extraction
+# ---------------------------------------------------------------------------
+
+class TestExtractChatlogMetadata:
+    """Unit tests for _extract_chatlog_metadata.
+
+    Per spec §2.4 / §2.5 / §2.6, the function returns 11 fields. Each test
+    isolates one or two of them with a minimal targeted input.
+    """
+
+    def test_empty_text_returns_none(self, scanner: Scanner) -> None:
+        assert scanner._extract_chatlog_metadata("") is None
+
+    def test_minimal_chatlog_all_fields_present(self, scanner: Scanner) -> None:
+        text = "User: hi\nAssistant: hello\nUser: again\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta is not None
+        for key in (
+            "turn_count", "speaker_labels", "section_marker_count",
+            "section_marker_styles", "avg_turn_chars", "max_turn_chars",
+            "min_turn_chars", "reference_tokens", "top_capitalized_tokens",
+            "capitalized_token_count", "vocabulary_size_estimate",
+        ):
+            assert key in meta, f"missing field: {key}"
+        for ref_key in ("at_mentions", "wiki_links", "code_fence_blocks", "url_count"):
+            assert ref_key in meta["reference_tokens"], f"missing reference_tokens field: {ref_key}"
+
+    # ---- turn_count ----
+
+    def test_turn_count_counts_all_speaker_label_occurrences(self, scanner: Scanner) -> None:
+        text = "User: a\nAssistant: b\nUser: c\nAssistant: d\nUser: e\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["turn_count"] == 5
+
+    def test_turn_count_does_not_filter_by_repetition(self, scanner: Scanner) -> None:
+        # turn_count is the raw match count; one-off proper nouns inflate it
+        # but get filtered out of speaker_labels.
+        text = "User: a\nUser: b\nUser: c\nBob: stranger\nAlice: stranger\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["turn_count"] == 5
+        assert meta["speaker_labels"] == ["User"]
+
+    # ---- speaker_labels ----
+
+    def test_speaker_labels_filtered_to_3_plus_repetition(self, scanner: Scanner) -> None:
+        text = (
+            "Russell: hi\n"
+            "Russell: again\n"
+            "Russell: third time\n"
+            "Bob: one off\n"
+        )
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["speaker_labels"] == ["Russell"]
+        assert "Bob" not in meta["speaker_labels"]
+
+    def test_speaker_labels_sorted_alphabetically(self, scanner: Scanner) -> None:
+        text = (
+            "Zander: a\nZander: b\nZander: c\n"
+            "Alice: a\nAlice: b\nAlice: c\n"
+            "Mike: a\nMike: b\nMike: c\n"
+        )
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["speaker_labels"] == ["Alice", "Mike", "Zander"]
+
+    # ---- turn char stats ----
+
+    def test_turn_char_stats(self, scanner: Scanner) -> None:
+        # Three speakers with controlled spacing — avg/min/max should reflect
+        # the character distance between consecutive speaker labels.
+        text = "User: a\nAssistant: bb\nUser: ccc\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        # Two intervals between three speaker labels: short and longer.
+        assert meta["max_turn_chars"] >= meta["min_turn_chars"]
+        assert meta["max_turn_chars"] >= 1
+        assert meta["min_turn_chars"] >= 1
+        assert meta["avg_turn_chars"] >= 1
+
+    def test_turn_char_stats_zero_when_no_speakers(self, scanner: Scanner) -> None:
+        text = "Just plain prose with no speaker labels at all here."
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["turn_count"] == 0
+        assert meta["avg_turn_chars"] == 0
+        assert meta["max_turn_chars"] == 0
+        assert meta["min_turn_chars"] == 0
+
+    # ---- section markers ----
+
+    def test_pure_dash_dividers_counted(self, scanner: Scanner) -> None:
+        text = "section a\n---\nsection b\n---\nsection c\n---\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["section_marker_count"] == 3
+        assert "---" in meta["section_marker_styles"]
+
+    def test_pure_equals_dividers_counted(self, scanner: Scanner) -> None:
+        text = "===\n===\n===\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["section_marker_count"] == 3
+        assert "===" in meta["section_marker_styles"]
+
+    def test_md_headers_counted_separately_from_dividers(self, scanner: Scanner) -> None:
+        text = "### Header A\n### Header B\n## Header C\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        # Three headers — `### `, `### `, `## `
+        assert meta["section_marker_count"] == 3
+        assert "### " in meta["section_marker_styles"]
+        assert "## " in meta["section_marker_styles"]
+
+    def test_section_marker_styles_sorted(self, scanner: Scanner) -> None:
+        text = "===\n---\n***\n### Header\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        # Sorted alphabetically.
+        assert meta["section_marker_styles"] == sorted(meta["section_marker_styles"])
+
+    # ---- reference tokens ----
+
+    def test_reference_at_mentions(self, scanner: Scanner) -> None:
+        text = "Hello @alice and @bob and @carol_smith here."
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["reference_tokens"]["at_mentions"] == 3
+
+    def test_reference_wiki_links(self, scanner: Scanner) -> None:
+        text = "See [[Project Sentinel]] and [[Russell]] and [[also]]."
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["reference_tokens"]["wiki_links"] == 3
+
+    def test_reference_code_fence_blocks(self, scanner: Scanner) -> None:
+        text = "```\ncode1\n```\nprose\n```\ncode2\n```\n"
+        meta = scanner._extract_chatlog_metadata(text)
+        # Two complete code fence pairs → 2 blocks.
+        assert meta["reference_tokens"]["code_fence_blocks"] == 2
+
+    def test_reference_urls(self, scanner: Scanner) -> None:
+        text = "Visit https://example.com and http://other.com please."
+        meta = scanner._extract_chatlog_metadata(text)
+        assert meta["reference_tokens"]["url_count"] == 2
+
+    # ---- capitalized tokens ----
+
+    def test_capitalized_tokens_filtered_by_length(self, scanner: Scanner) -> None:
+        # Tokens shorter than 3 chars (e.g. "DM", "OK") should NOT count.
+        text = "DM speaks. OK then. " * 5
+        meta = scanner._extract_chatlog_metadata(text)
+        assert "DM" not in meta["top_capitalized_tokens"]
+        assert "OK" not in meta["top_capitalized_tokens"]
+
+    def test_capitalized_tokens_filtered_by_frequency(self, scanner: Scanner) -> None:
+        # Sentinel appears 3 times → qualifies. OneOff appears once → doesn't.
+        text = "Sentinel was here. Sentinel returned. Sentinel again. OneOff visited."
+        meta = scanner._extract_chatlog_metadata(text)
+        assert "Sentinel" in meta["top_capitalized_tokens"]
+        assert "OneOff" not in meta["top_capitalized_tokens"]
+        assert meta["capitalized_token_count"] == 1
+
+    def test_top_capitalized_tokens_sorted_by_frequency_desc(self, scanner: Scanner) -> None:
+        text = (
+            "Russell Russell Russell Russell Russell "
+            "Sentinel Sentinel Sentinel "
+            "Mountain Mountain Mountain Mountain "
+        )
+        meta = scanner._extract_chatlog_metadata(text)
+        # Russell (5) > Mountain (4) > Sentinel (3)
+        assert meta["top_capitalized_tokens"] == ["Russell", "Mountain", "Sentinel"]
+
+    def test_top_capitalized_tokens_alphabetical_secondary(self, scanner: Scanner) -> None:
+        text = (
+            "Charlie Charlie Charlie "
+            "Alpha Alpha Alpha "
+            "Bravo Bravo Bravo "
+        )
+        meta = scanner._extract_chatlog_metadata(text)
+        # All freq 3 — alphabetical order.
+        assert meta["top_capitalized_tokens"] == ["Alpha", "Bravo", "Charlie"]
+
+    def test_top_capitalized_tokens_capped_at_default_n(self, scanner: Scanner) -> None:
+        # Make 25 distinct qualifying tokens — output should be capped at 20.
+        names = [f"Name{i:02d}" for i in range(25)]
+        text = " ".join(name + " " + name + " " + name for name in names)
+        meta = scanner._extract_chatlog_metadata(text)
+        assert len(meta["top_capitalized_tokens"]) == 20
+        assert meta["capitalized_token_count"] == 25
+
+    # ---- vocabulary size estimate ----
+
+    def test_vocabulary_size_estimate_counts_distinct_lowercase_words(self, scanner: Scanner) -> None:
+        text = "the quick brown fox jumps over the lazy dog the fox runs"
+        meta = scanner._extract_chatlog_metadata(text)
+        # distinct lowercase words: the, quick, brown, fox, jumps, over, lazy, dog, runs = 9
+        assert meta["vocabulary_size_estimate"] == 9
+
+    def test_vocabulary_size_includes_uppercase_words_lowercased(self, scanner: Scanner) -> None:
+        text = "Hello World hello world HELLO WORLD"
+        meta = scanner._extract_chatlog_metadata(text)
+        # All become lowercase: hello, world = 2 distinct
+        assert meta["vocabulary_size_estimate"] == 2
+
+    # ---- determinism ----
+
+    def test_deterministic_output(self, scanner: Scanner) -> None:
+        text = (
+            "User: hi\nAssistant: hello\nUser: again\n"
+            "### A\n### B\n### C\n"
+            "@alice and @bob and @carol\n"
+        )
+        m1 = scanner._extract_chatlog_metadata(text)
+        m2 = scanner._extract_chatlog_metadata(text)
+        assert m1 == m2
+
+
+class TestChatlogSpecialistIntegration:
+    """End-to-end tests that the chatlog specialist activates content-detected,
+    populates specialist_metadata, and overrides routing flags correctly."""
+
+    CHATLOG_TEXT = (
+        "User: tell me about Sentinel\n"
+        "Assistant: Sentinel is a project. Russell is the architect.\n"
+        "User: who else is involved\n"
+        "Assistant: Russell, Russell, and Russell again.\n"
+        "User: thanks\n"
+        "Assistant: anytime\n"
+    )
+
+    def test_chatlog_extraction_populates_metadata(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.md").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
+        assert rec.specialist_metadata is not None
+        assert "chatlog" in rec.specialist_metadata
+        chat = rec.specialist_metadata["chatlog"]
+        assert chat["turn_count"] == 6
+        assert "User" in chat["speaker_labels"]
+        assert "Assistant" in chat["speaker_labels"]
+
+    def test_chatlog_specialist_tool_set(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.md").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.specialist_tool == "chatlog_signals"
+        assert rec.requires_specialist_tool is True
+
+    def test_chatlog_specialist_tool_set_without_extraction(self, tmp_path: Path) -> None:
+        # Even without enable_specialists, when is_chatlog activates the
+        # specialist_tool field should be set so consumers know which tool
+        # would have run. The actual specialist_metadata stays None.
+        (tmp_path / "chat.md").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=False)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
+        assert rec.specialist_tool == "chatlog_signals"
+        assert rec.requires_specialist_tool is True
+        assert rec.specialist_metadata is None  # extraction gated
+
+    def test_per_field_provenance_recorded(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.md").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        # Per-field provenance entries for each top-level chatlog field.
+        for field_name in (
+            "turn_count", "speaker_labels", "section_marker_count",
+            "section_marker_styles", "reference_tokens", "top_capitalized_tokens",
+            "vocabulary_size_estimate",
+        ):
+            prov_key = f"specialist_metadata.chatlog.{field_name}"
+            assert prov_key in rec.signal_provenance, f"missing provenance for {prov_key}"
+            assert rec.signal_provenance[prov_key]["trigger"] == "bounded_text"
+            assert rec.signal_provenance[prov_key]["detail"]["tool"] == "chatlog_signals"
+
+    def test_non_chatlog_md_does_not_get_specialist(self, tmp_path: Path) -> None:
+        (tmp_path / "doc.md").write_text("# Just a heading\n\nplain prose follows.\n")
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is False
+        assert rec.specialist_tool is None
+        assert rec.specialist_metadata is None
+
+    def test_chatlog_serializes_to_json_manifest(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_json
+        import json as _json
+        (tmp_path / "chat.md").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        data = _json.loads(manifest_to_json(manifest))
+        rec = data["files"][0]
+        assert rec["specialist_metadata"]["chatlog"]["turn_count"] == 6
+        assert "Russell" in rec["specialist_metadata"]["chatlog"]["top_capitalized_tokens"]
+
+    def test_chatlog_txt_file_full_extraction(self, tmp_path: Path) -> None:
+        # .txt files should also get the chatlog specialist when content matches.
+        (tmp_path / "log.txt").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
+        assert rec.specialist_metadata is not None
+        assert "chatlog" in rec.specialist_metadata
+
+
+# ---------------------------------------------------------------------------
 # v0.4: Semantic specialist tool names
 # ---------------------------------------------------------------------------
 

@@ -22,6 +22,7 @@ Domains are products. Subdomains are responsibilities. Paths are capabilities.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from fnmatch import fnmatch
@@ -108,6 +109,28 @@ CHATLOG_SPEAKER_LABEL_RE = re.compile(r"^([A-Z][a-zA-Z0-9_]{0,15}):\s", re.MULTI
 # Section divider: a line containing 3+ of -, =, *, or # with only whitespace
 # around it. Excludes lines like `### Heading` (those have text after).
 CHATLOG_SECTION_DIVIDER_RE = re.compile(r"^[-=*#]{3,}\s*$", re.MULTILINE)
+# v0.8 chatlog extraction — used by _extract_chatlog_metadata. The detection
+# regexes above test for the presence of patterns; these capture them.
+# Single-character pure-divider line: same character class repeated 3+ times.
+# Captured group is the divider character; styles are normalized to a 3-char
+# representation in the output (e.g. "---", "===", "***", "###").
+CHATLOG_PURE_DIVIDER_RE = re.compile(r"^([-=*#])\1{2,}\s*$", re.MULTILINE)
+# Markdown header line: 1-6 hashes followed by whitespace then text.
+# Captured group is the hashes; styles are output with a trailing space
+# (e.g. "# ", "## ", "### ") to match the spec example in §2.4.
+CHATLOG_MD_HEADER_RE = re.compile(r"^(#{1,6})\s+\S", re.MULTILINE)
+# Capitalized tokens: an uppercase letter followed by 2+ word chars (length 3+
+# total). The leading-uppercase + length-3-minimum filter is per spec §2.6.
+CHATLOG_CAPITALIZED_TOKEN_RE = re.compile(r"\b[A-Z][a-zA-Z0-9_]{2,}\b")
+# Lowercase word tokens for vocabulary size estimation. Operates on
+# text.lower(), so this catches all word-shaped tokens regardless of original
+# case — gives a richer "vocabulary size" signal than only counting tokens
+# that were originally lowercase.
+CHATLOG_LOWERCASE_WORD_RE = re.compile(r"\b[a-z][a-z0-9]{1,}\b")
+# Reference token patterns (per spec §2.5).
+CHATLOG_AT_MENTION_RE = re.compile(r"@[a-zA-Z0-9_]+")
+CHATLOG_WIKI_LINK_RE = re.compile(r"\[\[.+?\]\]")
+CHATLOG_URL_RE = re.compile(r"https?://\S+")
 
 TECHNOLOGY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # CSS frameworks
@@ -393,7 +416,19 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "document": {"application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                  "application/msword", "application/x-ole-storage", "text/rtf", "application/rtf",
                  "application/CDFV2", "application/octet-stream"},
+    # v0.8: chatlog is the first content-detected (not extension-driven)
+    # specialist. Its MIME guard accepts text/plain and the markdown variants.
+    "chatlog": {"text/plain", "text/markdown", "text/x-markdown"},
 }
+
+# v0.8: identifiers for the chatlog specialist. Not registered in
+# SPECIALIST_TOOLS / SPECIALIST_NAMESPACE because those are extension-keyed
+# and chatlog is content-detected — adding fake-extension keys would risk
+# accidental routing if a real file ever happened to use such an extension.
+# These constants are the single source of truth for the chatlog tool name
+# and namespace; the runtime dispatch in scan_file() consumes them directly.
+CHATLOG_NAMESPACE = "chatlog"
+CHATLOG_TOOL = "chatlog_signals"
 
 
 SCAN_PROFILES: dict[str, dict[str, Any]] = {
@@ -804,6 +839,10 @@ class Scanner:
         asset_matches: list[str] = []
         frontmatter = FrontmatterRecord()
         is_chatlog = False
+        # v0.8: hoisted out of the specialist block so chatlog extraction
+        # (which lives in the text-handling block above the extension-based
+        # dispatch) can populate it directly.
+        specialist_metadata: dict[str, Any] | None = None
         structural = StructuralRecord(
             filename_date=self.extract_filename_date(path.name),
         )
@@ -830,6 +869,62 @@ class Scanner:
                         trigger="content_pattern_match" if is_chatlog else "content_pattern_none",
                         inputs=["encoding"],
                     ))
+                    # v0.8 Phase 2: when chatlog activates, override the
+                    # specialist_tool and requires_specialist_tool flags. The
+                    # initial values came from the extension-keyed
+                    # SPECIALIST_TOOLS lookup (which returns None for
+                    # .txt/.md/.mdx); content-detected activation supersedes
+                    # the extension-based registry.
+                    if is_chatlog:
+                        specialist_tool = CHATLOG_TOOL
+                        requires_specialist_tool = True
+                        provenance["requires_specialist_tool"] = asdict(ProvenanceEntry(
+                            layer="derived",
+                            method="content_detected_specialist",
+                            trigger="chatlog_activation",
+                            inputs=["is_chatlog"],
+                            detail=f"{CHATLOG_TOOL} (content-detected)",
+                        ))
+                        # v0.8 Phase 2: extraction itself is gated by
+                        # enable_specialists. The detection above runs always,
+                        # but the chatlog metadata only populates when
+                        # specialists are enabled and the MIME guard accepts
+                        # the file's content type.
+                        if self.config.enable_specialists:
+                            chatlog_guard = SPECIALIST_MIME_GUARD.get(CHATLOG_NAMESPACE, set())
+                            if mime_type not in chatlog_guard:
+                                errors.append(ErrorRecord(
+                                    code=ERR_SPECIALIST_PROBE_FAILED,
+                                    message=f"mime_type {mime_type} does not match expected formats for {CHATLOG_NAMESPACE} specialist — skipped",
+                                    stage="specialist",
+                                ))
+                            else:
+                                chatlog_meta = self._extract_chatlog_metadata(text)
+                                if chatlog_meta is None:
+                                    errors.append(ErrorRecord(
+                                        code=ERR_SPECIALIST_PROBE_FAILED,
+                                        message=f"specialist returned null for {CHATLOG_TOOL}",
+                                        stage="specialist",
+                                    ))
+                                else:
+                                    if specialist_metadata is None:
+                                        specialist_metadata = {}
+                                    specialist_metadata[CHATLOG_NAMESPACE] = chatlog_meta
+                                    # Per-field provenance for each top-level
+                                    # chatlog field. Mirrors the loop in the
+                                    # extension-based dispatch below; chatlog
+                                    # operates on the full bounded text rather
+                                    # than the 8 KB sample, so the trigger is
+                                    # `bounded_text` and the detail records the
+                                    # text length consumed.
+                                    text_len = len(text)
+                                    for key in chatlog_meta:
+                                        provenance[f"specialist_metadata.{CHATLOG_NAMESPACE}.{key}"] = asdict(ProvenanceEntry(
+                                            layer="derived",
+                                            method="_extract_chatlog_metadata",
+                                            trigger="bounded_text",
+                                            detail={"tool": CHATLOG_TOOL, "text_chars": text_len},
+                                        ))
 
                 if extension in {".md", ".mdx"}:
                     frontmatter = self.extract_frontmatter(text)
@@ -925,7 +1020,6 @@ class Scanner:
             zip_entries = self._get_zip_entries(path, eff["specialist_budget"])
         safety_flags = self.detect_safety_flags(extension, sample, zip_entries)
 
-        specialist_metadata: dict[str, Any] | None = None
         if self.config.enable_specialists:
             try:
                 self.run_specialist_probe(path, extension, errors)
@@ -1711,6 +1805,119 @@ class Scanner:
         if len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
             return True
         return False
+
+    # Default top-N for capitalized tokens. Per spec §2.5 N=20.
+    _CHATLOG_TOP_TOKENS_N = 20
+
+    def _extract_chatlog_metadata(self, text: str) -> dict[str, Any] | None:
+        """v0.8: extract drift-visible signals from a chatlog/journal/vault text.
+
+        Operates entirely on the bounded text returned by ``decode_text()`` —
+        no file path, no streaming, no full-file reads. The bounded sample IS
+        the contract: every count, every distinct value, every distribution
+        is "what was observable in this many bytes."
+
+        Per spec §2.5 / §2.6:
+
+        - ``turn_count`` is the raw number of speaker label occurrences.
+        - ``speaker_labels`` is sorted alphabetically and filtered to tokens
+          that appear 3+ times (eliminates one-off proper nouns).
+        - ``avg/min/max_turn_chars`` are character distances between
+          consecutive raw speaker labels.
+        - Section markers count both pure-divider lines (``---``, ``===``,
+          ``***``, ``###``) and Markdown header lines (``# `` … ``###### ``);
+          styles are output normalized.
+        - ``top_capitalized_tokens`` is the top-N (default 20) tokens of
+          length 3+ that appear 3+ times, sorted by frequency desc with
+          alphabetical secondary; ``capitalized_token_count`` is the cardinality
+          of that qualifying set.
+        - ``vocabulary_size_estimate`` is the count of distinct lowercase
+          word-tokens after lowercasing the whole text.
+
+        See spec §2.7 for what this DOES NOT do (no NLP, no entity resolution,
+        no interpretation).
+        """
+        if not text:
+            return None
+
+        # --- Speaker labels and turn statistics ---
+        raw_label_matches = list(CHATLOG_SPEAKER_LABEL_RE.finditer(text))
+        turn_count = len(raw_label_matches)
+        label_counts = Counter(m.group(1) for m in raw_label_matches)
+        speaker_labels = sorted(
+            label for label, count in label_counts.items() if count >= 3
+        )
+        # Char distance between consecutive raw speaker labels.
+        avg_turn_chars = 0
+        max_turn_chars = 0
+        min_turn_chars = 0
+        if len(raw_label_matches) >= 2:
+            turn_lengths: list[int] = []
+            for i in range(len(raw_label_matches) - 1):
+                length = raw_label_matches[i + 1].start() - raw_label_matches[i].end()
+                if length > 0:
+                    turn_lengths.append(length)
+            if turn_lengths:
+                avg_turn_chars = int(sum(turn_lengths) / len(turn_lengths))
+                max_turn_chars = max(turn_lengths)
+                min_turn_chars = min(turn_lengths)
+
+        # --- Section markers (pure dividers + markdown headers) ---
+        section_marker_count = 0
+        section_marker_styles_set: set[str] = set()
+        for divider_match in CHATLOG_PURE_DIVIDER_RE.finditer(text):
+            section_marker_count += 1
+            section_marker_styles_set.add(divider_match.group(1) * 3)
+        for header_match in CHATLOG_MD_HEADER_RE.finditer(text):
+            section_marker_count += 1
+            section_marker_styles_set.add(header_match.group(1) + " ")
+        section_marker_styles = sorted(section_marker_styles_set)
+
+        # --- Reference tokens ---
+        at_mentions = len(CHATLOG_AT_MENTION_RE.findall(text))
+        wiki_links = len(CHATLOG_WIKI_LINK_RE.findall(text))
+        # Code fence blocks: triple-backtick pairs. Each block has an opening
+        # and a closing fence, so a complete block contributes 2 occurrences;
+        # we report block count = pair count.
+        code_fence_blocks = text.count("```") // 2
+        url_count = len(CHATLOG_URL_RE.findall(text))
+
+        # --- Capitalized tokens (length 3+, frequency 3+) ---
+        cap_token_counts = Counter(CHATLOG_CAPITALIZED_TOKEN_RE.findall(text))
+        qualifying_caps = [
+            (token, count) for token, count in cap_token_counts.items() if count >= 3
+        ]
+        # Sort: frequency desc, then alphabetical (per spec §2.5).
+        qualifying_caps.sort(key=lambda tc: (-tc[1], tc[0]))
+        capitalized_token_count = len(qualifying_caps)
+        top_capitalized_tokens = [
+            token for token, _ in qualifying_caps[: self._CHATLOG_TOP_TOKENS_N]
+        ]
+
+        # --- Vocabulary size estimate ---
+        # Lowercase the whole text first so we catch all word-shaped tokens
+        # regardless of original case. Distinct count is the vocabulary signal.
+        lowercase_words = CHATLOG_LOWERCASE_WORD_RE.findall(text.lower())
+        vocabulary_size_estimate = len(set(lowercase_words))
+
+        return {
+            "turn_count": turn_count,
+            "speaker_labels": speaker_labels,
+            "section_marker_count": section_marker_count,
+            "section_marker_styles": section_marker_styles,
+            "avg_turn_chars": avg_turn_chars,
+            "max_turn_chars": max_turn_chars,
+            "min_turn_chars": min_turn_chars,
+            "reference_tokens": {
+                "at_mentions": at_mentions,
+                "wiki_links": wiki_links,
+                "code_fence_blocks": code_fence_blocks,
+                "url_count": url_count,
+            },
+            "top_capitalized_tokens": top_capitalized_tokens,
+            "capitalized_token_count": capitalized_token_count,
+            "vocabulary_size_estimate": vocabulary_size_estimate,
+        }
 
     def detect_requires_vision(
         self, sample: bytes, mime_type: str, extension: str, is_binary: bool
