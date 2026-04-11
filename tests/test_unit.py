@@ -1326,9 +1326,14 @@ class TestDetectChatlogPattern:
         text = "section a\n---\nsection b\n---\nsection c\n---\nfooter\n"
         assert scanner._detect_chatlog_pattern(text) is True
 
-    def test_three_equals_dividers_triggers(self, scanner: Scanner) -> None:
+    def test_three_equals_dividers_does_not_trigger_detection(self, scanner: Scanner) -> None:
+        # Detection rule 3 per spec §2.3 is specifically "3+ `---` section
+        # dividers" — other divider styles (===, ***, ###-as-pure-line) do
+        # NOT participate in activation, though they ARE captured in the
+        # extracted section_marker_styles list for files that activate via
+        # some other rule.
         text = "section a\n===\nsection b\n===\nsection c\n===\n"
-        assert scanner._detect_chatlog_pattern(text) is True
+        assert scanner._detect_chatlog_pattern(text) is False
 
     def test_two_dividers_does_not_trigger(self, scanner: Scanner) -> None:
         text = "section a\n---\nsection b\n---\nfooter\n"
@@ -1367,6 +1372,71 @@ class TestDetectChatlogPattern:
             "---\n"
         )
         assert scanner._detect_chatlog_pattern(text) is True
+
+    # ---- regression guards for PR #9 review comments ----
+
+    def test_inline_h3_mentions_do_not_trigger_detection(self, scanner: Scanner) -> None:
+        # Rule 2 ("3+ ### headers") must be line-anchored. Inline mentions of
+        # the characters `### ` in prose or code should NOT trigger.
+        # Regression guard for PR #9 comment 5.
+        text = (
+            "This document discusses markdown. The `### ` header level "
+            "is third-level. You write `### ` like this and `### ` again "
+            "and `### ` a third time in inline code.\n"
+        )
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_only_dash_dividers_activate_rule_3(self, scanner: Scanner) -> None:
+        # Rule 3 per spec §2.3: "3+ `---` section dividers." Other divider
+        # styles do not participate in activation. Regression guard for
+        # PR #9 comment 1. (The extraction layer still reports other styles
+        # in section_marker_styles for files that activate via some other
+        # rule — that's tested separately in TestExtractChatlogMetadata.)
+        for divider in ("===", "***", "###"):
+            text = f"section a\n{divider}\nsection b\n{divider}\nsection c\n{divider}\n"
+            assert scanner._detect_chatlog_pattern(text) is False, (
+                f"{divider} should not trigger rule-3 detection"
+            )
+
+
+class TestMarkdownMimetypeRegistration:
+    """Regression guard for PR #9 comment 4: .mdx must have a text MIME
+    type registered in stdlib mimetypes so that when libmagic is unavailable,
+    the extension-fallback path doesn't return application/octet-stream
+    and cause .mdx files to be misclassified as binary."""
+
+    def test_mdx_mimetype_registered(self) -> None:
+        import mimetypes
+        # Importing scanner.scanner must trigger the mimetypes.add_type calls.
+        import scanner.scanner  # noqa: F401
+        guessed, _ = mimetypes.guess_type("foo.mdx")
+        assert guessed is not None, ".mdx must resolve to a MIME type via stdlib mimetypes"
+        assert guessed.startswith("text/"), f".mdx should resolve to a text/* MIME, got {guessed!r}"
+
+    def test_md_mimetype_registered(self) -> None:
+        import mimetypes
+        import scanner.scanner  # noqa: F401
+        guessed, _ = mimetypes.guess_type("foo.md")
+        assert guessed is not None, ".md must resolve to a MIME type via stdlib mimetypes"
+        assert guessed.startswith("text/"), f".md should resolve to a text/* MIME, got {guessed!r}"
+
+
+class TestVocabularySizeEstimateSingleChar:
+    """Regression guard for PR #9 comment 2: vocabulary_size_estimate must
+    count single-character lowercase tokens ("a", "i") to avoid systematically
+    undercounting natural prose vocabulary."""
+
+    def test_single_char_tokens_counted(self, scanner: Scanner) -> None:
+        text = "a b c d e f g h i j"
+        meta = scanner._extract_chatlog_metadata(text)
+        # 10 distinct single-char lowercase tokens.
+        assert meta["vocabulary_size_estimate"] == 10
+
+    def test_mixed_length_tokens_all_counted(self, scanner: Scanner) -> None:
+        text = "I said a word today. A big word. I liked it."
+        meta = scanner._extract_chatlog_metadata(text)
+        # After lowercasing: i, said, a, word, today, big, liked, it = 8 distinct
+        assert meta["vocabulary_size_estimate"] == 8
 
 
 class TestIsChatlogIntegration:
@@ -1825,9 +1895,12 @@ class TestChatlogFixtures:
 
     def _scan_one_file(self, fixture_name: str, tmp_path: Path) -> Any:
         # Copy a single fixture into a temp dir so the scanner only sees it.
+        # Explicit utf-8 so the copy is deterministic on non-UTF-8 locales —
+        # the fixtures include unicode characters (em-dashes) that would
+        # otherwise depend on the platform default encoding.
         src = self.fixtures_dir / fixture_name
         dst = tmp_path / fixture_name
-        dst.write_text(src.read_text())
+        dst.write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
         config = ScannerConfig(enable_specialists=True)
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
         return manifest.files[0]
