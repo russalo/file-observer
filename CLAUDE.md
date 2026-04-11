@@ -8,23 +8,29 @@ File capability scanner — observation layer only. Recursively discovers files,
 
 ## Spec
 
-- `docs/v0.5.0_RFC_Specification.md` — **current release spec**. Namespaced specialist_metadata, schema_version, baseline_max_bytes, cross-platform hardening, silent failure fixes.
-- `docs/v0.6.0_RFC_DRAFT.md` — next target: dip switches, structural signatures, integrity envelope.
-- `docs/v1.0.0_RFC_DRAFT.md` — schema freeze draft. v1.0 = scanner maturity + backward compatibility policy.
-- `docs/v0.4.0_RFC_Specification.md` — semantic naming, deviation policy, coverage expansion.
+- `docs/v0.7.0_RFC_Specification.md` — **current release spec** (v0.7.x line). XLS specialist, spreadsheet `format` field, safety_flags, ScanQuality block. v0.7.1 and v0.7.2 are patch releases against this spec — see HISTORY.md.
+- `docs/v0.8.0_RFC_Specification.md` — **approved, in-flight implementation**. Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate).
+- `docs/v0.6.0_RFC_Specification.md` — configurable depth (specialist_budget, extension_overrides, profiles), structural signatures, polyglot detection, integrity envelope (HMAC manifest_signature).
+- `docs/v0.5.0_RFC_Specification.md` — schema reshape: namespaced specialist_metadata, schema_version field, baseline_max_bytes, cross-platform hardening.
+- `docs/v0.4.0_RFC_Specification.md` — semantic specialist tool naming, deviation policy, coverage expansion (JPEG, EML, XLSX, MSG enrichment).
 - `docs/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering, provenance, bounded observation.
+- `docs/v1.0.0_RFC_DRAFT.md` — forward-looking schema freeze draft. v1.0 = scanner maturity + backward compatibility policy. Becomes binding when scanner is otherwise mature.
+- `docs/HISTORY.md` — running index of all versions and patch releases. Start here when orienting.
+- `docs/CONVENTIONS.md` — internal naming, version-bump rules, document promotion paths, tracking inventory of specialists / namespaces / signatures / safety flags / error codes.
+- `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments. Becomes binding at v1.0.
 
-RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.5 RFC before making changes to scanner behavior.
+RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.7 RFC plus HISTORY.md before making changes to scanner behavior.
 
 ## Stack
 
-Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (frontmatter), olefile (MSG/DOC), defusedxml (hardened XML). Virtual env at `.venv`.
+Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (frontmatter), olefile (MSG/DOC/XLS — required for OLE2 specialists), defusedxml (hardened XML). Virtual env at `.venv`.
 
 ## Version roadmap
 
-- v0.5.0 (current): schema reshaping — namespaced specialist_metadata, schema_version field, baseline_max_bytes cap, CRLF hardening, silent failure fixes.
-- v0.6.0 (next): dip switches (configurable depth per extension), structural file signatures, polyglot detection, data integrity envelope.
-- v1.0.0 (target): schema freeze + backward compatibility policy. Scanner is a configurable observation engine that's honest, verifiable, and stable.
+- **v0.7.2 (current on `main`):** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both v0.7.1 and v0.7.2 patches found from real CP corpus scanning.
+- **v0.8.0 (in flight on branch `v0.8.0`):** chatlog content-based specialist. Phase 1 lands `is_chatlog` flag and detection rules; Phase 2 lands `_extract_chatlog_metadata`; Phase 3 wires provenance + quality counter; Phase 4 ships docs and version bump.
+- **v0.9 / v0.10 (design seeds):** vector fingerprints (`vector_id` + `config_hash` + `dictionary_id` for audit-grade observation), customer dictionaries. The v0.8 chatlog spec draws the first rules-vs-tuning distinction that v0.9 vector fingerprints will formalize.
+- **v1.0.0 (target):** schema freeze + backward compatibility policy. Scanner is a configurable observation engine that's honest, verifiable, and stable.
 
 ## Commands
 
@@ -59,10 +65,10 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 4. **Bounded observation** — specialists operate within `sample_size` (8KB default). Null means "not observed within bounds," not "not present in the file."
 
 ### Capability tiers (all in Scanner class)
-1. **Universal** — runs for every file: identity, filesystem metadata, checksum, path-derived fields, routing flags (`is_binary`, `requires_vision`, `requires_specialist_tool`), MIME analysis
-2. **Baseline** — runs for text-like files: encoding detection, content preview, tag extraction, frontmatter parsing, asset matching
-3. **Structural** — runs for text-like files: title, headings, CSV headers, document keys (JSON/YAML/XML/TOML), technology hints
-4. **Specialist** — gated behind `ScannerConfig.enable_specialists` (default: False). Format-specific bounded metadata extraction (PDF, PNG, MSG)
+1. **Universal** — runs for every file: identity, filesystem metadata, checksum, path-derived fields, routing flags (`is_binary`, `requires_vision`, `requires_specialist_tool`), MIME analysis, structural file signatures (`file_signature`, `format_signatures`, `is_polyglot`).
+2. **Baseline** — runs for text-like files: encoding detection (with v0.7.1 UTF-16/UTF-32 BOM short-circuit), content preview, tag extraction, frontmatter parsing, asset matching. **v0.8: also runs `is_chatlog` content-based detection on `.txt`/`.md`/`.mdx` files** — the first content-detected (not extension-based) flag in the scanner. Detection runs even when `enable_specialists=False` because it's cheap.
+3. **Structural** — runs for text-like files: title, headings, CSV headers, document keys (JSON/YAML/XML/TOML), technology hints, filename_date.
+4. **Specialist** — gated behind `ScannerConfig.enable_specialists` (default: False). Format-specific extraction with namespaced metadata. v0.6 added MIME guard (skips extraction when content MIME doesn't match expected formats) and configurable depth (`specialist_budget`, `extension_overrides`, named profiles via `SCAN_PROFILES`). v0.7 added `safety_flags` (has_javascript, has_macros, has_ole_objects, has_external_references) and the `ScanQuality` block (clean/degraded/error/mismatch/polyglot/safety counts).
 
 ### Key data flow
 `Scanner.scan()` → `_build_context()` → `iter_files()` walks directory → `scan_file()` per file (builds `FileRecord` + `signal_provenance`) → assembled into `ScanManifest` with `context`, `meta`, `stats`, `routing_summary`, `delta`, `manifest_checksum` → serialized via `manifest_to_json()` or `manifest_to_jsonl()`
@@ -83,18 +89,20 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 | `.pdf` | `pdf_extraction` | page count, text streams, doc info, encrypted, pdf_version, sample_text_marker_density |
 | `.png` | `image_structure` | width, height, bit_depth (IHDR chunk via struct) |
 | `.jpg`/`.jpeg` | `image_structure` | width, height (SOF0/SOF2 markers via struct) |
-| `.msg` | `email_envelope` | subject, from, to, date, message_id, has_attachments (OLE2 via olefile) |
+| `.msg` | `email_envelope` | subject, from, to, date, message_id, has_attachments. v0.7.1: takes file path (not 8KB sample) so olefile can follow OLE2 FAT chains. v0.7.2: date read from MAPI properties stream (PR_CLIENT_SUBMIT_TIME 0x0039 → ISO 8601), `from` prefers PR_SENDER_NAME (0x0C1A) display name over PR_SENDER_EMAIL_ADDRESS (0x0C1F) Exchange legacyDN. |
 | `.eml` | `email_envelope` | subject, from, to, date, message_id, has_attachments (stdlib email.parser) |
-| `.xlsx` | `spreadsheet_structure` | sheet_names, header_rows (stdlib zipfile + XML, 128KB deviation) |
+| `.xlsx` | `spreadsheet_structure` | sheet_names, header_rows, format=ooxml (stdlib zipfile + XML, 128KB deviation) |
+| `.xls` | `spreadsheet_structure` | sheet_names, format=biff (BIFF8 BoundSheet8 records via olefile, v0.7.0). v0.7.1: takes file path. |
 | `.docx` | `document_extraction` | title, author, word_count, heading_count (OOXML ZIP, 128KB deviation) |
-| `.doc` | `document_extraction` | title, author (OLE2 SummaryInformation via olefile) |
+| `.doc` | `document_extraction` | title, author (OLE2 SummaryInformation via olefile). v0.7.1: takes file path. |
 | `.rtf` | `document_extraction` | title, author ({\info} group regex on sample) |
+| _(content-detected)_ | `chatlog_signals` _(v0.8 in flight)_ | turn_count, speaker_labels, section_marker_count/styles, turn char stats, reference_tokens, top_capitalized_tokens, vocabulary_size_estimate. **Activates by content pattern, not extension.** |
 
 ## Known decisions
 
 - Specialist tier disabled by default (`ScannerConfig.enable_specialists = False`)
 - Preview capped at 1000 chars (`ScannerConfig.preview_max_chars`)
-- Binary detection: NUL byte in sample OR MIME prefix/set OR text char ratio < 0.85
+- Binary detection: **v0.7.1 short-circuits on UTF-16/UTF-32 BOM** at offset 0 (treats as text), then NUL byte in sample OR MIME prefix/set OR text char ratio < 0.85
 - MIME detection: content-based (python-magic/libmagic) primary, extension-based fallback with diagnostic error
 - Encoding: chardet (confidence >= 0.50) then cascade: utf-8 → utf-8-sig → cp1252 → latin-1 → replace
 - Manifest checksum excludes `scan_id` and `generated_at` (volatile fields)
@@ -104,14 +112,20 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 - Specialist tool names are semantic (describe downstream need, not scanner implementation)
 - PDF sample_text_marker_density is a quantitative float, not qualitative labels
 - PNG/JPEG extraction uses stdlib struct, not Pillow
-- MSG/DOC extraction uses optional olefile, graceful degradation when unavailable
+- **OLE2 specialists (msg/doc/xls) take a file path, not a sample buffer** (v0.7.1) — olefile cannot follow FAT sector chains from a head-only buffer. Declared deviation from `sample_size`, bounded by file size on disk.
+- **MSG date extraction parses the MAPI `__properties_version1.0` stream directly** (v0.7.2) — fixed-length properties (FILETIME) live there, not in substg streams. Reads PR_CLIENT_SUBMIT_TIME (0x0039) → ISO 8601, falls back to PR_MESSAGE_DELIVERY_TIME (0x0E06).
+- **MSG `from` prefers display name (PR_SENDER_NAME 0x0C1A) over Exchange legacyDN (PR_SENDER_EMAIL_ADDRESS 0x0C1F)** (v0.7.2) — both kept in the lookup chain, but the human-readable form wins when present.
 - EML extraction uses stdlib email.parser, no external dependencies
 - XLSX/DOCX use 128KB deviation budget (declared exception to 8KB bounded observation)
 - ZIP entries validated against path traversal (_is_safe_zip_entry), decompressed size capped at 1MB (_safe_zip_read)
 - XML parsing uses defusedxml when available, stdlib fallback with documented risk
+- v0.6 added `SCAN_PROFILES` (e.g. `fast_sort`) — named bundles of `extension_overrides` for common extraction depth tradeoffs
+- v0.6 added `previous_manifest_checksum` and `manifest_signature` (HMAC-SHA256 with optional `signing_key`) for chain-of-custody integrity
+- v0.7 added `safety_flags` (has_javascript / has_macros / has_ole_objects / has_external_references) and the `ScanQuality` block
+- **v0.8 (in flight): `is_chatlog` is content-detected, not extension-driven** — first content-classification flag in the scanner. Activates only for `.txt`/`.md`/`.mdx`. Three rules per spec §2.3 (3+ speaker labels, 3+ `### ` headers, 3+ section divider lines); any one fires. Detection runs even when `enable_specialists=False`.
 
 ## Test fixtures
 
-`tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). Use these for integration tests.
+`tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). v0.8 will add chatlog fixtures to `tests/fixtures/edge_cases/`.
 
-Test suite: 320 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py`.
+Test suite: 425 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v0.8 Phase 1).
