@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.7.2"
-        assert ctx.logic_version == "0.7.2"
+        assert ctx.scanner_version == "0.8.0"
+        assert ctx.logic_version == "0.8.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.7.2"
+        assert data["context"]["scanner_version"] == "0.8.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1812,6 +1812,52 @@ class TestScanQualityChatlogFiles:
 
 
 # ---------------------------------------------------------------------------
+# v0.8 Phase 4: chatlog fixtures (real files in tests/fixtures/edge_cases/)
+# ---------------------------------------------------------------------------
+
+class TestChatlogFixtures:
+    """Verify the chatlog specialist works against the real fixture files
+    that ship in tests/fixtures/edge_cases/ — one fixture per detection rule."""
+
+    @property
+    def fixtures_dir(self) -> Path:
+        return Path(__file__).parent / "fixtures" / "edge_cases"
+
+    def _scan_one_file(self, fixture_name: str, tmp_path: Path) -> Any:
+        # Copy a single fixture into a temp dir so the scanner only sees it.
+        src = self.fixtures_dir / fixture_name
+        dst = tmp_path / fixture_name
+        dst.write_text(src.read_text())
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        return manifest.files[0]
+
+    def test_conversation_fixture_speaker_labels(self, tmp_path: Path) -> None:
+        rec = self._scan_one_file("chatlog_conversation.md", tmp_path)
+        assert rec.is_chatlog is True
+        assert rec.specialist_metadata is not None
+        chat = rec.specialist_metadata["chatlog"]
+        assert "User" in chat["speaker_labels"]
+        assert "Assistant" in chat["speaker_labels"]
+        assert chat["turn_count"] >= 6
+
+    def test_journal_fixture_section_dividers(self, tmp_path: Path) -> None:
+        rec = self._scan_one_file("chatlog_journal.md", tmp_path)
+        assert rec.is_chatlog is True
+        chat = rec.specialist_metadata["chatlog"]
+        # Has both --- dividers AND # headers
+        assert chat["section_marker_count"] >= 3
+        assert "---" in chat["section_marker_styles"]
+
+    def test_headers_fixture_h3_rule(self, tmp_path: Path) -> None:
+        rec = self._scan_one_file("chatlog_headers.md", tmp_path)
+        assert rec.is_chatlog is True
+        chat = rec.specialist_metadata["chatlog"]
+        assert chat["section_marker_count"] >= 4  # 4 ### headers + 1 # header
+        assert "### " in chat["section_marker_styles"]
+
+
+# ---------------------------------------------------------------------------
 # v0.4: Semantic specialist tool names
 # ---------------------------------------------------------------------------
 
@@ -1838,8 +1884,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.7.2"
-        assert LOGIC_VERSION == "0.7.2"
+        assert SCANNER_VERSION == "0.8.0"
+        assert LOGIC_VERSION == "0.8.0"
 
 
 # ---------------------------------------------------------------------------

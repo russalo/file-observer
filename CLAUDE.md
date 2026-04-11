@@ -8,8 +8,8 @@ File capability scanner — observation layer only. Recursively discovers files,
 
 ## Spec
 
-- `docs/v0.7.0_RFC_Specification.md` — **current release spec** (v0.7.x line). XLS specialist, spreadsheet `format` field, safety_flags, ScanQuality block. v0.7.1 and v0.7.2 are patch releases against this spec — see HISTORY.md.
-- `docs/v0.8.0_RFC_Specification.md` — **approved, in-flight implementation**. Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate).
+- `docs/v0.8.0_RFC_Specification.md` — **current release spec**. Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate).
+- `docs/v0.7.0_RFC_Specification.md` — prior release (v0.7.x line). XLS specialist, spreadsheet `format` field, safety_flags, ScanQuality block. v0.7.1 and v0.7.2 are patch releases against this spec — see HISTORY.md.
 - `docs/v0.6.0_RFC_Specification.md` — configurable depth (specialist_budget, extension_overrides, profiles), structural signatures, polyglot detection, integrity envelope (HMAC manifest_signature).
 - `docs/v0.5.0_RFC_Specification.md` — schema reshape: namespaced specialist_metadata, schema_version field, baseline_max_bytes, cross-platform hardening.
 - `docs/v0.4.0_RFC_Specification.md` — semantic specialist tool naming, deviation policy, coverage expansion (JPEG, EML, XLSX, MSG enrichment).
@@ -27,8 +27,8 @@ Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (fr
 
 ## Version roadmap
 
-- **v0.7.2 (current on `main`):** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both patches found from real-world corpus scanning.
-- **v0.8.0 (in flight on branch `v0.8.0`):** chatlog content-based specialist. Phase 1 lands `is_chatlog` flag and detection rules; Phase 2 lands `_extract_chatlog_metadata`; Phase 3 wires provenance + quality counter; Phase 4 ships docs and version bump.
+- **v0.8.0 (current on `main`):** chatlog content-based specialist. First content-detected (not extension-driven) dispatch in the scanner: `is_chatlog` flag runs even with specialists disabled; `_extract_chatlog_metadata` produces 11 drift-visible fields when enabled; new `chatlog` namespace + MIME guard; `quality.chatlog_files` counter. SCHEMA_VERSION 0.7 → 0.8 (additive).
+- **v0.7.x:** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both patches found from real-world corpus scanning.
 - **v1.0.0 (target):** schema freeze + backward compatibility policy. Scanner is a configurable observation engine that's honest, verifiable, and stable.
 
 ## Commands
