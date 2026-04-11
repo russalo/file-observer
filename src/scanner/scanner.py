@@ -99,6 +99,16 @@ FILENAME_DATE_RE = re.compile(r"(\d{4})[-_](\d{2})[-_](\d{2})")
 HTML_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
 
+# v0.8 chatlog detection — see docs/v0.8.0_RFC_Specification.md §2.3
+# Speaker label pattern: line starts with a capitalized identifier, colon, space.
+# The 16-char cap on the identifier rules out runaway false positives on prose
+# that happens to start with `Word: ...` while still catching real speaker
+# labels like `Assistant:`, `User:`, `DM:`, `Russell:`, `Player_2:`.
+CHATLOG_SPEAKER_LABEL_RE = re.compile(r"^([A-Z][a-zA-Z0-9_]{0,15}):\s", re.MULTILINE)
+# Section divider: a line containing 3+ of -, =, *, or # with only whitespace
+# around it. Excludes lines like `### Heading` (those have text after).
+CHATLOG_SECTION_DIVIDER_RE = re.compile(r"^[-=*#]{3,}\s*$", re.MULTILINE)
+
 TECHNOLOGY_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     # CSS frameworks
     ("tailwind", re.compile(r'\bclass="[^"]*\b(?:bg-(?:gray|red|blue|green|white|black|slate|zinc|neutral|stone|amber|yellow|emerald|teal|cyan|sky|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}|text-(?:xs|sm|base|lg|xl|2xl)|rounded-(?:sm|md|lg|xl|2xl|full)|shadow-(?:sm|md|lg)|hover:)')),
@@ -268,6 +278,10 @@ class FileRecord:
     file_signature: dict[str, Any] | None = None
     format_signatures: list[dict[str, Any]] = field(default_factory=list)
     is_polyglot: bool = False
+    # v0.8: content-detected chatlog flag (set when text patterns suggest
+    # conversational or document-evolution structure). Always present, runs
+    # even when enable_specialists=False because detection is cheap.
+    is_chatlog: bool = False
     safety_flags: list[str] = field(default_factory=list)
     signal_provenance: dict[str, Any] = field(default_factory=dict)
     errors: list[ErrorRecord] = field(default_factory=list)
@@ -789,6 +803,7 @@ class Scanner:
         tags: list[str] = []
         asset_matches: list[str] = []
         frontmatter = FrontmatterRecord()
+        is_chatlog = False
         structural = StructuralRecord(
             filename_date=self.extract_filename_date(path.name),
         )
@@ -800,6 +815,21 @@ class Scanner:
                 preview = self.make_preview(text, eff["preview_max_chars"])
                 tags = self.extract_tags(text)
                 structural.technology_hints = self.detect_technology(text)
+
+                # v0.8 Phase 1: chatlog content-based detection.
+                # Activates for .txt / .md / .mdx files when content patterns
+                # suggest conversational or document-evolution structure. This
+                # is the first content-detected (not extension-based) flag in
+                # the scanner. Always runs when we have decoded text, even if
+                # enable_specialists=False — detection is cheap.
+                if extension in {".txt", ".md", ".mdx"}:
+                    is_chatlog = self._detect_chatlog_pattern(text)
+                    provenance["is_chatlog"] = asdict(ProvenanceEntry(
+                        layer="derived",
+                        method="_detect_chatlog_pattern",
+                        trigger="content_pattern_match" if is_chatlog else "content_pattern_none",
+                        inputs=["encoding"],
+                    ))
 
                 if extension in {".md", ".mdx"}:
                     frontmatter = self.extract_frontmatter(text)
@@ -1000,6 +1030,7 @@ class Scanner:
             file_signature=file_signature,
             format_signatures=format_signatures,
             is_polyglot=is_polyglot,
+            is_chatlog=is_chatlog,
             safety_flags=safety_flags,
             signal_provenance=provenance,
             errors=errors,
@@ -1649,6 +1680,37 @@ class Scanner:
             if b in b"\t\n\r\f\b" or 32 <= b <= 126 or b >= 128
         )
         return (text_chars / max(len(sample), 1)) >= 0.85
+
+    def _detect_chatlog_pattern(self, text: str) -> bool:
+        """v0.8: content-based detection of chatlog / journal / vault structure.
+
+        Returns True if the decoded text matches any of the three rules in
+        v0.8 spec §2.3:
+
+          1. Three or more lines matching the speaker label pattern
+             ``^([A-Z][a-zA-Z0-9_]{0,15}):\\s`` — catches "User:", "Assistant:",
+             "DM:", "Russell:", "Player_2:", etc.
+          2. Three or more occurrences of ``### `` headers in the sample.
+          3. Three or more lines that are pure section dividers (3+ of -, =,
+             *, or # with only whitespace around them).
+
+        Detection runs even when ``enable_specialists=False`` because it's
+        cheap (regex on the already-decoded baseline text). The threshold of 3
+        is intentionally hardcoded; see the spec's "Rules vs. tuning" note —
+        the rule set IS the chatlog vector definition; the threshold is its
+        sensitivity tuning. Both ship hardcoded in v0.8 and will become
+        ``vector_id`` and ``config_hash`` respectively when vector
+        fingerprints land in v0.9/v0.10.
+        """
+        if not text:
+            return False
+        if len(CHATLOG_SPEAKER_LABEL_RE.findall(text)) >= 3:
+            return True
+        if text.count("### ") >= 3:
+            return True
+        if len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
+            return True
+        return False
 
     def detect_requires_vision(
         self, sample: bytes, mime_type: str, extension: str, is_binary: bool
