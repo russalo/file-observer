@@ -1255,6 +1255,209 @@ class TestMsgFromFieldOrder:
 
 
 # ---------------------------------------------------------------------------
+# v0.8 Phase 1: chatlog content-based detection
+# ---------------------------------------------------------------------------
+
+class TestDetectChatlogPattern:
+    """Unit tests for the _detect_chatlog_pattern detection rules.
+
+    Per spec §2.3, ANY of three rules triggers detection:
+      1. 3+ lines matching the speaker label pattern
+      2. 3+ occurrences of `### ` headers
+      3. 3+ section divider lines
+    """
+
+    # ---- Empty / negative ----
+
+    def test_empty_string_is_not_chatlog(self, scanner: Scanner) -> None:
+        assert scanner._detect_chatlog_pattern("") is False
+
+    def test_plain_prose_is_not_chatlog(self, scanner: Scanner) -> None:
+        text = (
+            "This is a normal document. It has multiple sentences. None of "
+            "them look like a chat log. There are no speaker labels, no "
+            "Markdown headers, and no section dividers anywhere in this text."
+        )
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    # ---- Rule 1: speaker labels ----
+
+    def test_three_speaker_labels_triggers(self, scanner: Scanner) -> None:
+        text = "User: hi\nAssistant: hello\nUser: how are you\n"
+        assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_two_speaker_labels_does_not_trigger(self, scanner: Scanner) -> None:
+        # Below threshold — only 2 speaker label matches.
+        text = "User: hi\nAssistant: hello\nThis is just prose continuing.\n"
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_speaker_label_too_long_does_not_match(self, scanner: Scanner) -> None:
+        # Identifier > 16 chars before the colon should NOT count as a speaker
+        # label (the regex caps at 16 chars to avoid sentence false positives).
+        text = (
+            "ThisIsAVeryLongIdentifierName: foo\n"
+            "ThisIsAVeryLongIdentifierName: bar\n"
+            "ThisIsAVeryLongIdentifierName: baz\n"
+        )
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_speaker_label_lowercase_start_does_not_match(self, scanner: Scanner) -> None:
+        # Speaker labels must start with an uppercase letter.
+        text = "user: hi\nuser: hi\nuser: hi\n"
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_rpg_style_speaker_labels(self, scanner: Scanner) -> None:
+        text = "DM: The dragon roars.\nPlayer_2: I attack!\nDM: Roll for it.\n"
+        assert scanner._detect_chatlog_pattern(text) is True
+
+    # ---- Rule 2: ### headers ----
+
+    def test_three_h3_headers_triggers(self, scanner: Scanner) -> None:
+        text = "### One\nbody\n### Two\nbody\n### Three\nbody\n"
+        assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_two_h3_headers_does_not_trigger(self, scanner: Scanner) -> None:
+        text = "### One\nbody\n### Two\nbody\nplain prose finishing the file.\n"
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    # ---- Rule 3: section dividers ----
+
+    def test_three_dash_dividers_triggers(self, scanner: Scanner) -> None:
+        text = "section a\n---\nsection b\n---\nsection c\n---\nfooter\n"
+        assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_three_equals_dividers_triggers(self, scanner: Scanner) -> None:
+        text = "section a\n===\nsection b\n===\nsection c\n===\n"
+        assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_two_dividers_does_not_trigger(self, scanner: Scanner) -> None:
+        text = "section a\n---\nsection b\n---\nfooter\n"
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_h3_header_does_not_count_as_divider(self, scanner: Scanner) -> None:
+        # `### Heading` has text after the hashes — it's a header, not a
+        # divider line. Three of them should NOT trigger rule 3 (but they DO
+        # trigger rule 2, which is fine — that's a different rule).
+        text = "### One header only\nbody continues here\n"
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    # ---- Mixed / realistic ----
+
+    def test_realistic_chat_log(self, scanner: Scanner) -> None:
+        text = (
+            "User: what's the weather\n"
+            "Assistant: I don't have weather data.\n"
+            "User: ok then tell me a joke\n"
+            "Assistant: Why did the chicken cross the road?\n"
+            "User: why\n"
+            "Assistant: To get to the other side.\n"
+        )
+        assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_realistic_journal_with_dividers(self, scanner: Scanner) -> None:
+        text = (
+            "# 2026-04-10\n"
+            "Worked on the scanner. Patched the OLE2 bug.\n"
+            "---\n"
+            "# 2026-04-09\n"
+            "Designed the chatlog specialist.\n"
+            "---\n"
+            "# 2026-04-08\n"
+            "Schema reshape day.\n"
+            "---\n"
+        )
+        assert scanner._detect_chatlog_pattern(text) is True
+
+
+class TestIsChatlogIntegration:
+    """End-to-end tests that the is_chatlog flag appears on FileRecord and
+    runs even when enable_specialists is False."""
+
+    def test_is_chatlog_default_false_on_filerecord(self) -> None:
+        from scanner.scanner import FileRecord
+        # Verify the field exists with the default value False.
+        from dataclasses import fields
+        names = {f.name for f in fields(FileRecord)}
+        assert "is_chatlog" in names
+        for f in fields(FileRecord):
+            if f.name == "is_chatlog":
+                assert f.default is False
+
+    def test_chatlog_md_file_detected(self, tmp_path: Path) -> None:
+        content = (
+            "User: hi\n"
+            "Assistant: hello\n"
+            "User: tell me about scanner\n"
+            "Assistant: it observes files.\n"
+        )
+        (tmp_path / "convo.md").write_text(content)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
+        assert "is_chatlog" in rec.signal_provenance
+        assert rec.signal_provenance["is_chatlog"]["trigger"] == "content_pattern_match"
+
+    def test_chatlog_txt_file_detected(self, tmp_path: Path) -> None:
+        # The .txt extension is also in the chatlog detection allow list.
+        content = (
+            "section\n---\nsection\n---\nsection\n---\nfooter\n"
+        )
+        (tmp_path / "log.txt").write_text(content)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
+
+    def test_non_chatlog_md_file_not_detected(self, tmp_path: Path) -> None:
+        content = "# A normal markdown doc\n\nJust some prose.\n"
+        (tmp_path / "doc.md").write_text(content)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is False
+        assert rec.signal_provenance["is_chatlog"]["trigger"] == "content_pattern_none"
+
+    def test_non_target_extension_not_detected(self, tmp_path: Path) -> None:
+        # .json files contain chatlog-pattern-matching content but aren't in
+        # the .txt/.md/.mdx allow list, so detection should NOT run for them.
+        content = '{"User": "hi", "Assistant": "hello"}'
+        (tmp_path / "data.json").write_text(content)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is False
+        # Provenance should not be recorded for files where detection doesn't run.
+        assert "is_chatlog" not in rec.signal_provenance
+
+    def test_binary_file_not_detected(self, tmp_path: Path) -> None:
+        # Binary files (e.g. PNGs) never get text-decoded, so chatlog
+        # detection cannot run and is_chatlog stays False with no provenance.
+        png_header = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
+        (tmp_path / "image.png").write_bytes(png_header)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is False
+        assert "is_chatlog" not in rec.signal_provenance
+
+    def test_detection_runs_with_specialists_disabled(self, tmp_path: Path) -> None:
+        # Phase 1 requirement: chatlog detection must run even when
+        # enable_specialists=False, because the detection is cheap.
+        content = "User: hi\nAssistant: hello\nUser: again\n"
+        (tmp_path / "chat.md").write_text(content)
+        config = ScannerConfig(enable_specialists=False)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
+
+    def test_is_chatlog_serializes_to_json(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_json
+        import json as _json
+        content = "### A\n### B\n### C\n"
+        (tmp_path / "headers.md").write_text(content)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        data = _json.loads(manifest_to_json(manifest))
+        rec = data["files"][0]
+        assert rec["is_chatlog"] is True
+
+
+# ---------------------------------------------------------------------------
 # v0.4: Semantic specialist tool names
 # ---------------------------------------------------------------------------
 
