@@ -18,14 +18,14 @@ The scanner has five distinct things that carry versions. They are independent â
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/scanner/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `0.7.0`
+**Current:** `0.8.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic â€” code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
 **Where it lives:** `LOGIC_VERSION` constant in `src/scanner/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `0.7.0`
+**Current:** `0.8.0`
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent â
 - MAJOR (x.0 â†’ x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `0.7`
+**Current:** `0.8`
 **Note:** This IS a public contract field. After v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, future v0.9+)
@@ -51,7 +51,7 @@ The scanner has five distinct things that carry versions. They are independent â
 **What it is:** Identifier for a word list, pattern set, or configuration that drives a vector.
 **Where it lives:** `signal_provenance` `detail.term_dictionary_id`, vector configuration registry.
 **When it bumps:** When dictionary contents change. Dictionaries are immutable once published â€” a change is a new ID, not a modification.
-**Format:** `{namespace}_{descriptor}_{period}` â€” e.g., `cp_escalation_terms_2026_q2`
+**Format:** `{namespace}_{descriptor}_{period}` â€” e.g., `example_terms_2026_q2`
 **Current:** N/A
 **Internal rule:** Never edit a published dictionary in place. Always publish a new ID and let consumers opt in.
 
@@ -59,9 +59,9 @@ The scanner has five distinct things that carry versions. They are independent â
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 0.7.0 | Internal |
-| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 0.7.0 | Internal* |
-| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 0.7 | **Public** |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 0.8.0 | Internal |
+| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 0.8.0 | Internal* |
+| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 0.8 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
 
@@ -183,7 +183,9 @@ This section is for **us**. It is the running list of everything the scanner cur
 
 ### 4.2 Specialist tools
 
-11 extensions, 5 namespaces, 5 specialist tool names:
+11 extension-keyed specialists + 1 content-detected specialist; 6 namespaces; 6 specialist tool names.
+
+**Extension-keyed** (dispatched via `SPECIALIST_TOOLS[extension]`):
 
 | Extension | Tool | Namespace |
 |---|---|---|
@@ -198,6 +200,12 @@ This section is for **us**. It is the running list of everything the scanner cur
 | `.doc` | `document_extraction` | `document` |
 | `.rtf` | `document_extraction` | `document` |
 
+**Content-detected** (activates via `_detect_chatlog_pattern` on the decoded baseline text; not registered in `SPECIALIST_TOOLS` / `SPECIALIST_NAMESPACE` because those are extension-keyed, would risk accidental routing, and would mis-inventory a content-based dispatch as extension-based):
+
+| Trigger | Tool | Namespace |
+|---|---|---|
+| 3+ speaker labels, 3+ `### ` headers, or 3+ section dividers in `.txt` / `.md` / `.mdx` text | `chatlog_signals` (`CHATLOG_TOOL`) | `chatlog` (`CHATLOG_NAMESPACE`) |
+
 ### 4.3 Specialist metadata fields by namespace
 
 | Namespace | Fields |
@@ -207,6 +215,7 @@ This section is for **us**. It is the running list of everything the scanner cur
 | `email` | subject, from, to, date, message_id, has_attachments |
 | `spreadsheet` | sheet_names, header_rows (XLSX only), format (`biff` or `ooxml`) |
 | `document` | title, author, word_count (DOCX only), heading_count (DOCX only) |
+| `chatlog` | turn_count, speaker_labels, section_marker_count, section_marker_styles, avg_turn_chars, max_turn_chars, min_turn_chars, reference_tokens.{at_mentions, wiki_links, code_fence_blocks, url_count}, top_capitalized_tokens, capitalized_token_count, vocabulary_size_estimate |
 
 ### 4.4 Magic signatures
 
@@ -222,7 +231,7 @@ This section is for **us**. It is the running list of everything the scanner cur
 
 ### 4.6 Quality block fields
 
-9 fields in `ScanQuality`: total_files, clean_files, degraded_files, error_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions, safety_flags
+10 fields in `ScanQuality`: total_files, clean_files, degraded_files, error_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions, safety_flags, **chatlog_files** (v0.8)
 
 ### 4.7 Error codes
 
