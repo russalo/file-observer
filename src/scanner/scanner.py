@@ -359,6 +359,10 @@ class ScanQuality:
     specialist_failures: int
     unsupported_extensions: int
     safety_flags: int
+    # v0.8: number of files where the chatlog content-detection rules
+    # fired (is_chatlog == True). Defaulted so older code paths and
+    # tests that construct ScanQuality without this field still work.
+    chatlog_files: int = 0
 
 
 @dataclass
@@ -652,6 +656,7 @@ class Scanner:
         specialist_failures = sum(1 for r in records if any(e.code == ERR_SPECIALIST_PROBE_FAILED for e in r.errors))
         unsupported = sum(1 for r in records if any(e.code == ERR_UNSUPPORTED_EXTENSION for e in r.errors))
         safety = sum(1 for r in records if r.safety_flags)
+        chatlog_count = sum(1 for r in records if r.is_chatlog)
         degraded = sum(1 for r in records
                        if not any(e.code == ERR_UNIVERSAL_STAT_FAILED for e in r.errors)
                        and (r.errors or not r.mime_analysis.matches_extension))
@@ -666,6 +671,7 @@ class Scanner:
             specialist_failures=specialist_failures,
             unsupported_extensions=unsupported,
             safety_flags=safety,
+            chatlog_files=chatlog_count,
         )
 
     def _compute_routing_summary(self, records: list[FileRecord]) -> RoutingSummary:

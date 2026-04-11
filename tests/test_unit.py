@@ -1761,6 +1761,57 @@ class TestChatlogSpecialistIntegration:
 
 
 # ---------------------------------------------------------------------------
+# v0.8 Phase 3: ScanQuality.chatlog_files counter
+# ---------------------------------------------------------------------------
+
+class TestScanQualityChatlogFiles:
+    """Phase 3 work: the manifest-level quality block gains a chatlog_files
+    counter that mirrors the per-file is_chatlog flag aggregated to the
+    whole scan."""
+
+    def test_chatlog_files_counter_field_exists(self) -> None:
+        from scanner.scanner import ScanQuality
+        from dataclasses import fields
+        names = {f.name for f in fields(ScanQuality)}
+        assert "chatlog_files" in names
+
+    def test_chatlog_files_counter_zero_on_empty_corpus(self, tmp_path: Path) -> None:
+        # Single non-chatlog file → counter is zero, not missing.
+        (tmp_path / "doc.md").write_text("# A heading\n\nplain prose.\n")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.quality.chatlog_files == 0
+
+    def test_chatlog_files_counter_counts_detections(self, tmp_path: Path) -> None:
+        # Three chatlog files + two non-chatlog files → counter == 3.
+        chat = "User: a\nAssistant: b\nUser: c\nAssistant: d\nUser: e\nAssistant: f\n"
+        (tmp_path / "chat1.md").write_text(chat)
+        (tmp_path / "chat2.md").write_text(chat)
+        (tmp_path / "chat3.txt").write_text(chat)
+        (tmp_path / "doc1.md").write_text("# Heading\n\nprose.\n")
+        (tmp_path / "doc2.md").write_text("# Other heading\n\nmore prose.\n")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert manifest.quality.chatlog_files == 3
+        assert manifest.quality.total_files == 5
+
+    def test_chatlog_files_counter_independent_of_specialist_extraction(self, tmp_path: Path) -> None:
+        # Detection (and the counter) runs even with enable_specialists=False.
+        chat = "User: a\nUser: b\nUser: c\nAssistant: a\nAssistant: b\nAssistant: c\n"
+        (tmp_path / "chat.md").write_text(chat)
+        config = ScannerConfig(enable_specialists=False)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        assert manifest.quality.chatlog_files == 1
+
+    def test_chatlog_files_counter_in_json_serialization(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_json
+        import json as _json
+        chat = "User: a\nUser: b\nUser: c\nAssistant: a\nAssistant: b\nAssistant: c\n"
+        (tmp_path / "chat.md").write_text(chat)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        data = _json.loads(manifest_to_json(manifest))
+        assert data["quality"]["chatlog_files"] == 1
+
+
+# ---------------------------------------------------------------------------
 # v0.4: Semantic specialist tool names
 # ---------------------------------------------------------------------------
 
