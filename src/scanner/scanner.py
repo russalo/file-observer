@@ -5,10 +5,10 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.10.2
-    Schema:     0.10
+    Version:    0.11.0
+    Schema:     0.11
     Python:     >= 3.12
-    Spec:       docs/v0.10.0_RFC_Specification.md (current)
+    Spec:       docs/v0.11.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -71,9 +71,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.10.2"
+SCANNER_VERSION = "0.11.0"
 LOGIC_VERSION = "0.10.1"
-SCHEMA_VERSION = "0.10"
+SCHEMA_VERSION = "0.11"
 
 
 # v0.8: register markdown extensions in stdlib mimetypes so that when libmagic

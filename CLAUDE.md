@@ -8,7 +8,8 @@ File capability scanner — observation layer only. Recursively discovers files,
 
 ## Spec
 
-- `docs/v0.10.0_RFC_Specification.md` — **current release spec**. Human-readable scan summary, author_aggregate corpus vector, filename_patterns vector.
+- `docs/v0.11.0_RFC_Specification.md` — **current release spec**. Provisional → stable promotions, SECURITY.md. No new features.
+- `docs/v0.10.0_RFC_Specification.md` — prior release. Human-readable scan summary, author_aggregate corpus vector, filename_patterns vector.
 - `docs/v0.9.0_RFC_Specification.md` — prior release. Vector abstraction (identity digest, rules_hash, static_tuning_hash), `vectors_collected[]` manifest block, chatlog vector (refactored from v0.8), reference_tokens vector (7 subcategories), email body chatlog cross-cut, per-directory aggregation, Dublin Core adoption. All v0.9 additions provisional.
 - `docs/v0.8.0_RFC_Specification.md` — prior release. Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate).
 - `docs/v0.7.0_RFC_Specification.md` — v0.7.x line. XLS specialist, spreadsheet `format` field, safety_flags, ScanQuality block. v0.7.1 and v0.7.2 are patch releases against this spec — see HISTORY.md.
@@ -29,7 +30,8 @@ Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (fr
 
 ## Version roadmap
 
-- **v0.10.x (current on `main`):** v0.10.1 adds JSONL chatlog detection (`.jsonl` files with `"type": "user"/"assistant"` role objects). v0.10.0: Human-readable scan summary, `author_aggregate` corpus vector (cross-specialist author normalization + template-default detection), `filename_patterns` vector (6 boolean subcategories on every file). Four vectors in `vectors_collected[]`. SCHEMA_VERSION 0.9 → 0.10 (additive).
+- **v0.11.0 (current on `main`):** Field stability promotions — vectors_collected, reference_tokens, per_directory_summary, email.body_chatlog, filename_patterns all promoted from provisional to stable. SECURITY.md added. No new features. SCHEMA_VERSION 0.10 → 0.11.
+- **v0.10.x:** v0.10.1 adds JSONL chatlog detection (`.jsonl` files with `"type": "user"/"assistant"` role objects). v0.10.0: Human-readable scan summary, `author_aggregate` corpus vector (cross-specialist author normalization + template-default detection), `filename_patterns` vector (6 boolean subcategories on every file). Four vectors in `vectors_collected[]`. SCHEMA_VERSION 0.9 → 0.10 (additive).
 - **v0.9.x:** Vector abstraction — the scanner becomes a corpus observer. `Vector` dataclass with identity digest (SHA-256). New `vectors_collected[]` manifest block. Two exemplar vectors: `chatlog` (refactored from v0.8) and `reference_tokens` (7 subcategories: at_mentions, wiki_links, code_fence_blocks, url_count, email_mentions, path_references, numeric_id_patterns). Per-file `reference_tokens` field on text files. Email body chatlog cross-cut. Per-directory aggregation in `quality.per_directory_summary[]`. Dublin Core adopted in standards tracking. All v0.9 additions provisional. SCHEMA_VERSION 0.8 → 0.9 (additive).
 - **v0.8.0:** chatlog content-based specialist. First content-detected (not extension-driven) dispatch in the scanner: `is_chatlog` flag runs even with specialists disabled; `_extract_chatlog_metadata` produces 11 drift-visible fields when enabled; new `chatlog` namespace + MIME guard; `quality.chatlog_files` counter. SCHEMA_VERSION 0.7 → 0.8 (additive).
 - **v0.7.x:** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both patches found from real-world corpus scanning.

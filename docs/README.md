@@ -7,11 +7,11 @@ Recursively discovers files under a source directory, extracts universal and for
 | | |
 |---|---|
 | **Package** | `scanner` |
-| **Version** | `0.10.1` |
-| **Schema** | `0.10` |
+| **Version** | `0.11.0` |
+| **Schema** | `0.11` |
 | **Python** | `>= 3.12` |
 | **License** | Private |
-| **Spec** | [`docs/v0.10.0_RFC_Specification.md`](v0.10.0_RFC_Specification.md) (current) |
+| **Spec** | [`docs/v0.11.0_RFC_Specification.md`](v0.11.0_RFC_Specification.md) (current) |
 | **History** | [`docs/HISTORY.md`](HISTORY.md) — every version, patch, and compliance report |
 | **Repository** | `pkp.russalo.com/scanner/` |
 
