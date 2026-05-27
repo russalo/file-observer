@@ -18,14 +18,14 @@ The scanner has five distinct things that carry versions. They are independent â
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/scanner/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `0.8.0`
+**Current:** `0.9.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic â€” code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
 **Where it lives:** `LOGIC_VERSION` constant in `src/scanner/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `0.8.0`
+**Current:** `0.9.0`
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -36,16 +36,18 @@ The scanner has five distinct things that carry versions. They are independent â
 - MAJOR (x.0 â†’ x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `0.8`
+**Current:** `0.9`
 **Note:** This IS a public contract field. After v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
-### 1.4 VECTOR_VERSION (per vector, future v0.9+)
-**What it is:** Version of an individual vector pattern's counting logic.
-**Where it lives:** `signal_provenance` `detail.vector_version`, vectors_collected registry.
+### 1.4 VECTOR_VERSION (per vector, since v0.9)
+**What it is:** Version of an individual vector pattern's counting logic (`method_version` in `vectors_collected[]`).
+**Where it lives:** `vectors_collected[].method_version`, identity digest preimage.
 **When it bumps:** When detection rules, regex patterns, or counting logic change.
 **Format:** Single integer.
-**Current:** N/A
-**Internal rule:** A vector at version 1 in two scanner releases must produce identical counts on identical input. If counts could differ, bump the vector version.
+**Current vectors:**
+- `chatlog` method_version: 1
+- `reference_tokens` method_version: 1
+**Internal rule:** A vector at version N in two scanner releases must produce identical counts on identical input. If counts could differ, bump the vector version. This is enforced by the identity digest â€” same digest guarantees same output.
 
 ### 1.5 DICTIONARY_ID (per customer dictionary, future v0.10+)
 **What it is:** Identifier for a word list, pattern set, or configuration that drives a vector.

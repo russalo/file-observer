@@ -5,10 +5,10 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.8.0
-    Schema:     0.8
+    Version:    0.9.0
+    Schema:     0.9
     Python:     >= 3.12
-    Spec:       docs/v0.8.0_RFC_Specification.md (current)
+    Spec:       docs/v0.9.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -71,9 +71,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.8.0"
-LOGIC_VERSION = "0.8.0"
-SCHEMA_VERSION = "0.8"
+SCANNER_VERSION = "0.9.0"
+LOGIC_VERSION = "0.9.0"
+SCHEMA_VERSION = "0.9"
 
 
 # v0.8: register markdown extensions in stdlib mimetypes so that when libmagic
@@ -323,6 +323,9 @@ class FileRecord:
     # conversational or document-evolution structure). Always present, runs
     # even when enable_specialists=False because detection is cheap.
     is_chatlog: bool = False
+    # v0.9: reference token counts across seven subcategories. Present on
+    # every text-decoded file (null on binary). See spec §3.2.
+    reference_tokens: dict[str, int] | None = None
     safety_flags: list[str] = field(default_factory=list)
     signal_provenance: dict[str, Any] = field(default_factory=dict)
     errors: list[ErrorRecord] = field(default_factory=list)
@@ -367,6 +370,70 @@ class DeltaRecord:
 
 
 @dataclass
+class VectorRecord:
+    """One entry in vectors_collected[]. Represents a vector that ran in a scan."""
+    vector_id: str
+    method_version: int
+    scope: str  # "file" or "corpus"
+    rules_hash: str
+    static_tuning_hash: str
+    dynamic_tuning_hash: str | None  # Reserved, null in v0.9
+    dictionary_id: str | None  # Reserved, null in v0.9
+    identity_digest: str
+    applied_to_count: int
+    summary: dict[str, Any]
+
+
+def compute_vector_identity_digest(
+    vector_id: str,
+    method_version: int,
+    rules_hash: str,
+    static_tuning_hash: str,
+    dynamic_tuning_hash: str | None = None,
+    dictionary_id: str | None = None,
+) -> str:
+    """Compute SHA-256 identity digest per v0.9 spec §2.4.
+
+    Preimage: vector_id|method_version|rules_hash|static_tuning_hash|dynamic_tuning_hash|dictionary_id
+    with null represented as the literal string "null".
+    """
+    preimage = "|".join([
+        vector_id,
+        str(method_version),
+        rules_hash,
+        static_tuning_hash,
+        dynamic_tuning_hash or "null",
+        dictionary_id or "null",
+    ])
+    return sha256(preimage.encode("utf-8")).hexdigest()
+
+
+def compute_rules_hash(rules_definition: str) -> str:
+    """Compute SHA-256 hash of a vector's rule set definition."""
+    return sha256(rules_definition.encode("utf-8")).hexdigest()
+
+
+def compute_tuning_hash(tuning: dict[str, Any]) -> str:
+    """Compute SHA-256 hash of a vector's static tuning configuration."""
+    canonical = json.dumps(tuning, sort_keys=True, ensure_ascii=False)
+    return sha256(canonical.encode("utf-8")).hexdigest()
+
+
+class VectorRegistry:
+    """Collects vectors that ran during a scan and produces vectors_collected[]."""
+
+    def __init__(self) -> None:
+        self._records: dict[str, VectorRecord] = {}
+
+    def register(self, record: VectorRecord) -> None:
+        self._records[record.vector_id] = record
+
+    def to_list(self) -> list[dict[str, Any]]:
+        """Return vectors_collected[] sorted alphabetically by vector_id."""
+        return [asdict(self._records[vid]) for vid in sorted(self._records)]
+
+
+@dataclass
 class ScanQuality:
     total_files: int
     clean_files: int
@@ -381,6 +448,8 @@ class ScanQuality:
     # fired (is_chatlog == True). Defaulted so older code paths and
     # tests that construct ScanQuality without this field still work.
     chatlog_files: int = 0
+    # v0.9: per-directory aggregation — one entry per top-level subdirectory
+    per_directory_summary: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -395,6 +464,8 @@ class ScanManifest:
     manifest_checksum: str
     manifest_signature: dict[str, str] | None
     files: list[FileRecord]
+    # v0.9: vector collection — one entry per vector that ran
+    vectors_collected: list[dict[str, Any]] = field(default_factory=list)
 
 
 # Extension-to-specialist-namespace mapping
@@ -451,6 +522,48 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
 # and namespace; the runtime dispatch in scan_file() consumes them directly.
 CHATLOG_NAMESPACE = "chatlog"
 CHATLOG_TOOL = "chatlog_signals"
+
+# v0.9: Chatlog vector identity constants. The rules definition string
+# captures the three detection rules + extraction logic version. Changing
+# any detection regex or extraction algorithm requires bumping METHOD_VERSION
+# and updating the rules definition string.
+CHATLOG_VECTOR_ID = "chatlog"
+CHATLOG_METHOD_VERSION = 1
+CHATLOG_RULES_DEFINITION = (
+    "detect:speaker_label_re(3+),h3_header_re(3+),section_divider_re(3+);"
+    "extract:turn_count,speaker_labels(freq>=3),section_markers,"
+    "turn_char_stats,reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
+    "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate"
+)
+CHATLOG_STATIC_TUNING = {"detection_threshold": 3, "top_capitalized_tokens_n": 20}
+
+# v0.9: Reference tokens vector identity constants.
+REFERENCE_TOKENS_VECTOR_ID = "reference_tokens"
+REFERENCE_TOKENS_METHOD_VERSION = 1
+REFERENCE_TOKENS_RULES_DEFINITION = (
+    "count:at_mentions(@[a-zA-Z0-9_]+),wiki_links([[.+?]]),"
+    "code_fence_blocks(```pairs),url_count(https?://\\S+),"
+    "email_mentions(addr_re),path_references(unix+windows,3+segments),"
+    "numeric_id_patterns(#dd+,semver,PROJECT-dd+)"
+)
+REFERENCE_TOKENS_STATIC_TUNING = {
+    "enabled_subcategories": [
+        "at_mentions", "wiki_links", "code_fence_blocks", "url_count",
+        "email_mentions", "path_references", "numeric_id_patterns",
+    ]
+}
+# Activation set for reference_tokens: text files with these extensions
+REFERENCE_TOKENS_EXTENSIONS = {
+    ".txt", ".md", ".mdx", ".html", ".htm", ".csv", ".json",
+    ".yaml", ".yml", ".toml", ".xml", ".css", ".vx",
+}
+# Reference token regex patterns (v0.9 spec §3.2)
+REFERENCE_EMAIL_RE = re.compile(r"\b[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
+REFERENCE_PATH_UNIX_RE = re.compile(r"(?:/[\w.]+){3,}")
+REFERENCE_PATH_WIN_RE = re.compile(r"[A-Za-z]:\\(?:[\w.]+\\){2,}[\w.]*")
+REFERENCE_TICKET_RE = re.compile(r"#\d{2,}")
+REFERENCE_SEMVER_RE = re.compile(r"\bv\d+\.\d+\b")
+REFERENCE_PROJECT_ID_RE = re.compile(r"\b[A-Z]{2,}-\d+\b")
 
 
 SCAN_PROFILES: dict[str, dict[str, Any]] = {
@@ -549,9 +662,38 @@ class Scanner:
         return False
 
     def scan(self) -> ScanManifest:
+        self._vector_registry = VectorRegistry()
+        self._chatlog_applied_count: int = 0
+        self._chatlog_summary_turns: int = 0
+        self._chatlog_summary_speakers: set[str] = set()
+        self._chatlog_summary_marker_count: int = 0
+        self._chatlog_summary_styles: set[str] = set()
+        self._reference_tokens_applied_count: int = 0
+        self._reference_tokens_sums: dict[str, int] = {
+            "at_mentions": 0, "wiki_links": 0, "code_fence_blocks": 0,
+            "url_count": 0, "email_mentions": 0, "path_references": 0,
+            "numeric_id_patterns": 0,
+        }
+        self._reference_tokens_files_with_any: int = 0
         records: list[FileRecord] = []
         for path in self.iter_files(self.source_dir):
-            records.append(self.scan_file(path))
+            rec = self.scan_file(path)
+            records.append(rec)
+            # Track chatlog vector applied set: both is_chatlog files and email body hits
+            if rec.is_chatlog:
+                self._chatlog_applied_count += 1
+                if rec.specialist_metadata and CHATLOG_NAMESPACE in rec.specialist_metadata:
+                    self._accumulate_chatlog_summary(rec.specialist_metadata[CHATLOG_NAMESPACE])
+            if rec.specialist_metadata and "email" in rec.specialist_metadata and "body_chatlog" in rec.specialist_metadata.get("email", {}):
+                self._chatlog_applied_count += 1
+                self._accumulate_chatlog_summary(rec.specialist_metadata["email"]["body_chatlog"])
+
+        # Register file-scoped vectors from accumulated state
+        self._register_chatlog_vector()
+        self._register_reference_tokens_vector()
+
+        # Run corpus-scoped vectors after the file walk completes
+        self._run_corpus_vectors(records)
 
         context = self._build_context()
         meta = ScanMeta(
@@ -577,6 +719,7 @@ class Scanner:
             manifest_checksum="",
             manifest_signature=None,
             files=records,
+            vectors_collected=self._vector_registry.to_list(),
         )
         manifest.manifest_checksum = compute_manifest_checksum(manifest)
         # Optional HMAC signing
@@ -593,6 +736,71 @@ class Scanner:
                 "value": sig,
             }
         return manifest
+
+    def _accumulate_chatlog_summary(self, meta: dict[str, Any]) -> None:
+        """Accumulate chatlog metadata into corpus-level summary accumulators."""
+        self._chatlog_summary_turns += meta.get("turn_count", 0)
+        self._chatlog_summary_speakers.update(meta.get("speaker_labels", []))
+        self._chatlog_summary_marker_count += meta.get("section_marker_count", 0)
+        self._chatlog_summary_styles.update(meta.get("section_marker_styles", []))
+
+    def _register_chatlog_vector(self) -> None:
+        """Register the chatlog vector in the registry with corpus-level summary."""
+        rules_hash = compute_rules_hash(CHATLOG_RULES_DEFINITION)
+        tuning_hash = compute_tuning_hash(CHATLOG_STATIC_TUNING)
+        identity_digest = compute_vector_identity_digest(
+            CHATLOG_VECTOR_ID, CHATLOG_METHOD_VERSION, rules_hash, tuning_hash,
+        )
+        summary: dict[str, Any] = {
+            "matched_files": self._chatlog_applied_count,
+            "total_turns": self._chatlog_summary_turns,
+            "distinct_speakers": sorted(self._chatlog_summary_speakers),
+            "section_marker_count": self._chatlog_summary_marker_count,
+            "section_marker_styles": sorted(self._chatlog_summary_styles),
+        }
+        self._vector_registry.register(VectorRecord(
+            vector_id=CHATLOG_VECTOR_ID,
+            method_version=CHATLOG_METHOD_VERSION,
+            scope="file",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=None,
+            identity_digest=identity_digest,
+            applied_to_count=self._chatlog_applied_count,
+            summary=summary,
+        ))
+
+    def _register_reference_tokens_vector(self) -> None:
+        """Register the reference_tokens vector with corpus-level summary."""
+        rules_hash = compute_rules_hash(REFERENCE_TOKENS_RULES_DEFINITION)
+        tuning_hash = compute_tuning_hash(REFERENCE_TOKENS_STATIC_TUNING)
+        identity_digest = compute_vector_identity_digest(
+            REFERENCE_TOKENS_VECTOR_ID, REFERENCE_TOKENS_METHOD_VERSION,
+            rules_hash, tuning_hash,
+        )
+        summary = dict(self._reference_tokens_sums)
+        summary["files_with_any_reference"] = self._reference_tokens_files_with_any
+        self._vector_registry.register(VectorRecord(
+            vector_id=REFERENCE_TOKENS_VECTOR_ID,
+            method_version=REFERENCE_TOKENS_METHOD_VERSION,
+            scope="file",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=None,
+            identity_digest=identity_digest,
+            applied_to_count=self._reference_tokens_applied_count,
+            summary=summary,
+        ))
+
+    def _run_corpus_vectors(self, records: list[FileRecord]) -> None:
+        """Run corpus-scoped vectors after the file walk completes.
+
+        v0.9: placeholder — corpus-scoped vectors (like author_aggregate)
+        are deferred to v0.10. This method is the hook point.
+        """
+        pass
 
     def _build_context(self) -> ScanContext:
         deps: dict[str, dict[str, Any]] = {}
@@ -679,6 +887,24 @@ class Scanner:
                        if not any(e.code == ERR_UNIVERSAL_STAT_FAILED for e in r.errors)
                        and (r.errors or not r.mime_analysis.matches_extension))
         clean = total - degraded - error_files
+        # v0.9: per-directory aggregation (spec §4.2)
+        dir_groups: dict[str, list[FileRecord]] = {}
+        for r in records:
+            dir_groups.setdefault(r.stage_folder, []).append(r)
+        per_dir_summary: list[dict[str, Any]] = []
+        for dirname in sorted(dir_groups):
+            group = dir_groups[dirname]
+            per_dir_summary.append({
+                "directory": dirname,
+                "total_files": len(group),
+                "chatlog_files": sum(1 for r in group if r.is_chatlog),
+                "safety_flags_files": sum(1 for r in group if r.safety_flags),
+                "mime_mismatches": sum(1 for r in group if not r.mime_analysis.matches_extension),
+                "polyglots_detected": sum(1 for r in group if r.is_polyglot),
+                "specialist_failures": sum(1 for r in group if any(e.code == ERR_SPECIALIST_PROBE_FAILED for e in r.errors)),
+                "unsupported_extensions": sum(1 for r in group if any(e.code == ERR_UNSUPPORTED_EXTENSION for e in r.errors)),
+            })
+
         return ScanQuality(
             total_files=total,
             clean_files=clean,
@@ -690,6 +916,7 @@ class Scanner:
             unsupported_extensions=unsupported,
             safety_flags=safety,
             chatlog_files=chatlog_count,
+            per_directory_summary=per_dir_summary,
         )
 
     def _compute_routing_summary(self, records: list[FileRecord]) -> RoutingSummary:
@@ -863,6 +1090,7 @@ class Scanner:
         asset_matches: list[str] = []
         frontmatter = FrontmatterRecord()
         is_chatlog = False
+        reference_tokens_result: dict[str, int] | None = None
         # v0.8: hoisted out of the specialist block so chatlog extraction
         # (which lives in the text-handling block above the extension-based
         # dispatch) can populate it directly.
@@ -949,6 +1177,29 @@ class Scanner:
                                             trigger="bounded_text",
                                             detail={"tool": CHATLOG_TOOL, "text_chars": text_len},
                                         ))
+
+                # v0.9: reference_tokens vector — runs on every text-eligible file
+                if extension in REFERENCE_TOKENS_EXTENSIONS:
+                    ref_tokens = self._extract_reference_tokens(text)
+                    # Will be set on the FileRecord below via reference_tokens_result
+                    reference_tokens_result = ref_tokens
+                    # Accumulate for corpus summary
+                    self._reference_tokens_applied_count += 1
+                    has_any = False
+                    for subcat, count in ref_tokens.items():
+                        self._reference_tokens_sums[subcat] = self._reference_tokens_sums.get(subcat, 0) + count
+                        if count > 0:
+                            has_any = True
+                    if has_any:
+                        self._reference_tokens_files_with_any += 1
+                    provenance["reference_tokens"] = asdict(ProvenanceEntry(
+                        layer="derived",
+                        method="_extract_reference_tokens",
+                        trigger="text_eligible",
+                        detail={"vector_id": REFERENCE_TOKENS_VECTOR_ID},
+                    ))
+                else:
+                    reference_tokens_result = None
 
                 if extension in {".md", ".mdx"}:
                     frontmatter = self.extract_frontmatter(text)
@@ -1121,6 +1372,29 @@ class Scanner:
                     stage="specialist",
                 ))
 
+            # v0.9: email body chatlog cross-cut (spec §4.1)
+            # When email specialist ran successfully, extract body text and
+            # test it against the chatlog vector's detection rules.
+            if extension in {".eml", ".msg"} and specialist_metadata and "email" in specialist_metadata:
+                try:
+                    body_text = self._extract_email_body(path, extension, sample)
+                    if body_text and self._detect_chatlog_pattern(body_text):
+                        body_chatlog = self._extract_chatlog_metadata(body_text)
+                        if body_chatlog is not None:
+                            specialist_metadata["email"]["body_chatlog"] = body_chatlog
+                            provenance["specialist_metadata.email.body_chatlog"] = asdict(ProvenanceEntry(
+                                layer="derived",
+                                method="_extract_chatlog_metadata",
+                                trigger="email_body_crosscut",
+                                detail={"vector_id": CHATLOG_VECTOR_ID, "body_chars": len(body_text)},
+                            ))
+                except Exception as exc:
+                    errors.append(ErrorRecord(
+                        code=ERR_SPECIALIST_PROBE_FAILED,
+                        message=f"email body chatlog cross-cut failed: {exc}",
+                        stage="specialist",
+                    ))
+
         return FileRecord(
             path=rel_path.as_posix(),
             filename=path.name,
@@ -1149,6 +1423,7 @@ class Scanner:
             format_signatures=format_signatures,
             is_polyglot=is_polyglot,
             is_chatlog=is_chatlog,
+            reference_tokens=reference_tokens_result,
             safety_flags=safety_flags,
             signal_provenance=provenance,
             errors=errors,
@@ -1943,6 +2218,53 @@ class Scanner:
             "vocabulary_size_estimate": vocabulary_size_estimate,
         }
 
+    def _extract_email_body(self, path: Path, extension: str, sample: bytes) -> str | None:
+        """Extract the plain-text body from an email file for cross-cut analysis.
+
+        v0.9: used by the email body chatlog cross-cut (spec §4.1).
+        """
+        if extension == ".eml":
+            try:
+                from email.parser import BytesParser
+                from email.policy import default as email_policy
+                msg = BytesParser(policy=email_policy).parsebytes(sample)
+                body = msg.get_body(preferencelist=("plain",))
+                if body:
+                    content = body.get_content()
+                    return content if isinstance(content, str) else None
+            except Exception:
+                return None
+        elif extension == ".msg" and olefile:
+            try:
+                if not olefile.isOleFile(str(path)):
+                    return None
+                ole = olefile.OleFileIO(str(path))
+                try:
+                    # PR_BODY (0x1000) — Unicode (001F) or ANSI (001E)
+                    body = self._msg_read_property(ole, "__substg1.0_1000001F") or \
+                           self._msg_read_property(ole, "__substg1.0_1000001E")
+                    return body
+                finally:
+                    ole.close()
+            except Exception:
+                return None
+        return None
+
+    def _extract_reference_tokens(self, text: str) -> dict[str, int]:
+        """v0.9: extract reference token counts per spec §3.2.
+
+        Runs on every text-eligible file. Returns counts for seven subcategories.
+        """
+        return {
+            "at_mentions": len(CHATLOG_AT_MENTION_RE.findall(text)),
+            "wiki_links": len(CHATLOG_WIKI_LINK_RE.findall(text)),
+            "code_fence_blocks": text.count("```") // 2,
+            "url_count": len(CHATLOG_URL_RE.findall(text)),
+            "email_mentions": len(REFERENCE_EMAIL_RE.findall(text)),
+            "path_references": len(REFERENCE_PATH_UNIX_RE.findall(text)) + len(REFERENCE_PATH_WIN_RE.findall(text)),
+            "numeric_id_patterns": len(REFERENCE_TICKET_RE.findall(text)) + len(REFERENCE_SEMVER_RE.findall(text)) + len(REFERENCE_PROJECT_ID_RE.findall(text)),
+        }
+
     def detect_requires_vision(
         self, sample: bytes, mime_type: str, extension: str, is_binary: bool
     ) -> tuple[bool, ProvenanceEntry]:
@@ -2287,7 +2609,7 @@ def manifest_to_json(manifest: ScanManifest) -> str:
 
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
-    # Header line with schema_version, context, meta, stats, routing_summary, delta, manifest_checksum
+    # Header line with schema_version, context, meta, stats, routing_summary, delta, manifest_checksum, vectors_collected
     header: dict[str, Any] = {
         "schema_version": manifest.schema_version,
         "context": asdict(manifest.context),
@@ -2298,6 +2620,7 @@ def manifest_to_jsonl(manifest: ScanManifest) -> str:
         "delta": asdict(manifest.delta) if manifest.delta else None,
         "manifest_checksum": manifest.manifest_checksum,
         "manifest_signature": manifest.manifest_signature,
+        "vectors_collected": manifest.vectors_collected,
     }
     lines.append(json.dumps(header, ensure_ascii=False))
     # One line per file record
