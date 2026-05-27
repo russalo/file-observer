@@ -811,7 +811,7 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.9.1"
+        assert ctx.scanner_version == "0.9.2"
         assert ctx.logic_version == "0.9.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.9.1"
+        assert data["context"]["scanner_version"] == "0.9.2"
 
 
 # ---------------------------------------------------------------------------
@@ -2023,7 +2023,7 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.9.1"
+        assert SCANNER_VERSION == "0.9.2"
         assert LOGIC_VERSION == "0.9.0"
 
 
@@ -3026,6 +3026,36 @@ class TestReferenceTokensVector:
         manifest = Scanner(source_dir=tmp_path).scan()
         rec = manifest.files[0]
         assert rec.reference_tokens["path_references"] >= 1
+
+    def test_path_references_url_fragments_excluded(self, tmp_path: Path) -> None:
+        """v0.9.2: URL path fragments should not count as path references."""
+        text = "Visit https://www.googleapis.com/auth/chat.admin.delete for docs"
+        (tmp_path / "a.txt").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["path_references"] == 0
+
+    def test_path_references_real_paths_still_match(self, tmp_path: Path) -> None:
+        text = "Config at /etc/nginx/conf.d and /home/user/.config/app"
+        (tmp_path / "a.txt").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["path_references"] == 2
+
+    def test_path_references_start_of_line(self, tmp_path: Path) -> None:
+        text = "/usr/local/bin/python3\n/home/user/.bashrc is not deep enough"
+        (tmp_path / "a.txt").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["path_references"] >= 1
+
+    def test_path_references_api_endpoint_in_json_excluded(self, tmp_path: Path) -> None:
+        """v0.9.2: API paths inside JSON values should not match."""
+        text = '{"scope": "https://example.com/api/v1/users"}'
+        (tmp_path / "a.json").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["path_references"] == 0
 
     def test_reference_tokens_numeric_ids(self, tmp_path: Path) -> None:
         (tmp_path / "a.txt").write_text("Fix #123 and PROJ-456 for v2.1 release")
