@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.10.0
+    Version:    0.10.1
     Schema:     0.10
     Python:     >= 3.12
     Spec:       docs/v0.10.0_RFC_Specification.md (current)
@@ -71,8 +71,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.10.0"
-LOGIC_VERSION = "0.10.0"
+SCANNER_VERSION = "0.10.1"
+LOGIC_VERSION = "0.10.1"
 SCHEMA_VERSION = "0.10"
 
 
@@ -83,13 +83,14 @@ SCHEMA_VERSION = "0.10"
 # binary, skip the text decode, and never get chatlog detection.
 mimetypes.add_type("text/markdown", ".md")
 mimetypes.add_type("text/markdown", ".mdx")
+mimetypes.add_type("application/jsonl", ".jsonl")
 
 
 SUPPORTED_EXTENSIONS = {
     ".txt", ".md", ".mdx", ".pdf", ".docx", ".rtf", ".csv", ".json", ".yaml", ".yml",
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
     ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
-    ".doc", ".xls",
+    ".doc", ".xls", ".jsonl",
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -515,7 +516,7 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
                  "application/CDFV2", "application/octet-stream"},
     # v0.8: chatlog is the first content-detected (not extension-driven)
     # specialist. Its MIME guard accepts text/plain and the markdown variants.
-    "chatlog": {"text/plain", "text/markdown", "text/x-markdown"},
+    "chatlog": {"text/plain", "text/markdown", "text/x-markdown", "application/json", "application/jsonl", "application/x-ndjson"},
 }
 
 # v0.8: identifiers for the chatlog specialist. Not registered in
@@ -532,9 +533,10 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 2
+CHATLOG_METHOD_VERSION = 3
 CHATLOG_RULES_DEFINITION = (
-    "detect:speaker_label_re(3+,stop_list),h3_header_re(5+),section_divider_re(3+);"
+    "detect:speaker_label_re(3+,stop_list),h3_header_re(5+),section_divider_re(3+),"
+    "jsonl_role_keys(3+);"
     "extract:turn_count,speaker_labels(freq>=3,stop_list),section_markers,"
     "turn_char_stats,reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
@@ -545,7 +547,10 @@ CHATLOG_STATIC_TUNING = {
     "detection_threshold": 3,
     "h3_detection_threshold": 5,
     "top_capitalized_tokens_n": 20,
+    "jsonl_role_keys": ["user", "assistant", "human"],
 }
+# v0.10.1: JSONL conversation role keys for chatlog detection
+CHATLOG_JSONL_ROLE_KEYS = {"user", "assistant", "human"}
 # v0.9.1: speaker labels matching these tokens are excluded from detection
 # and extraction. These are common documentation patterns (Note:, Example:, etc.)
 # that match the speaker label regex but are not conversation participants.
@@ -571,7 +576,7 @@ REFERENCE_TOKENS_STATIC_TUNING = {
 }
 # Activation set for reference_tokens: text files with these extensions
 REFERENCE_TOKENS_EXTENSIONS = {
-    ".txt", ".md", ".mdx", ".html", ".htm", ".csv", ".json",
+    ".txt", ".md", ".mdx", ".html", ".htm", ".csv", ".json", ".jsonl",
     ".yaml", ".yml", ".toml", ".xml", ".css", ".vx",
 }
 # Reference token regex patterns (v0.9 spec §3.2)
@@ -1420,7 +1425,7 @@ class Scanner:
                 # is the first content-detected (not extension-based) flag in
                 # the scanner. Always runs when we have decoded text, even if
                 # enable_specialists=False — detection is cheap.
-                if extension in {".txt", ".md", ".mdx"}:
+                if extension in {".txt", ".md", ".mdx", ".jsonl"}:
                     is_chatlog = self._detect_chatlog_pattern(text)
                     provenance["is_chatlog"] = asdict(ProvenanceEntry(
                         layer="derived",
@@ -2422,18 +2427,35 @@ class Scanner:
         # Rule 3: section dividers (threshold stays at 3)
         if len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
             return True
+        # Rule 4 (v0.10.1): JSONL conversation format — count lines with
+        # role-bearing JSON objects ("type": "user"/"assistant"/"human")
+        jsonl_role_count = 0
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line or not line.startswith("{"):
+                continue
+            try:
+                obj = json.loads(line)
+                if isinstance(obj, dict) and obj.get("type") in CHATLOG_JSONL_ROLE_KEYS:
+                    jsonl_role_count += 1
+                    if jsonl_role_count >= 3:
+                        return True
+            except (json.JSONDecodeError, ValueError):
+                continue
         return False
 
     # Default top-N for capitalized tokens. Per spec §2.5 N=20.
     _CHATLOG_TOP_TOKENS_N = 20
 
     def _extract_chatlog_metadata(self, text: str) -> dict[str, Any] | None:
-        """v0.8: extract drift-visible signals from a chatlog/journal/vault text.
+        """Extract drift-visible signals from a chatlog/journal/vault text.
 
-        Operates entirely on the bounded text returned by ``decode_text()`` —
-        no file path, no streaming, no full-file reads. The bounded sample IS
-        the contract: every count, every distinct value, every distribution
-        is "what was observable in this many bytes."
+        Supports two formats:
+        - Prose with speaker labels (v0.8+: .txt/.md/.mdx)
+        - JSONL with role-bearing JSON objects (v0.10.1: .jsonl)
+
+        For JSONL, message text is extracted from JSON objects and concatenated,
+        then the standard text-based extraction runs on the concatenated content.
 
         Per spec §2.5 / §2.6:
 
@@ -2458,55 +2480,118 @@ class Scanner:
         if not text:
             return None
 
-        # --- Speaker labels and turn statistics ---
-        # v0.9.1: filter stop-list tokens from both detection and turn metrics
-        raw_label_matches = [
-            m for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
-            if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
-        ]
-        turn_count = len(raw_label_matches)
-        label_counts = Counter(m.group(1) for m in raw_label_matches)
-        speaker_labels = sorted(
-            label for label, count in label_counts.items()
-            if count >= 3
-        )
-        # Char distance between consecutive speaker labels.
-        avg_turn_chars = 0
-        max_turn_chars = 0
-        min_turn_chars = 0
-        if len(raw_label_matches) >= 2:
-            turn_lengths: list[int] = []
-            for i in range(len(raw_label_matches) - 1):
-                length = raw_label_matches[i + 1].start() - raw_label_matches[i].end()
-                if length > 0:
-                    turn_lengths.append(length)
-            if turn_lengths:
-                avg_turn_chars = int(sum(turn_lengths) / len(turn_lengths))
-                max_turn_chars = max(turn_lengths)
-                min_turn_chars = min(turn_lengths)
+        # v0.10.1: detect JSONL format and extract message text
+        jsonl_mode = False
+        jsonl_roles: list[str] = []
+        first_line = text.split("\n", 1)[0].strip()
+        if first_line.startswith("{"):
+            try:
+                first_obj = json.loads(first_line)
+                if isinstance(first_obj, dict) and "type" in first_obj:
+                    jsonl_mode = True
+            except (json.JSONDecodeError, ValueError):
+                pass
 
-        # --- Section markers (pure dividers + markdown headers) ---
-        section_marker_count = 0
-        section_marker_styles_set: set[str] = set()
-        for divider_match in CHATLOG_PURE_DIVIDER_RE.finditer(text):
-            section_marker_count += 1
-            section_marker_styles_set.add(divider_match.group(1) * 3)
-        for header_match in CHATLOG_MD_HEADER_RE.finditer(text):
-            section_marker_count += 1
-            section_marker_styles_set.add(header_match.group(1) + " ")
-        section_marker_styles = sorted(section_marker_styles_set)
+        if jsonl_mode:
+            # Extract message text from JSONL conversation lines
+            message_texts: list[str] = []
+            for line in text.split("\n"):
+                line = line.strip()
+                if not line or not line.startswith("{"):
+                    continue
+                try:
+                    obj = json.loads(line)
+                    if not isinstance(obj, dict):
+                        continue
+                    role = obj.get("type", "")
+                    if role in CHATLOG_JSONL_ROLE_KEYS:
+                        jsonl_roles.append(role.capitalize())
+                        # Extract message content — try common structures
+                        msg = obj.get("message", {})
+                        if isinstance(msg, dict):
+                            content = msg.get("content", "")
+                            if isinstance(content, str) and content:
+                                message_texts.append(content)
+                            elif isinstance(content, list):
+                                for item in content:
+                                    if isinstance(item, dict) and item.get("text"):
+                                        message_texts.append(item["text"])
+                        elif isinstance(msg, str) and msg:
+                            message_texts.append(msg)
+                except (json.JSONDecodeError, ValueError):
+                    continue
 
-        # --- Reference tokens ---
-        at_mentions = len(CHATLOG_AT_MENTION_RE.findall(text))
-        wiki_links = len(CHATLOG_WIKI_LINK_RE.findall(text))
-        # Code fence blocks: triple-backtick pairs. Each block has an opening
-        # and a closing fence, so a complete block contributes 2 occurrences;
-        # we report block count = pair count.
-        code_fence_blocks = text.count("```") // 2
-        url_count = len(CHATLOG_URL_RE.findall(text))
+            # Build turn statistics from JSONL roles
+            turn_count = len(jsonl_roles)
+            label_counts = Counter(jsonl_roles)
+            speaker_labels = sorted(
+                label for label, count in label_counts.items()
+                if count >= 3
+            )
+            # Use concatenated message text for text-based extraction
+            concat_text = "\n".join(message_texts) if message_texts else ""
+            # Turn char stats from message lengths
+            avg_turn_chars = 0
+            max_turn_chars = 0
+            min_turn_chars = 0
+            if len(message_texts) >= 2:
+                lengths = [len(t) for t in message_texts if len(t) > 0]
+                if lengths:
+                    avg_turn_chars = int(sum(lengths) / len(lengths))
+                    max_turn_chars = max(lengths)
+                    min_turn_chars = min(lengths)
+            # Section markers: none in JSONL
+            section_marker_count = 0
+            section_marker_styles: list[str] = []
+        else:
+            concat_text = text
+
+            # --- Speaker labels and turn statistics (prose mode) ---
+            # v0.9.1: filter stop-list tokens from both detection and turn metrics
+            raw_label_matches = [
+                m for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
+                if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
+            ]
+            turn_count = len(raw_label_matches)
+            label_counts = Counter(m.group(1) for m in raw_label_matches)
+            speaker_labels = sorted(
+                label for label, count in label_counts.items()
+                if count >= 3
+            )
+            # Char distance between consecutive speaker labels.
+            avg_turn_chars = 0
+            max_turn_chars = 0
+            min_turn_chars = 0
+            if len(raw_label_matches) >= 2:
+                turn_lengths: list[int] = []
+                for i in range(len(raw_label_matches) - 1):
+                    length = raw_label_matches[i + 1].start() - raw_label_matches[i].end()
+                    if length > 0:
+                        turn_lengths.append(length)
+                if turn_lengths:
+                    avg_turn_chars = int(sum(turn_lengths) / len(turn_lengths))
+                    max_turn_chars = max(turn_lengths)
+                    min_turn_chars = min(turn_lengths)
+
+            # --- Section markers (pure dividers + markdown headers) ---
+            section_marker_count = 0
+            section_marker_styles_set: set[str] = set()
+            for divider_match in CHATLOG_PURE_DIVIDER_RE.finditer(text):
+                section_marker_count += 1
+                section_marker_styles_set.add(divider_match.group(1) * 3)
+            for header_match in CHATLOG_MD_HEADER_RE.finditer(text):
+                section_marker_count += 1
+                section_marker_styles_set.add(header_match.group(1) + " ")
+            section_marker_styles = sorted(section_marker_styles_set)
+
+        # --- Reference tokens (runs on concat_text for both modes) ---
+        at_mentions = len(CHATLOG_AT_MENTION_RE.findall(concat_text))
+        wiki_links = len(CHATLOG_WIKI_LINK_RE.findall(concat_text))
+        code_fence_blocks = concat_text.count("```") // 2
+        url_count = len(CHATLOG_URL_RE.findall(concat_text))
 
         # --- Capitalized tokens (length 3+, frequency 3+) ---
-        cap_token_counts = Counter(CHATLOG_CAPITALIZED_TOKEN_RE.findall(text))
+        cap_token_counts = Counter(CHATLOG_CAPITALIZED_TOKEN_RE.findall(concat_text))
         qualifying_caps = [
             (token, count) for token, count in cap_token_counts.items() if count >= 3
         ]
@@ -2520,7 +2605,7 @@ class Scanner:
         # --- Vocabulary size estimate ---
         # Lowercase the whole text first so we catch all word-shaped tokens
         # regardless of original case. Distinct count is the vocabulary signal.
-        lowercase_words = CHATLOG_LOWERCASE_WORD_RE.findall(text.lower())
+        lowercase_words = CHATLOG_LOWERCASE_WORD_RE.findall(concat_text.lower())
         vocabulary_size_estimate = len(set(lowercase_words))
 
         return {
