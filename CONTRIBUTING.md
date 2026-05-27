@@ -61,7 +61,7 @@ python -m pytest tests/ -v
 python -m pytest tests/test_unit.py::TestClassName::test_name -v
 ```
 
-All tests must pass before a PR will be reviewed. Current suite: 564 tests.
+All tests must pass before a PR will be reviewed.
 
 ---
 

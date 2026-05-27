@@ -35,7 +35,7 @@ SOFTWARE.
 
 chardet
 -------
-License: 0BSD
+License: 0BSD (relicensed from LGPL in chardet v5.0.0+)
 Home: https://github.com/chardet/chardet
 
 Copyright (c) 2026 Dan Blanchard

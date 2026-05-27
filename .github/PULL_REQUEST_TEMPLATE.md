@@ -20,7 +20,7 @@ What does this PR do? One to three bullet points.
 - [ ] No regressions in existing tests
 - [ ] Determinism preserved (same input = same output)
 - [ ] Documentation updated if behavior changed
-- [ ] CLA: I have read and agree to the [Contributor License Agreement](CLA.md)
+- [ ] CLA: First-time contributors must comment on this PR: "I have read and agree to the Contributor License Agreement" (see [CLA.md](CLA.md))
 
 ## Schema impact
 
