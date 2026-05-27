@@ -1,41 +1,45 @@
 # Contributing to File Observer
 
-Thank you for your interest in contributing to File Observer. This document covers the process, expectations, and legal requirements for contributions.
+We build tools that observe honestly, record deterministically, and never touch your files. If that resonates, you're in the right place.
 
-## Before you contribute
+## The short version
 
-### Contributor License Agreement (CLA)
+1. Fork, branch, code, test, PR
+2. Sign the [CLA](CLA.md) on your first PR (one comment, one time)
+3. All tests must pass. No exceptions.
+4. Determinism is sacred. Same input = same output. Always.
 
-File Observer is dual-licensed under AGPL-3.0 and a commercial license. To maintain the ability to offer both licenses, **all contributors must sign a CLA before their first contribution can be merged.**
+---
 
-The CLA grants Russalo LLC a non-exclusive, perpetual, worldwide license to use your contributions under any license — including the commercial license. You retain full copyright ownership of your contributions.
+## Before you write code
 
-**What this means:**
-- You still own your code
-- Your contribution will always be available under AGPL-3.0
-- Russalo LLC can also include it in the commercially-licensed version
-- Without the CLA, we cannot merge your contribution
+### Contributor License Agreement
 
-**How to sign:**
-1. Read the CLA at [`CLA.md`](CLA.md)
-2. On your first PR, add a comment: "I have read and agree to the Contributor License Agreement"
-3. That's it — one-time, applies to all future contributions
+File Observer is dual-licensed (AGPL-3.0 + commercial). The CLA lets us include your contribution in both. You keep full ownership of your code.
 
-### Scope
+**How:** On your first PR, comment: *"I have read and agree to the Contributor License Agreement."* That's it. Once, forever.
 
-File Observer is an observation-only file metadata engine. Contributions should align with this scope:
+[Read the full CLA](CLA.md)
+
+### What belongs here
+
+File Observer is an observation engine. It reads files and emits structured metadata. Contributions that fit:
+
 - New file format support or specialist improvements
-- Vector enhancements or new vectors
-- Detection accuracy improvements (with evidence)
-- Bug fixes
+- New vectors or vector enhancements
+- Detection accuracy improvements (bring evidence)
+- Bug fixes with test cases
 - Documentation improvements
 - Test coverage
 
-Out of scope:
-- File mutation, ingestion, or transformation
+### What doesn't belong here
+
+- File mutation, ingestion, transformation, or classification
 - NLP, ML, or language model integration
 - Features that break determinism
-- Dependencies that are not permissively licensed (MIT, BSD, Apache, PSFL)
+- Dependencies under non-permissive licenses
+
+If you're unsure, open an issue first. We'd rather discuss scope before you invest time.
 
 ---
 
@@ -49,108 +53,114 @@ python -m venv .venv
 source .venv/bin/activate
 
 pip install -e ".[dev]"
-```
 
-## Running tests
-
-```bash
-# Full suite
+# Verify everything works
 python -m pytest tests/ -v
-
-# Single test
-python -m pytest tests/test_unit.py::TestClassName::test_name -v
 ```
-
-All tests must pass before a PR will be reviewed.
 
 ---
 
-## How to contribute
+## Making changes
 
-### Bug reports
+### Branch from main
 
-Open an issue with:
-- File Observer version (check `SCANNER_VERSION` in `src/scanner/scanner.py`)
-- Python version
-- Platform
-- Steps to reproduce
-- Expected vs actual behavior
-- If possible, a minimal test file that triggers the bug
+```bash
+git checkout -b your-feature
+```
 
-### Feature proposals
+### Write tests first
 
-Open an issue describing:
-- What the feature does
-- Why it belongs in File Observer (not in a downstream consumer)
-- How it preserves determinism
-- Whether it's a new vector, a new specialist, or a modification to existing behavior
+Every behavioral change needs a test. No exceptions. The test suite is the contract — if it passes, the change is correct.
 
-We'll discuss scope and approach before you write code.
+```bash
+# Run the full suite
+python -m pytest tests/ -v
 
-### Pull requests
+# Run a specific test
+python -m pytest tests/test_unit.py::TestClassName::test_name -v
+```
 
-1. Fork the repository
-2. Create a branch from `main` (`git checkout -b your-feature`)
-3. Make your changes
-4. Add tests for any new behavior
-5. Run the full test suite
-6. Commit with clear messages
-7. Open a PR against `main`
+### One concern per PR
 
-### PR expectations
+Bug fix, feature, or refactor — pick one. Mixed PRs are harder to review and harder to revert.
 
-- **Tests required.** No behavioral change without tests.
-- **One concern per PR.** Bug fix, feature, or refactor — not all three.
-- **Spec alignment.** If your change affects the manifest schema, reference the relevant RFC section or propose a spec update.
-- **No regressions.** All existing tests must pass.
-- **Determinism preserved.** Same input + same config = same output. Always.
+### Keep determinism
+
+The golden rule: **same input + same config = same output.** If your change could produce different output for the same input, it needs a `method_version` bump on the affected vector and a new identity digest.
+
+### Update docs in the same PR
+
+If your change affects behavior, update the relevant docs. Don't make the reviewer chase documentation drift.
+
+---
+
+## PR checklist
+
+Before submitting:
+
+- [ ] All tests pass
+- [ ] New tests added for new behavior
+- [ ] No regressions in existing tests
+- [ ] Determinism preserved
+- [ ] Documentation updated if behavior changed
+- [ ] CLA signed (first-time contributors)
 
 ### Commit messages
 
 ```
-Brief summary (imperative, <70 chars)
+Brief summary in imperative form (<70 chars)
 
-Why this change is needed. What it does. Reference issue numbers
-if applicable.
+Why this change is needed. What it does. Reference issue numbers.
 ```
+
+---
+
+## What happens after you submit
+
+1. Automated checks verify tests pass
+2. Bot review catches common issues
+3. Maintainer reviews for scope, correctness, and alignment
+4. You address feedback
+5. Merge
+
+We review promptly. If you don't hear back within a few days, ping us.
 
 ---
 
 ## Code conventions
 
-- Single module: all scanner logic in `src/scanner/scanner.py`
-- Module-level constants for regexes, extension sets, vector identity
-- Dataclasses for all structured data
-- Signal provenance on every derived field
-- Bounded observation: specialists declare deviations explicitly
-- No global state, no side effects in scan methods
-- Errors are captured, never raised — one bad file never halts a scan
-
-## Documentation conventions
-
-- RFC specs in `docs/v{X}.0_RFC_Specification.md`
-- Compliance reports in `docs/COMPLIANCE-v{X}.md`
-- Version history in `docs/HISTORY.md`
-- Consumer contract in `docs/PUBLIC_CONTRACT.md`
-- Internal conventions in `docs/CONVENTIONS.md`
-
-When your change affects documented behavior, update the relevant docs in the same PR.
+- **Single module** — all logic in `src/scanner/scanner.py`
+- **Dataclasses** for all structured data
+- **Signal provenance** on every derived field
+- **Bounded observation** — specialists declare deviations explicitly
+- **Errors are captured, never raised** — one bad file never halts a scan
+- **Module-level constants** for regexes, extension sets, vector identity
 
 ---
 
-## Review process
+## Reporting bugs
 
-1. PR is submitted with CLA acknowledgment
-2. Automated checks: tests pass, no merge conflicts
-3. Bot review (Copilot/Codex) for common issues
-4. Maintainer review for scope, correctness, and alignment
-5. Feedback addressed
-6. Merge
+Open an issue with:
+- File Observer version (check `SCANNER_VERSION` in `src/scanner/scanner.py`)
+- Python version and platform
+- Steps to reproduce
+- Expected vs actual behavior
+- A minimal test file if possible
 
-Typical turnaround: days, not weeks. We review promptly.
+## Proposing features
+
+Open an issue describing:
+- What the feature does
+- Why it belongs in File Observer (not in a downstream consumer)
+- How it preserves determinism
+- Schema impact (new fields? type changes?)
+
+We'll discuss approach before implementation starts.
 
 ---
 
 ## Questions?
 
 Open an issue or email russalo@russalo.com.
+
+We're glad you're here.
