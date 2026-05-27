@@ -1,6 +1,6 @@
-# Scanner Project Conventions
+# File Observer Project Conventions
 
-The scanner has two kinds of conventions:
+File Observer has two kinds of conventions:
 
 - **Internal conventions** — how *we* keep the project consistent. Naming, version bump rules, document promotion paths, tracking inventories. These exist for the contributors, not for users.
 - **Public contracts** — what *consumers* of the manifest can count on. Schema versioning rules, namespace stability, fingerprint guarantees, deprecation policy. These exist for downstream systems and become commitments at v1.0.
@@ -172,7 +172,7 @@ When LOGIC_VERSION or SCHEMA_VERSION bump, those constants update independently 
 
 ## 4. Internal Tracking Inventory
 
-This section is for **us**. It is the running list of everything the scanner currently has. Keep it current.
+This section is for **us**. It is the running list of everything File Observer currently has. Keep it current.
 
 ### 4.1 Versioned constants
 

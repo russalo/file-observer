@@ -1,12 +1,12 @@
-# Contributing to Scanner
+# Contributing to File Observer
 
-Thank you for your interest in contributing to Scanner. This document covers the process, expectations, and legal requirements for contributions.
+Thank you for your interest in contributing to File Observer. This document covers the process, expectations, and legal requirements for contributions.
 
 ## Before you contribute
 
 ### Contributor License Agreement (CLA)
 
-Scanner is dual-licensed under AGPL-3.0 and a commercial license. To maintain the ability to offer both licenses, **all contributors must sign a CLA before their first contribution can be merged.**
+File Observer is dual-licensed under AGPL-3.0 and a commercial license. To maintain the ability to offer both licenses, **all contributors must sign a CLA before their first contribution can be merged.**
 
 The CLA grants Russalo LLC a non-exclusive, perpetual, worldwide license to use your contributions under any license — including the commercial license. You retain full copyright ownership of your contributions.
 
@@ -23,7 +23,7 @@ The CLA grants Russalo LLC a non-exclusive, perpetual, worldwide license to use 
 
 ### Scope
 
-Scanner is an observation-only file metadata engine. Contributions should align with this scope:
+File Observer is an observation-only file metadata engine. Contributions should align with this scope:
 - New file format support or specialist improvements
 - Vector enhancements or new vectors
 - Detection accuracy improvements (with evidence)
@@ -81,7 +81,7 @@ Open an issue with:
 
 Open an issue describing:
 - What the feature does
-- Why it belongs in the scanner (not in a downstream consumer)
+- Why it belongs in File Observer (not in a downstream consumer)
 - How it preserves determinism
 - Whether it's a new vector, a new specialist, or a modification to existing behavior
 

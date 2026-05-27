@@ -2,13 +2,13 @@
 
 ## Scope
 
-Scanner is an **observation-only** tool. It reads files and emits metadata. It never:
+File Observer is an **observation-only** tool. It reads files and emits metadata. It never:
 - Executes file content
 - Modifies source files
 - Opens network connections
 - Runs embedded scripts, macros, or code found in scanned files
 
-The scanner does not execute file content. Its attack surface is limited to parsing. A malformed file can cause a specialist to raise an exception or return incorrect metadata. Because the scanner relies on native dependencies (e.g., libmagic), parsing of untrusted input carries residual risk from dependency vulnerabilities. Keep dependencies updated and consider sandboxing when scanning untrusted files.
+File Observer does not execute file content. Its attack surface is limited to parsing. A malformed file can cause a specialist to raise an exception or return incorrect metadata. Because the scanner relies on native dependencies (e.g., libmagic), parsing of untrusted input carries residual risk from dependency vulnerabilities. Keep dependencies updated and consider sandboxing when scanning untrusted files.
 
 ## Reporting Vulnerabilities
 

@@ -1,8 +1,8 @@
 """
-scanner.py — File capability scanner
+scanner.py — File Observer
 
-Observation layer for the PKP document pipeline. Recursively discovers
-files, extracts metadata and signals, emits a deterministic JSON manifest.
+Observation layer for document pipelines. Recursively discovers files,
+extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
     Version:    0.11.0
@@ -3217,7 +3217,7 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="File capability scanner — recursively discover files and emit a JSON manifest.",
+        description="File Observer — recursively discover files and emit a deterministic JSON manifest.",
     )
     parser.add_argument("source", nargs="?", default=".", help="Source directory to scan (default: cwd)")
     parser.add_argument("-o", "--output", default=None, help="Output directory for the manifest (default: <scanner_pkg>/manifests/)")

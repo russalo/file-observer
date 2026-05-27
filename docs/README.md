@@ -1,12 +1,12 @@
-# Scanner
+# File Observer
 
-**File capability scanner for document pipeline systems.**
+**File observation engine for document pipeline systems.**
 
-Recursively discovers files under a source directory, extracts universal and format-aware metadata signals, and emits a deterministic JSON manifest. Scanner is an observation layer only — it never mutates source files, performs OCR, or makes classification decisions.
+Recursively discovers files under a source directory, extracts universal and format-aware metadata signals, and emits a deterministic JSON manifest. File Observer is an observation layer only — it never mutates source files, performs OCR, or makes classification decisions.
 
 | | |
 |---|---|
-| **Package** | `scanner` |
+| **Package** | `file-observer` |
 | **Version** | `0.11.0` |
 | **Schema** | `0.11` |
 | **Python** | `>= 3.12` |
@@ -63,7 +63,7 @@ brew install libmagic
 pip install python-magic-bin
 ```
 
-If `libmagic`, `chardet`, `olefile`, or `defusedxml` are unavailable, the scanner degrades gracefully: extension-based MIME fallback, a fixed encoding cascade, OLE2 specialists return None, XML uses stdlib. Dependency availability is fingerprinted in the manifest's `ScanContext.dependencies` so downstream consumers can detect environment variance.
+If `libmagic`, `chardet`, `olefile`, or `defusedxml` are unavailable, File Observer degrades gracefully: extension-based MIME fallback, a fixed encoding cascade, OLE2 specialists return None, XML uses stdlib. Dependency availability is fingerprinted in the manifest's `ScanContext.dependencies` so downstream consumers can detect environment variance.
 
 ### Platform notes
 
@@ -170,7 +170,7 @@ Manifest-level `ScanQuality` block aggregating per-file signals for rapid triage
 
 ### Chatlog specialist (v0.8, content-detected)
 
-The first **content-detected** (not extension-driven) specialist in the scanner. For `.txt` / `.md` / `.mdx` files, activation is gated by three content rules:
+The first **content-detected** (not extension-driven) specialist. For `.txt` / `.md` / `.mdx` files, activation is gated by three content rules:
 
 1. 3+ lines matching the speaker label pattern `^([A-Z][a-zA-Z0-9_]{0,15}):\s`
 2. 3+ `### ` headers (line-anchored)

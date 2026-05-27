@@ -1,8 +1,8 @@
 # Contributor License Agreement
 
-## Scanner — Russalo LLC
+## File Observer — Russalo LLC
 
-Thank you for your interest in contributing to Scanner. This Contributor License Agreement ("Agreement") documents the rights granted by contributors to Russalo LLC.
+Thank you for your interest in contributing to File Observer. This Contributor License Agreement ("Agreement") documents the rights granted by contributors to Russalo LLC.
 
 By submitting a contribution to this project, you accept and agree to the following terms.
 
@@ -14,7 +14,7 @@ By submitting a contribution to this project, you accept and agree to the follow
 
 **"Contribution"** means any original work of authorship, including modifications to existing work, submitted by You to this project via pull request, patch, issue, or any other mechanism.
 
-**"Project"** means the Scanner software maintained at https://github.com/russalo/scanner.
+**"Project"** means the File Observer software maintained at https://github.com/russalo/file-observer.
 
 ### 2. Grant of Rights
 
