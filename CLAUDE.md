@@ -17,12 +17,12 @@ File capability scanner — observation layer only. Recursively discovers files,
 - `docs/v0.5.0_RFC_Specification.md` — schema reshape: namespaced specialist_metadata, schema_version field, baseline_max_bytes, cross-platform hardening.
 - `docs/v0.4.0_RFC_Specification.md` — semantic specialist tool naming, deviation policy, coverage expansion (JPEG, EML, XLSX, MSG enrichment).
 - `docs/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering, provenance, bounded observation.
-- `docs/v1.0.0_RFC_DRAFT.md` — forward-looking schema freeze draft. v1.0 = scanner maturity + backward compatibility policy. Becomes binding when scanner is otherwise mature.
+- v1.0 target: schema freeze + backward compatibility policy. v0.11 completed field promotions and SECURITY.md — v1.0 is the governance declaration.
 - `docs/HISTORY.md` — running index of all versions and patch releases. Start here when orienting.
 - `docs/CONVENTIONS.md` — internal naming, version-bump rules, document promotion paths, tracking inventory of specialists / namespaces / signatures / safety flags / error codes.
 - `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments. Becomes binding at v1.0.
 
-RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.7 RFC plus HISTORY.md before making changes to scanner behavior.
+RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.11 RFC plus HISTORY.md before making changes to scanner behavior.
 
 ## Stack
 
@@ -71,18 +71,20 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 
 ### Capability tiers (all in Scanner class)
 1. **Universal** — runs for every file: identity, filesystem metadata, checksum, path-derived fields, routing flags (`is_binary`, `requires_vision`, `requires_specialist_tool`), MIME analysis, structural file signatures (`file_signature`, `format_signatures`, `is_polyglot`).
-2. **Baseline** — runs for text-like files: encoding detection (with v0.7.1 UTF-16/UTF-32 BOM short-circuit), content preview, tag extraction, frontmatter parsing, asset matching. **v0.8: also runs `is_chatlog` content-based detection on `.txt`/`.md`/`.mdx` files** — the first content-detected (not extension-based) flag in the scanner. Detection runs even when `enable_specialists=False` because it's cheap.
+2. **Baseline** — runs for text-like files: encoding detection (with v0.7.1 UTF-16/UTF-32 BOM short-circuit), content preview, tag extraction, frontmatter parsing, asset matching. Runs `is_chatlog` content-based detection on `.txt`/`.md`/`.mdx`/`.jsonl` files. Runs `reference_tokens` extraction (7 subcategories) on all text-eligible files. Runs `filename_patterns` detection (6 subcategories) on every file. Detection runs even when `enable_specialists=False`.
 3. **Structural** — runs for text-like files: title, headings, CSV headers, document keys (JSON/YAML/XML/TOML), technology hints, filename_date.
 4. **Specialist** — gated behind `ScannerConfig.enable_specialists` (default: False). Format-specific extraction with namespaced metadata. v0.6 added MIME guard (skips extraction when content MIME doesn't match expected formats) and configurable depth (`specialist_budget`, `extension_overrides`, named profiles via `SCAN_PROFILES`). v0.7 added `safety_flags` (has_javascript, has_macros, has_ole_objects, has_external_references) and the `ScanQuality` block (clean/degraded/error/mismatch/polyglot/safety counts).
 
 ### Key data flow
-`Scanner.scan()` → `_build_context()` → `iter_files()` walks directory → `scan_file()` per file (builds `FileRecord` + `signal_provenance`) → assembled into `ScanManifest` with `context`, `meta`, `stats`, `routing_summary`, `delta`, `manifest_checksum` → serialized via `manifest_to_json()` or `manifest_to_jsonl()`
+`Scanner.scan()` → `_build_context()` → `iter_files()` walks directory → `scan_file()` per file (builds `FileRecord` + `signal_provenance` + `reference_tokens` + `filename_patterns`) → register file-scoped vectors (chatlog, reference_tokens, filename_patterns) → run corpus-scoped vectors (author_aggregate) → `_build_summary()` → assembled into `ScanManifest` with `context`, `meta`, `stats`, `quality`, `routing_summary`, `delta`, `vectors_collected`, `summary`, `manifest_checksum` → serialized via `manifest_to_json()`, `manifest_to_jsonl()`, and `manifest_to_markdown()`
 
 ### Core dataclasses
 - `ScanContext` — environment fingerprint: logic version, scanner version, python version, platform, dependency versions
 - `ProvenanceEntry` — per-field derivation record: layer, method, trigger, inputs, detail
-- `FileRecord` — one per discovered file, all fields from spec contract + `signal_provenance` dict
-- `ScanManifest` — top-level output: `context`, `meta`, `stats`, `routing_summary`, `delta`, `manifest_checksum`, `files[]`
+- `VectorRecord` — one entry in `vectors_collected[]`: vector_id, method_version, scope, rules_hash, static_tuning_hash, identity_digest, applied_to_count, summary
+- `VectorRegistry` — collects vectors during a scan, produces sorted `vectors_collected[]`
+- `FileRecord` — one per discovered file, all fields from spec contract + `signal_provenance` + `reference_tokens` + `filename_patterns`
+- `ScanManifest` — top-level output: `context`, `meta`, `stats`, `quality`, `routing_summary`, `delta`, `vectors_collected`, `summary`, `manifest_checksum`, `files[]`
 - `MimeAnalysisRecord` — content vs extension MIME comparison
 - `FrontmatterRecord` — markdown frontmatter extraction
 - `StructuralRecord` — structural signals (title, headings, keys, etc.)
@@ -101,7 +103,8 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 | `.docx` | `document_extraction` | title, author, word_count, heading_count (OOXML ZIP, 128KB deviation) |
 | `.doc` | `document_extraction` | title, author (OLE2 SummaryInformation via olefile). v0.7.1: takes file path. |
 | `.rtf` | `document_extraction` | title, author ({\info} group regex on sample) |
-| _(content-detected)_ | `chatlog_signals` _(v0.8 in flight)_ | turn_count, speaker_labels, section_marker_count/styles, turn char stats, reference_tokens, top_capitalized_tokens, vocabulary_size_estimate. **Activates by content pattern, not extension.** |
+| `.jsonl` _(v0.10.1)_ | `chatlog_signals` | JSONL conversation detection via role-bearing JSON objects (`"type": "user"/"assistant"`). Message text extracted and processed through chatlog pipeline. |
+| _(content-detected)_ | `chatlog_signals` | turn_count, speaker_labels, section_marker_count/styles, turn char stats, reference_tokens, top_capitalized_tokens, vocabulary_size_estimate. Activates by content pattern on `.txt`/`.md`/`.mdx`/`.jsonl`. |
 
 ## Known decisions
 
@@ -127,10 +130,13 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 - v0.6 added `SCAN_PROFILES` (e.g. `fast_sort`) — named bundles of `extension_overrides` for common extraction depth tradeoffs
 - v0.6 added `previous_manifest_checksum` and `manifest_signature` (HMAC-SHA256 with optional `signing_key`) for chain-of-custody integrity
 - v0.7 added `safety_flags` (has_javascript / has_macros / has_ole_objects / has_external_references) and the `ScanQuality` block
-- **v0.8 (in flight): `is_chatlog` is content-detected, not extension-driven** — first content-classification flag in the scanner. Activates only for `.txt`/`.md`/`.mdx`. Three rules per spec §2.3 (3+ speaker labels, 3+ `### ` headers, 3+ section divider lines); any one fires. Detection runs even when `enable_specialists=False`.
+- **`is_chatlog` is content-detected, not extension-driven** — activates for `.txt`/`.md`/`.mdx` (speaker labels with stop-list, 5+ H3 headers, 3+ dividers) and `.jsonl` (3+ role-bearing JSON objects). Detection runs even when `enable_specialists=False`.
+- **v0.9 Vector abstraction** — vectors are named, uniquely-identified observation units with SHA-256 identity digests. Four vectors: chatlog, reference_tokens, author_aggregate, filename_patterns.
+- **v0.10 Scan summary** — deterministic Markdown paragraph on every manifest + standalone `.md` report file.
+- **v0.11 Field promotions** — vectors_collected, reference_tokens, per_directory_summary, email.body_chatlog, filename_patterns promoted from provisional to stable.
 
 ## Test fixtures
 
-`tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). v0.8 will add chatlog fixtures to `tests/fixtures/edge_cases/`.
+`tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). Chatlog fixtures in `tests/fixtures/edge_cases/`.
 
-Test suite: 561 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v0.10.1).
+Test suite: 564 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v0.11).
