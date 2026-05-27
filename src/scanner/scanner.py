@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.9.0
+    Version:    0.9.1
     Schema:     0.9
     Python:     >= 3.12
     Spec:       docs/v0.9.0_RFC_Specification.md (current)
@@ -71,7 +71,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.9.0"
+SCANNER_VERSION = "0.9.1"
 LOGIC_VERSION = "0.9.0"
 SCHEMA_VERSION = "0.9"
 
@@ -528,14 +528,25 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 1
+CHATLOG_METHOD_VERSION = 2
 CHATLOG_RULES_DEFINITION = (
-    "detect:speaker_label_re(3+),h3_header_re(3+),section_divider_re(3+);"
-    "extract:turn_count,speaker_labels(freq>=3),section_markers,"
+    "detect:speaker_label_re(3+,stop_list),h3_header_re(5+),section_divider_re(3+);"
+    "extract:turn_count,speaker_labels(freq>=3,stop_list),section_markers,"
     "turn_char_stats,reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate"
 )
-CHATLOG_STATIC_TUNING = {"detection_threshold": 3, "top_capitalized_tokens_n": 20}
+CHATLOG_STATIC_TUNING = {
+    "detection_threshold": 3,
+    "h3_detection_threshold": 5,
+    "top_capitalized_tokens_n": 20,
+}
+# v0.9.1: speaker labels matching these tokens are excluded from detection
+# and extraction. These are common documentation patterns (Note:, Example:, etc.)
+# that match the speaker label regex but are not conversation participants.
+CHATLOG_SPEAKER_STOP_LIST: set[str] = {
+    "Note", "NOTE", "Example", "Examples", "Result", "Warning", "Error",
+    "Disallow", "Allow", "TODO", "FIXME", "TIP", "IMPORTANT", "CAUTION",
+}
 
 # v0.9: Reference tokens vector identity constants.
 REFERENCE_TOKENS_VECTOR_ID = "reference_tokens"
@@ -2075,32 +2086,32 @@ class Scanner:
         return (text_chars / max(len(sample), 1)) >= 0.85
 
     def _detect_chatlog_pattern(self, text: str) -> bool:
-        """v0.8: content-based detection of chatlog / journal / vault structure.
+        """Content-based detection of chatlog / journal / vault structure.
 
-        Returns True if the decoded text matches any of the three rules in
-        v0.8 spec §2.3:
+        Returns True if the decoded text matches any of the three rules:
 
           1. Three or more lines matching the speaker label pattern
-             ``^([A-Z][a-zA-Z0-9_]{0,15}):\\s`` — catches "User:", "Assistant:",
-             "DM:", "Russell:", "Player_2:", etc.
-          2. Three or more occurrences of ``### `` headers in the sample.
-          3. Three or more lines that are pure section dividers (3+ of -, =,
-             *, or # with only whitespace around them).
+             (excluding stop-list tokens like Note:, Example:, etc.)
+          2. Five or more occurrences of ``### `` headers in the sample.
+             (v0.9.1: raised from 3 to reduce false positives on markdown docs)
+          3. Three or more lines that are pure section dividers.
 
         Detection runs even when ``enable_specialists=False`` because it's
-        cheap (regex on the already-decoded baseline text). The threshold of 3
-        is intentionally hardcoded; see the spec's "Rules vs. tuning" note —
-        the rule set IS the chatlog vector definition; the threshold is its
-        sensitivity tuning. Both ship hardcoded in v0.8 and will become
-        ``vector_id`` and ``config_hash`` respectively when vector
-        fingerprints land in v0.9/v0.10.
+        cheap (regex on the already-decoded baseline text).
         """
         if not text:
             return False
-        if len(CHATLOG_SPEAKER_LABEL_RE.findall(text)) >= 3:
+        # Rule 1: speaker labels, excluding stop-list matches
+        speaker_matches = [
+            m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
+            if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
+        ]
+        if len(speaker_matches) >= 3:
             return True
-        if len(CHATLOG_H3_HEADER_RE.findall(text)) >= 3:
+        # Rule 2: H3 headers (v0.9.1: threshold raised to 5)
+        if len(CHATLOG_H3_HEADER_RE.findall(text)) >= 5:
             return True
+        # Rule 3: section dividers (threshold stays at 3)
         if len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
             return True
         return False
@@ -2143,8 +2154,10 @@ class Scanner:
         raw_label_matches = list(CHATLOG_SPEAKER_LABEL_RE.finditer(text))
         turn_count = len(raw_label_matches)
         label_counts = Counter(m.group(1) for m in raw_label_matches)
+        # v0.9.1: filter stop-list tokens from speaker labels output
         speaker_labels = sorted(
-            label for label, count in label_counts.items() if count >= 3
+            label for label, count in label_counts.items()
+            if count >= 3 and label not in CHATLOG_SPEAKER_STOP_LIST
         )
         # Char distance between consecutive raw speaker labels.
         avg_turn_chars = 0
