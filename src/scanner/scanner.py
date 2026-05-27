@@ -542,7 +542,7 @@ REFERENCE_TOKENS_VECTOR_ID = "reference_tokens"
 REFERENCE_TOKENS_METHOD_VERSION = 1
 REFERENCE_TOKENS_RULES_DEFINITION = (
     "count:at_mentions(@[a-zA-Z0-9_]+),wiki_links([[.+?]]),"
-    "code_fence_blocks(```pairs),url_count(https?://S+),"
+    "code_fence_blocks(```pairs),url_count(https?://\\S+),"
     "email_mentions(addr_re),path_references(unix+windows,3+segments),"
     "numeric_id_patterns(#dd+,semver,PROJECT-dd+)"
 )
@@ -663,7 +663,11 @@ class Scanner:
 
     def scan(self) -> ScanManifest:
         self._vector_registry = VectorRegistry()
-        self._chatlog_applied_files: list[FileRecord] = []
+        self._chatlog_applied_count: int = 0
+        self._chatlog_summary_turns: int = 0
+        self._chatlog_summary_speakers: set[str] = set()
+        self._chatlog_summary_marker_count: int = 0
+        self._chatlog_summary_styles: set[str] = set()
         self._reference_tokens_applied_count: int = 0
         self._reference_tokens_sums: dict[str, int] = {
             "at_mentions": 0, "wiki_links": 0, "code_fence_blocks": 0,
@@ -675,8 +679,14 @@ class Scanner:
         for path in self.iter_files(self.source_dir):
             rec = self.scan_file(path)
             records.append(rec)
+            # Track chatlog vector applied set: both is_chatlog files and email body hits
             if rec.is_chatlog:
-                self._chatlog_applied_files.append(rec)
+                self._chatlog_applied_count += 1
+                if rec.specialist_metadata and CHATLOG_NAMESPACE in rec.specialist_metadata:
+                    self._accumulate_chatlog_summary(rec.specialist_metadata[CHATLOG_NAMESPACE])
+            if rec.specialist_metadata and "email" in rec.specialist_metadata and "body_chatlog" in rec.specialist_metadata.get("email", {}):
+                self._chatlog_applied_count += 1
+                self._accumulate_chatlog_summary(rec.specialist_metadata["email"]["body_chatlog"])
 
         # Register file-scoped vectors from accumulated state
         self._register_chatlog_vector()
@@ -727,6 +737,13 @@ class Scanner:
             }
         return manifest
 
+    def _accumulate_chatlog_summary(self, meta: dict[str, Any]) -> None:
+        """Accumulate chatlog metadata into corpus-level summary accumulators."""
+        self._chatlog_summary_turns += meta.get("turn_count", 0)
+        self._chatlog_summary_speakers.update(meta.get("speaker_labels", []))
+        self._chatlog_summary_marker_count += meta.get("section_marker_count", 0)
+        self._chatlog_summary_styles.update(meta.get("section_marker_styles", []))
+
     def _register_chatlog_vector(self) -> None:
         """Register the chatlog vector in the registry with corpus-level summary."""
         rules_hash = compute_rules_hash(CHATLOG_RULES_DEFINITION)
@@ -734,25 +751,12 @@ class Scanner:
         identity_digest = compute_vector_identity_digest(
             CHATLOG_VECTOR_ID, CHATLOG_METHOD_VERSION, rules_hash, tuning_hash,
         )
-        # Build summary from accumulated chatlog files
-        matched = self._chatlog_applied_files
-        total_turns = 0
-        all_speakers: set[str] = set()
-        total_section_markers = 0
-        all_styles: set[str] = set()
-        for rec in matched:
-            if rec.specialist_metadata and CHATLOG_NAMESPACE in rec.specialist_metadata:
-                meta = rec.specialist_metadata[CHATLOG_NAMESPACE]
-                total_turns += meta.get("turn_count", 0)
-                all_speakers.update(meta.get("speaker_labels", []))
-                total_section_markers += meta.get("section_marker_count", 0)
-                all_styles.update(meta.get("section_marker_styles", []))
         summary: dict[str, Any] = {
-            "matched_files": len(matched),
-            "total_turns": total_turns,
-            "distinct_speakers": sorted(all_speakers),
-            "section_marker_count": total_section_markers,
-            "section_marker_styles": sorted(all_styles),
+            "matched_files": self._chatlog_applied_count,
+            "total_turns": self._chatlog_summary_turns,
+            "distinct_speakers": sorted(self._chatlog_summary_speakers),
+            "section_marker_count": self._chatlog_summary_marker_count,
+            "section_marker_styles": sorted(self._chatlog_summary_styles),
         }
         self._vector_registry.register(VectorRecord(
             vector_id=CHATLOG_VECTOR_ID,
@@ -763,7 +767,7 @@ class Scanner:
             dynamic_tuning_hash=None,
             dictionary_id=None,
             identity_digest=identity_digest,
-            applied_to_count=len(matched),
+            applied_to_count=self._chatlog_applied_count,
             summary=summary,
         ))
 
@@ -1384,8 +1388,12 @@ class Scanner:
                                 trigger="email_body_crosscut",
                                 detail={"vector_id": CHATLOG_VECTOR_ID, "body_chars": len(body_text)},
                             ))
-                except Exception:
-                    pass  # Non-fatal — body chatlog is opportunistic
+                except Exception as exc:
+                    errors.append(ErrorRecord(
+                        code=ERR_SPECIALIST_PROBE_FAILED,
+                        message=f"email body chatlog cross-cut failed: {exc}",
+                        stage="specialist",
+                    ))
 
         return FileRecord(
             path=rel_path.as_posix(),

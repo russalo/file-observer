@@ -2886,6 +2886,17 @@ class TestChatlogVector:
         d2 = [v for v in m2.vectors_collected if v["vector_id"] == "chatlog"][0]["identity_digest"]
         assert d1 == d2
 
+    def test_chatlog_vector_specialists_disabled(self, tmp_path: Path) -> None:
+        """With specialists disabled, chatlog vector counts detections but summary stays zero."""
+        (tmp_path / "chat.txt").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=False)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        chatlog_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "chatlog"][0]
+        assert chatlog_vec["applied_to_count"] == 1
+        assert chatlog_vec["summary"]["matched_files"] == 1
+        # No specialist metadata populated, so summary aggregates stay zero
+        assert chatlog_vec["summary"]["total_turns"] == 0
+
     def test_chatlog_vector_v08_backwards_compat(self, tmp_path: Path) -> None:
         """v0.8 fields (is_chatlog, specialist_metadata.chatlog) still work."""
         (tmp_path / "chat.txt").write_text(self.CHATLOG_TEXT)
@@ -2935,7 +2946,7 @@ class TestReferenceTokensVector:
         (tmp_path / "b.md").write_text("@charlie see [[Page]]")
         manifest = Scanner(source_dir=tmp_path).scan()
         rt_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "reference_tokens"][0]
-        assert rt_vec["summary"]["at_mentions"] == 3  # alice, bob, charlie (actually the RE may match differently)
+        assert rt_vec["summary"]["at_mentions"] == 3
         assert rt_vec["summary"]["files_with_any_reference"] == 2
 
     def test_reference_tokens_email_pattern(self, tmp_path: Path) -> None:
@@ -3034,6 +3045,15 @@ class TestEmailBodyChatlogCrosscut:
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
         rec = manifest.files[0]
         assert "specialist_metadata.email.body_chatlog" in rec.signal_provenance
+
+    def test_body_chatlog_counted_in_chatlog_vector(self, tmp_path: Path) -> None:
+        """Email body chatlog hits contribute to the chatlog vector's applied_to_count."""
+        (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        chatlog_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "chatlog"][0]
+        assert chatlog_vec["applied_to_count"] >= 1
+        assert chatlog_vec["summary"]["total_turns"] >= 3
 
 
 class TestPerDirectorySummary:
