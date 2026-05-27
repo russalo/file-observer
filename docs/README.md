@@ -10,7 +10,7 @@ Recursively discovers files under a source directory, extracts universal and for
 | **Version** | `0.11.0` |
 | **Schema** | `0.11` |
 | **Python** | `>= 3.12` |
-| **License** | Private |
+| **License** | AGPL-3.0 (dual commercial available) |
 | **Spec** | [`docs/v0.11.0_RFC_Specification.md`](v0.11.0_RFC_Specification.md) (current) |
 | **History** | [`docs/HISTORY.md`](HISTORY.md) — every version, patch, and compliance report |
 | **Repository** | `pkp.russalo.com/scanner/` |
