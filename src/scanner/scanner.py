@@ -2480,17 +2480,24 @@ class Scanner:
         if not text:
             return None
 
-        # v0.10.1: detect JSONL format and extract message text
+        # v0.10.1: detect JSONL format by scanning for role-bearing lines
+        # (same check as detection rule 4 to ensure detection and extraction agree)
         jsonl_mode = False
         jsonl_roles: list[str] = []
-        first_line = text.split("\n", 1)[0].strip()
-        if first_line.startswith("{"):
+        jsonl_role_count = 0
+        for probe_line in text.split("\n"):
+            probe_line = probe_line.strip()
+            if not probe_line or not probe_line.startswith("{"):
+                continue
             try:
-                first_obj = json.loads(first_line)
-                if isinstance(first_obj, dict) and "type" in first_obj:
-                    jsonl_mode = True
+                obj = json.loads(probe_line)
+                if isinstance(obj, dict) and obj.get("type") in CHATLOG_JSONL_ROLE_KEYS:
+                    jsonl_role_count += 1
+                    if jsonl_role_count >= 3:
+                        jsonl_mode = True
+                        break
             except (json.JSONDecodeError, ValueError):
-                pass
+                continue
 
         if jsonl_mode:
             # Extract message text from JSONL conversation lines
@@ -2514,7 +2521,7 @@ class Scanner:
                                 message_texts.append(content)
                             elif isinstance(content, list):
                                 for item in content:
-                                    if isinstance(item, dict) and item.get("text"):
+                                    if isinstance(item, dict) and isinstance(item.get("text"), str):
                                         message_texts.append(item["text"])
                         elif isinstance(msg, str) and msg:
                             message_texts.append(msg)
