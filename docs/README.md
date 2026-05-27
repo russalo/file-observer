@@ -7,11 +7,11 @@ Recursively discovers files under a source directory, extracts universal and for
 | | |
 |---|---|
 | **Package** | `scanner` |
-| **Version** | `0.8.0` |
-| **Schema** | `0.8` |
+| **Version** | `0.10.1` |
+| **Schema** | `0.10` |
 | **Python** | `>= 3.12` |
 | **License** | Private |
-| **Spec** | [`docs/v0.8.0_RFC_Specification.md`](v0.8.0_RFC_Specification.md) (current) |
+| **Spec** | [`docs/v0.10.0_RFC_Specification.md`](v0.10.0_RFC_Specification.md) (current) |
 | **History** | [`docs/HISTORY.md`](HISTORY.md) — every version, patch, and compliance report |
 | **Repository** | `pkp.russalo.com/scanner/` |
 
@@ -178,7 +178,26 @@ The first **content-detected** (not extension-driven) specialist in the scanner.
 
 Any one rule triggers `is_chatlog = true`, `specialist_tool = "chatlog_signals"`, and `requires_specialist_tool = true`. When `enable_specialists=True` and the MIME guard accepts the content type (`text/plain`, `text/markdown`, `text/x-markdown`), the extractor produces 11 drift-visible fields: turn_count, speaker_labels (sorted, ≥3-frequency filter), section_marker_count and section_marker_styles, avg/max/min turn character stats, reference_tokens (at_mentions, wiki_links, code_fence_blocks, url_count), top_capitalized_tokens (top 20 by frequency with alphabetical tiebreak), capitalized_token_count, and vocabulary_size_estimate.
 
-Detection runs even with specialists disabled — the regex pass is cheap.
+Detection runs even with specialists disabled — the regex pass is cheap. v0.9.1 tuned the H3 threshold from 3 to 5 and added a speaker label stop-list to reduce documentation false positives. v0.10.1 extended chatlog detection to `.jsonl` files with JSON-aware role detection (`"type": "user"/"assistant"`).
+
+### Vector abstraction (v0.9)
+
+The scanner becomes a **corpus observer**. A vector is a named, uniquely-identified unit of observation with a cryptographic identity digest (SHA-256). Two scans with the same vector identity digest on the same input produce identical output.
+
+New top-level manifest block `vectors_collected[]` carries vector identity, identity digest, and corpus-level summary for every vector that ran. Four vectors ship in v0.10:
+
+| Vector | Scope | What it observes |
+|---|---|---|
+| `chatlog` | file | Conversation patterns in .txt/.md/.mdx/.jsonl — turns, speakers, section markers |
+| `reference_tokens` | file | 7 subcategories: @mentions, wiki links, code fences, URLs, emails, paths, numeric IDs |
+| `author_aggregate` | corpus | Cross-specialist author normalization + template-default candidate detection |
+| `filename_patterns` | file | 6 boolean subcategories: date prefix, version marker, numbered revision, template name, UUID, copy suffix |
+
+Per-file `reference_tokens` and `filename_patterns` fields added to `FileRecord`. Per-directory aggregation in `quality.per_directory_summary[]`.
+
+### Human-readable scan summary (v0.10)
+
+Every manifest includes a `summary` field — a deterministic Markdown paragraph answering "what did you scan and what did you find?" without requiring JSON literacy. Includes file counts, quality assessment, vector results, and top directories.
 
 ### Other observations
 
@@ -252,12 +271,14 @@ Extension-keyed specialists:
 | `.docx` | — | filename_date | `document_extraction` (title, author, word_count, heading_count) |
 | `.doc` | — | filename_date | `document_extraction` (title, author) |
 | `.rtf` | — | filename_date | `document_extraction` (title, author) |
+| `.jsonl` | encoding, preview, tags, chatlog detection, reference_tokens | document_keys, filename_date | `chatlog_signals` (JSONL role detection, v0.10.1) |
 
-Content-detected specialist (activates regardless of extension when the content pattern matches on `.txt` / `.md` / `.mdx`):
+Content-detected specialist (activates when content patterns match):
 
-| Trigger | Tool | Namespace |
-|---|---|---|
-| 3+ speaker labels, 3+ `### ` headers, or 3+ `---` dividers | `chatlog_signals` | `chatlog` |
+| Trigger | Extensions | Tool | Namespace |
+|---|---|---|---|
+| 3+ speaker labels (excluding stop-list), 5+ `### ` headers, or 3+ `---` dividers | `.txt`, `.md`, `.mdx` | `chatlog_signals` | `chatlog` |
+| 3+ JSON lines with `"type": "user"/"assistant"` | `.jsonl` | `chatlog_signals` | `chatlog` |
 
 Unsupported extensions still receive universal-tier processing and are marked with an `unsupported_extension` error record.
 
@@ -445,7 +466,7 @@ Yield all regular files under `root` in sorted order.
 ```python
 @dataclass
 class ScanManifest:
-    schema_version: str                     # "0.8"
+    schema_version: str                     # "0.10"
     context: ScanContext                    # Environment fingerprint
     meta: ScanMeta                          # Scan ID, timestamp, source dir, config snapshot
     stats: ScanStats                        # File count summaries
@@ -455,6 +476,8 @@ class ScanManifest:
     manifest_checksum: str                  # SHA-256 of canonical manifest content
     manifest_signature: dict[str, str] | None   # HMAC signature envelope when signed
     files: list[FileRecord]                 # One record per discovered file
+    vectors_collected: list[dict]           # v0.9: one entry per vector that ran
+    summary: str                            # v0.10: human-readable scan summary
 ```
 
 Top-level output container. Serializable via `manifest_to_json()` or `manifest_to_jsonl()`.
@@ -512,7 +535,8 @@ class ScanQuality:
     specialist_failures: int
     unsupported_extensions: int
     safety_flags: int
-    chatlog_files: int          # v0.8
+    chatlog_files: int                      # v0.8
+    per_directory_summary: list[dict]       # v0.9: per top-level subdirectory counts
 ```
 
 Manifest-level rollup of per-file quality signals. Useful for triage dashboards and scan-health checks without walking `files[]`.
@@ -576,6 +600,8 @@ class FileRecord:
     format_signatures: list[dict]       # All detected format signatures
     is_polyglot: bool                   # True when multiple distinct formats detected
     is_chatlog: bool                    # v0.8: content-detected chatlog flag
+    reference_tokens: dict | None       # v0.9: seven subcategory counts (null on binary)
+    filename_patterns: dict | None      # v0.10: six boolean subcategories (every file)
     safety_flags: list[str]             # has_javascript / has_macros / has_ole_objects / has_external_references
     signal_provenance: dict             # Per-field derivation map
     errors: list[ErrorRecord]           # Non-fatal errors from any tier
@@ -594,7 +620,7 @@ class FileRecord:
 - `is_binary == True` implies `encoding is None` and `content_preview is None`.
 - Arrays (`tags`, `asset_matches`, `errors`, `format_signatures`, `safety_flags`) are always present, never `None`.
 - `mime_analysis`, `structural`, `frontmatter`, `signal_provenance` are always present, never `None`.
-- `is_chatlog == True` implies the file's extension is in `.txt` / `.md` / `.mdx` AND the file is non-binary AND content detection fired.
+- `is_chatlog == True` implies the file's extension is in `.txt` / `.md` / `.mdx` / `.jsonl` AND the file is non-binary AND content detection fired.
 
 #### `StructuralRecord`
 
@@ -925,10 +951,10 @@ The JSON manifest follows this structure (abbreviated for readability):
 
 ```json
 {
-  "schema_version": "0.8",
+  "schema_version": "0.10",
   "context": {
-    "logic_version": "0.8.0",
-    "scanner_version": "0.8.0",
+    "logic_version": "0.10.1",
+    "scanner_version": "0.10.1",
     "python_version": "3.12.3",
     "platform": "Linux-6.8.0-x86_64",
     "dependencies": {
@@ -1044,7 +1070,7 @@ The JSON manifest follows this structure (abbreviated for readability):
 }
 ```
 
-See [`docs/v0.8.0_RFC_Specification.md`](v0.8.0_RFC_Specification.md) for the current spec and [`docs/HISTORY.md`](HISTORY.md) for the full version history including every patch release.
+See [`docs/v0.10.0_RFC_Specification.md`](v0.10.0_RFC_Specification.md) for the current spec and [`docs/HISTORY.md`](HISTORY.md) for the full version history including every patch release.
 
 ---
 
@@ -1065,7 +1091,7 @@ pip install -e ".[dev]"
 ### Running tests
 
 ```bash
-# Full suite (470 tests)
+# Full suite (561 tests)
 python -m pytest tests/ -v
 
 # Single test file
@@ -1087,7 +1113,7 @@ python -m pytest tests/test_unit.py::TestDetectChatlogPattern::test_three_speake
 ### Project conventions
 
 - Single-module implementation: all scanner logic lives in `src/scanner/scanner.py`.
-- [`docs/v0.8.0_RFC_Specification.md`](v0.8.0_RFC_Specification.md) is the current authoritative spec. RFC normative language applies (BCP 14).
+- [`docs/v0.10.0_RFC_Specification.md`](v0.10.0_RFC_Specification.md) is the current authoritative spec. RFC normative language applies (BCP 14).
 - [`docs/CONVENTIONS.md`](CONVENTIONS.md) describes internal naming, version-bump rules, document promotion paths, and the tracking inventory of specialists / namespaces / magic signatures / safety flags / error codes.
 - [`docs/HISTORY.md`](HISTORY.md) is the running index of every version and patch release, with links to specs and compliance reports.
 - External dependencies (`python-magic`, `chardet`, `PyYAML`, `olefile`, `defusedxml`) are imported with graceful fallbacks and fingerprinted in `ScanContext.dependencies`.
