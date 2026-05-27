@@ -8,7 +8,7 @@ files, extracts metadata and signals, emits a deterministic JSON manifest.
     Version:    0.10.0
     Schema:     0.10
     Python:     >= 3.12
-    Spec:       docs/v0.9.0_RFC_Specification.md (current)
+    Spec:       docs/v0.10.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -593,14 +593,14 @@ FILENAME_PATTERNS_STATIC_TUNING = {
     ]
 }
 FILENAME_DATE_PREFIX_RE = re.compile(r"^\d{4}[-_]\d{2}[-_]\d{2}")
-FILENAME_VERSION_MARKER_RE = re.compile(r"v\d+[._]\d+", re.IGNORECASE)
+FILENAME_VERSION_MARKER_RE = re.compile(r"(?:^|[._\- ])v\d+[._]\d+", re.IGNORECASE)
 FILENAME_NUMBERED_REVISION_RE = re.compile(r"[-_ ]\(\d+\)|[-_ ]\d+$")
 FILENAME_TEMPLATE_NAMES = {
     "document1", "book1", "sheet1", "untitled", "new document",
     "temp", "tmp", "unnamed", "noname",
 }
 FILENAME_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
-FILENAME_COPY_SUFFIX_RE = re.compile(r"(?:^Copy of |[ _-]Copy$|[ _-]copy$|\(copy\))", re.IGNORECASE)
+FILENAME_COPY_SUFFIX_RE = re.compile(r"(?:^Copy of |[ _-]Copy|[ _-]copy|\(copy\))", re.IGNORECASE)
 
 # v0.10: author_aggregate vector constants
 AUTHOR_AGGREGATE_VECTOR_ID = "author_aggregate"
@@ -891,9 +891,11 @@ class Scanner:
             return
         authors: list[tuple[str, str]] = []  # (normalized, original)
         per_ext: dict[str, list[str]] = {}  # ext -> [normalized authors]
+        all_ext_counts: dict[str, int] = {}  # ext -> total files (for template default denominator)
         ns_counts: dict[str, int] = {"document": 0, "email": 0, "pdf": 0}
 
         for rec in records:
+            all_ext_counts[rec.extension] = all_ext_counts.get(rec.extension, 0) + 1
             if not rec.specialist_metadata:
                 continue
             raw_author: str | None = None
@@ -973,7 +975,7 @@ class Scanner:
                     exts_with_author.add(ext)
             if len(exts_with_author) >= 2:
                 for ext in exts_with_author:
-                    ext_total = len(per_ext[ext])
+                    ext_total = all_ext_counts.get(ext, 0)
                     ext_author_count = sum(1 for a in per_ext[ext] if a == norm_lower)
                     if ext_total > 0 and ext_author_count / ext_total > threshold:
                         template_candidates.append(best_casing[norm_lower])
@@ -1010,14 +1012,15 @@ class Scanner:
 
     def _extract_filename_patterns(self, filename: str) -> dict[str, bool]:
         """v0.10: detect structural patterns in filenames."""
-        stem = Path(filename).stem.lower()
+        stem = Path(filename).stem
+        stem_lower = stem.lower()
         return {
             "date_prefix": bool(FILENAME_DATE_PREFIX_RE.search(filename)),
-            "version_marker": bool(FILENAME_VERSION_MARKER_RE.search(filename)),
+            "version_marker": bool(FILENAME_VERSION_MARKER_RE.search(stem)),
             "numbered_revision": bool(FILENAME_NUMBERED_REVISION_RE.search(stem)),
-            "template_name": stem in FILENAME_TEMPLATE_NAMES,
+            "template_name": stem_lower in FILENAME_TEMPLATE_NAMES,
             "uuid_filename": bool(FILENAME_UUID_RE.search(filename)),
-            "copy_suffix": bool(FILENAME_COPY_SUFFIX_RE.search(filename)),
+            "copy_suffix": bool(FILENAME_COPY_SUFFIX_RE.search(stem)),
         }
 
     def _build_summary(self, manifest: 'ScanManifest') -> str:
@@ -1304,6 +1307,14 @@ class Scanner:
                 message=str(exc),
                 stage="universal",
             ))
+            # v0.10: filename_patterns still runs on error path (only needs filename)
+            fp = self._extract_filename_patterns(path.name)
+            self._filename_patterns_applied_count += 1
+            if any(fp.values()):
+                self._filename_patterns_files_with_any += 1
+                for subcat, matched in fp.items():
+                    if matched:
+                        self._filename_patterns_sums[subcat] = self._filename_patterns_sums.get(subcat, 0) + 1
             return FileRecord(
                 path=rel_path.as_posix(),
                 filename=path.name,
@@ -1332,6 +1343,7 @@ class Scanner:
                     matches_extension=False,
                 ),
                 specialist_metadata=None,
+                filename_patterns=fp,
                 signal_provenance={},
                 errors=errors,
             )
