@@ -811,7 +811,7 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.10.1"
+        assert ctx.scanner_version == "0.10.2"
         assert ctx.logic_version == "0.10.1"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.10.1"
+        assert data["context"]["scanner_version"] == "0.10.2"
 
 
 # ---------------------------------------------------------------------------
@@ -2023,7 +2023,7 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.10.1"
+        assert SCANNER_VERSION == "0.10.2"
         assert LOGIC_VERSION == "0.10.1"
 
 
@@ -3487,3 +3487,25 @@ class TestJsonlChatlogDetection:
         manifest = Scanner(source_dir=tmp_path).scan()
         rec = manifest.files[0]
         assert rec.is_chatlog is True
+
+
+class TestMarkdownReport:
+    def test_report_is_string(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_markdown
+        (tmp_path / "a.txt").write_text("hello")
+        md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
+        assert isinstance(md, str) and len(md) > 100
+
+    def test_report_has_sections(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_markdown
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "a.txt").write_text("hello")
+        md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
+        for section in ["# Scan Report", "## Summary", "## File Statistics", "## Quality", "## Vectors", "## Directory Summary", "## Scan Context"]:
+            assert section in md
+
+    def test_report_contains_scanner_version(self, tmp_path: Path) -> None:
+        from scanner.scanner import manifest_to_markdown
+        (tmp_path / "a.txt").write_text("hello")
+        md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
+        assert "0.10.2" in md

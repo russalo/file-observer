@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.10.1
+    Version:    0.10.2
     Schema:     0.10
     Python:     >= 3.12
     Spec:       docs/v0.10.0_RFC_Specification.md (current)
@@ -71,7 +71,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.10.1"
+SCANNER_VERSION = "0.10.2"
 LOGIC_VERSION = "0.10.1"
 SCHEMA_VERSION = "0.10"
 
@@ -3050,6 +3050,169 @@ def manifest_to_jsonl(manifest: ScanManifest) -> str:
     return "\n".join(lines) + "\n"
 
 
+def manifest_to_markdown(manifest: ScanManifest) -> str:
+    """Generate a human-readable Markdown report from a scan manifest.
+
+    v0.10.2: standalone .md file written alongside the JSON/JSONL manifest.
+    """
+    lines: list[str] = []
+    s = manifest.stats
+    q = manifest.quality
+    ctx = manifest.context
+
+    # Title
+    lines.append(f"# Scan Report")
+    lines.append("")
+    lines.append(f"**Generated:** {manifest.meta.generated_at}")
+    lines.append(f"**Source:** `{manifest.meta.source_dir}`")
+    lines.append(f"**Scanner:** v{ctx.scanner_version} (schema {manifest.schema_version}, logic {ctx.logic_version})")
+    lines.append(f"**Manifest:** `{manifest.manifest_checksum[:16]}...`")
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Summary
+    lines.append("## Summary")
+    lines.append("")
+    lines.append(manifest.summary)
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+
+    # Stats
+    lines.append("## File Statistics")
+    lines.append("")
+    lines.append(f"| Metric | Count |")
+    lines.append(f"|---|---|")
+    lines.append(f"| Total files | {s.total_files:,} |")
+    lines.append(f"| Text files | {s.text_files:,} |")
+    lines.append(f"| Binary files | {s.binary_files:,} |")
+    lines.append(f"| Supported | {s.supported_files:,} |")
+    lines.append(f"| Unsupported | {s.unsupported_files:,} |")
+    lines.append(f"| Requires vision | {s.requires_vision:,} |")
+    lines.append(f"| Requires specialist | {s.requires_specialist_tool:,} |")
+    lines.append("")
+
+    # Quality
+    lines.append("## Quality")
+    lines.append("")
+    lines.append(f"| Metric | Count |")
+    lines.append(f"|---|---|")
+    lines.append(f"| Clean | {q.clean_files:,} |")
+    lines.append(f"| Degraded | {q.degraded_files:,} |")
+    lines.append(f"| Errors | {q.error_files:,} |")
+    lines.append(f"| MIME mismatches | {q.mime_mismatches:,} |")
+    lines.append(f"| Polyglots | {q.polyglots_detected:,} |")
+    lines.append(f"| Safety flags | {q.safety_flags:,} |")
+    lines.append(f"| Chatlog files | {q.chatlog_files:,} |")
+    lines.append("")
+
+    # Vectors
+    if manifest.vectors_collected:
+        lines.append("## Vectors")
+        lines.append("")
+        for v in manifest.vectors_collected:
+            vid = v["vector_id"]
+            mv = v["method_version"]
+            applied = v["applied_to_count"]
+            digest = v["identity_digest"][:16]
+            lines.append(f"### {vid}")
+            lines.append("")
+            lines.append(f"- **Method version:** {mv}")
+            lines.append(f"- **Scope:** {v['scope']}")
+            lines.append(f"- **Applied to:** {applied:,} files")
+            lines.append(f"- **Identity digest:** `{digest}...`")
+            lines.append("")
+            summary = v["summary"]
+            if summary:
+                lines.append("| Field | Value |")
+                lines.append("|---|---|")
+                for k, val in summary.items():
+                    if isinstance(val, list) and len(val) > 5:
+                        lines.append(f"| {k} | [{len(val)} items] |")
+                    elif isinstance(val, dict):
+                        lines.append(f"| {k} | {len(val)} entries |")
+                    else:
+                        lines.append(f"| {k} | {val} |")
+                lines.append("")
+
+    # Per-directory summary
+    if q.per_directory_summary:
+        lines.append("## Directory Summary")
+        lines.append("")
+        lines.append("| Directory | Files | Chatlog | Safety | Mismatches | Unsupported |")
+        lines.append("|---|---|---|---|---|---|")
+        for d in sorted(q.per_directory_summary, key=lambda x: -x["total_files"]):
+            name = d["directory"] or "_(root)_"
+            lines.append(
+                f"| {name} | {d['total_files']:,} | {d['chatlog_files']} | "
+                f"{d['safety_flags_files']} | {d['mime_mismatches']} | {d['unsupported_extensions']} |"
+            )
+        lines.append("")
+
+    # Top files with specialist metadata
+    specialist_files = [f for f in manifest.files if f.specialist_metadata]
+    if specialist_files:
+        lines.append("## Specialist Metadata Highlights")
+        lines.append("")
+        lines.append(f"{len(specialist_files):,} files with specialist metadata.")
+        lines.append("")
+        # Group by namespace
+        ns_counts: dict[str, int] = {}
+        for f in specialist_files:
+            for ns in f.specialist_metadata:
+                ns_counts[ns] = ns_counts.get(ns, 0) + 1
+        lines.append("| Namespace | Files |")
+        lines.append("|---|---|")
+        for ns, count in sorted(ns_counts.items(), key=lambda x: -x[1]):
+            lines.append(f"| {ns} | {count:,} |")
+        lines.append("")
+
+    # Files with safety flags
+    flagged = [f for f in manifest.files if f.safety_flags]
+    if flagged:
+        lines.append("## Safety Flags")
+        lines.append("")
+        lines.append("| File | Flags |")
+        lines.append("|---|---|")
+        for f in flagged[:20]:
+            lines.append(f"| `{f.path}` | {', '.join(f.safety_flags)} |")
+        if len(flagged) > 20:
+            lines.append(f"| _...and {len(flagged) - 20} more_ | |")
+        lines.append("")
+
+    # Files with errors
+    error_files = [f for f in manifest.files if f.errors]
+    if error_files:
+        error_count = sum(len(f.errors) for f in error_files)
+        lines.append("## Errors")
+        lines.append("")
+        lines.append(f"{error_count:,} errors across {len(error_files):,} files.")
+        lines.append("")
+
+    # Context
+    lines.append("## Scan Context")
+    lines.append("")
+    lines.append(f"| | |")
+    lines.append(f"|---|---|")
+    lines.append(f"| Scanner | {ctx.scanner_version} |")
+    lines.append(f"| Logic | {ctx.logic_version} |")
+    lines.append(f"| Python | {ctx.python_version} |")
+    lines.append(f"| Platform | {ctx.platform} |")
+    for dep, info in ctx.dependencies.items():
+        available = "yes" if info.get("available") else "no"
+        ver = info.get("version", "")
+        lines.append(f"| {dep} | {available} ({ver}) |")
+    lines.append("")
+
+    lines.append("---")
+    lines.append("")
+    lines.append(f"_Report generated by Scanner v{ctx.scanner_version}_")
+    lines.append("")
+
+    return "\n".join(lines)
+
+
 def main() -> None:
     import argparse
 
@@ -3108,6 +3271,11 @@ def main() -> None:
     manifest_path = manifest_dir / f"manifest_v{SCANNER_VERSION}_{timestamp}.{ext}"
     manifest_path.write_text(output, encoding="utf-8")
     print(f"Manifest written to {manifest_path}")
+
+    # v0.10.2: write markdown report alongside the manifest
+    md_path = manifest_dir / f"report_v{SCANNER_VERSION}_{timestamp}.md"
+    md_path.write_text(manifest_to_markdown(manifest), encoding="utf-8")
+    print(f"Report written to {md_path}")
 
 
 if __name__ == "__main__":
