@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.10.0"
-        assert ctx.logic_version == "0.10.0"
+        assert ctx.scanner_version == "0.10.1"
+        assert ctx.logic_version == "0.10.1"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.10.0"
+        assert data["context"]["scanner_version"] == "0.10.1"
 
 
 # ---------------------------------------------------------------------------
@@ -2023,8 +2023,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.10.0"
-        assert LOGIC_VERSION == "0.10.0"
+        assert SCANNER_VERSION == "0.10.1"
+        assert LOGIC_VERSION == "0.10.1"
 
 
 # ---------------------------------------------------------------------------
@@ -3406,3 +3406,84 @@ class TestAuthorAggregate:
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
         vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
         assert vec_ids == sorted(vec_ids)
+
+
+# ---------------------------------------------------------------------------
+# v0.10.1: JSONL Chatlog Detection Tests
+# ---------------------------------------------------------------------------
+
+
+class TestJsonlChatlogDetection:
+    """Test JSONL conversation log detection and extraction."""
+
+    JSONL_CHAT = (
+        '{"type": "system", "content": "system prompt"}\n'
+        '{"type": "user", "message": {"content": "hello there"}}\n'
+        '{"type": "assistant", "message": {"content": "hi back to you"}}\n'
+        '{"type": "user", "message": {"content": "how are you doing"}}\n'
+        '{"type": "assistant", "message": {"content": "doing well thanks"}}\n'
+        '{"type": "user", "message": {"content": "great to hear"}}\n'
+        '{"type": "assistant", "message": {"content": "anything else"}}\n'
+    )
+
+    JSONL_NON_CHAT = (
+        '{"type": "permission-mode", "permissionMode": "default"}\n'
+        '{"type": "system", "content": "bridge_status"}\n'
+        '{"type": "system", "content": "another system line"}\n'
+    )
+
+    def test_jsonl_chatlog_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
+
+    def test_jsonl_non_chat_not_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "log.jsonl").write_text(self.JSONL_NON_CHAT)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is False
+
+    def test_jsonl_extraction_turn_count(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.specialist_metadata is not None
+        chat = rec.specialist_metadata["chatlog"]
+        assert chat["turn_count"] == 6
+
+    def test_jsonl_extraction_speaker_labels(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        chat = manifest.files[0].specialist_metadata["chatlog"]
+        assert "User" in chat["speaker_labels"]
+        assert "Assistant" in chat["speaker_labels"]
+
+    def test_jsonl_extraction_vocabulary(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        chat = manifest.files[0].specialist_metadata["chatlog"]
+        assert chat["vocabulary_size_estimate"] > 0
+
+    def test_jsonl_reference_tokens(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens is not None
+
+    def test_jsonl_in_chatlog_vector_count(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        cl = [v for v in manifest.vectors_collected if v["vector_id"] == "chatlog"][0]
+        assert cl["applied_to_count"] >= 1
+
+    def test_existing_txt_detection_unchanged(self, tmp_path: Path) -> None:
+        text = "User: hi\nAssistant: hello\nUser: bye\nAssistant: see ya\nUser: thanks\nAssistant: np\n"
+        (tmp_path / "chat.txt").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is True
