@@ -5,10 +5,10 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.9.2
-    Schema:     0.9
+    Version:    0.10.0
+    Schema:     0.10
     Python:     >= 3.12
-    Spec:       docs/v0.9.0_RFC_Specification.md (current)
+    Spec:       docs/v0.10.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -71,9 +71,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.9.2"
-LOGIC_VERSION = "0.9.0"
-SCHEMA_VERSION = "0.9"
+SCANNER_VERSION = "0.10.0"
+LOGIC_VERSION = "0.10.0"
+SCHEMA_VERSION = "0.10"
 
 
 # v0.8: register markdown extensions in stdlib mimetypes so that when libmagic
@@ -326,6 +326,8 @@ class FileRecord:
     # v0.9: reference token counts across seven subcategories. Present on
     # every text-decoded file (null on binary). See spec §3.2.
     reference_tokens: dict[str, int] | None = None
+    # v0.10: filename pattern detection — boolean per subcategory, every file
+    filename_patterns: dict[str, bool] | None = None
     safety_flags: list[str] = field(default_factory=list)
     signal_provenance: dict[str, Any] = field(default_factory=dict)
     errors: list[ErrorRecord] = field(default_factory=list)
@@ -466,6 +468,8 @@ class ScanManifest:
     files: list[FileRecord]
     # v0.9: vector collection — one entry per vector that ran
     vectors_collected: list[dict[str, Any]] = field(default_factory=list)
+    # v0.10: human-readable scan summary — deterministic Markdown text
+    summary: str = ""
 
 
 # Extension-to-specialist-namespace mapping
@@ -571,6 +575,44 @@ REFERENCE_TOKENS_EXTENSIONS = {
     ".yaml", ".yml", ".toml", ".xml", ".css", ".vx",
 }
 # Reference token regex patterns (v0.9 spec §3.2)
+# v0.10: filename_patterns vector constants
+FILENAME_PATTERNS_VECTOR_ID = "filename_patterns"
+FILENAME_PATTERNS_METHOD_VERSION = 1
+FILENAME_PATTERNS_RULES_DEFINITION = (
+    "match:date_prefix(^\\d{4}[-_]\\d{2}[-_]\\d{2}),"
+    "version_marker(v\\d+[._]\\d+),"
+    "numbered_revision([-_ ]\\(\\d+\\)|[-_ ]\\d+$),"
+    "template_name(Document1|Book1|Sheet1|Untitled|New Document|temp|tmp),"
+    "uuid_filename([0-9a-f]{8}-[0-9a-f]{4}-),"
+    "copy_suffix(Copy of|Copy|copy)"
+)
+FILENAME_PATTERNS_STATIC_TUNING = {
+    "enabled_subcategories": [
+        "date_prefix", "version_marker", "numbered_revision",
+        "template_name", "uuid_filename", "copy_suffix",
+    ]
+}
+FILENAME_DATE_PREFIX_RE = re.compile(r"^\d{4}[-_]\d{2}[-_]\d{2}")
+FILENAME_VERSION_MARKER_RE = re.compile(r"(?:^|[._\- ])v\d+[._]\d+", re.IGNORECASE)
+FILENAME_NUMBERED_REVISION_RE = re.compile(r"[-_ ]\(\d+\)|[-_ ]\d+$")
+FILENAME_TEMPLATE_NAMES = {
+    "document1", "book1", "sheet1", "untitled", "new document",
+    "temp", "tmp", "unnamed", "noname",
+}
+FILENAME_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.IGNORECASE)
+FILENAME_COPY_SUFFIX_RE = re.compile(r"(?:^Copy of |[ _-]Copy|[ _-]copy|\(copy\))", re.IGNORECASE)
+
+# v0.10: author_aggregate vector constants
+AUTHOR_AGGREGATE_VECTOR_ID = "author_aggregate"
+AUTHOR_AGGREGATE_METHOD_VERSION = 1
+AUTHOR_AGGREGATE_RULES_DEFINITION = (
+    "pull:document.author,email.from,pdf.author;"
+    "normalize:strip,collapse_whitespace,case_insensitive,exclude_empty,exclude_legacydn;"
+    "detect:template_default(multi_extension,threshold)"
+)
+AUTHOR_AGGREGATE_STATIC_TUNING = {"top_n": 20, "template_default_threshold": 0.4}
+AUTHOR_AGGREGATE_EXCLUDED_VALUES = {"", "unknown", "user", "none", "null", "n/a"}
+
 REFERENCE_EMAIL_RE = re.compile(r"\b[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 REFERENCE_PATH_UNIX_RE = re.compile(r"(?:/[\w.]+){3,}")
 REFERENCE_PATH_WIN_RE = re.compile(r"[A-Za-z]:\\(?:[\w.]+\\){2,}[\w.]*")
@@ -688,6 +730,12 @@ class Scanner:
             "numeric_id_patterns": 0,
         }
         self._reference_tokens_files_with_any: int = 0
+        self._filename_patterns_applied_count: int = 0
+        self._filename_patterns_sums: dict[str, int] = {
+            "date_prefix": 0, "version_marker": 0, "numbered_revision": 0,
+            "template_name": 0, "uuid_filename": 0, "copy_suffix": 0,
+        }
+        self._filename_patterns_files_with_any: int = 0
         records: list[FileRecord] = []
         for path in self.iter_files(self.source_dir):
             rec = self.scan_file(path)
@@ -704,6 +752,7 @@ class Scanner:
         # Register file-scoped vectors from accumulated state
         self._register_chatlog_vector()
         self._register_reference_tokens_vector()
+        self._register_filename_patterns_vector()
 
         # Run corpus-scoped vectors after the file walk completes
         self._run_corpus_vectors(records)
@@ -733,7 +782,9 @@ class Scanner:
             manifest_signature=None,
             files=records,
             vectors_collected=self._vector_registry.to_list(),
+            summary="",
         )
+        manifest.summary = self._build_summary(manifest)
         manifest.manifest_checksum = compute_manifest_checksum(manifest)
         # Optional HMAC signing
         if self.config.signing_key:
@@ -807,13 +858,247 @@ class Scanner:
             summary=summary,
         ))
 
-    def _run_corpus_vectors(self, records: list[FileRecord]) -> None:
-        """Run corpus-scoped vectors after the file walk completes.
+    def _register_filename_patterns_vector(self) -> None:
+        """Register the filename_patterns vector with corpus-level summary."""
+        rules_hash = compute_rules_hash(FILENAME_PATTERNS_RULES_DEFINITION)
+        tuning_hash = compute_tuning_hash(FILENAME_PATTERNS_STATIC_TUNING)
+        identity_digest = compute_vector_identity_digest(
+            FILENAME_PATTERNS_VECTOR_ID, FILENAME_PATTERNS_METHOD_VERSION,
+            rules_hash, tuning_hash,
+        )
+        summary = dict(self._filename_patterns_sums)
+        summary["files_with_any_pattern"] = self._filename_patterns_files_with_any
+        self._vector_registry.register(VectorRecord(
+            vector_id=FILENAME_PATTERNS_VECTOR_ID,
+            method_version=FILENAME_PATTERNS_METHOD_VERSION,
+            scope="file",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=None,
+            identity_digest=identity_digest,
+            applied_to_count=self._filename_patterns_applied_count,
+            summary=summary,
+        ))
 
-        v0.9: placeholder — corpus-scoped vectors (like author_aggregate)
-        are deferred to v0.10. This method is the hook point.
-        """
-        pass
+    def _run_corpus_vectors(self, records: list[FileRecord]) -> None:
+        """Run corpus-scoped vectors after the file walk completes."""
+        self._run_author_aggregate(records)
+
+    def _run_author_aggregate(self, records: list[FileRecord]) -> None:
+        """v0.10: author_aggregate corpus vector. Pulls authors from specialists."""
+        if not self.config.enable_specialists:
+            return
+        authors: list[tuple[str, str]] = []  # (normalized, original)
+        per_ext: dict[str, list[str]] = {}  # ext -> [normalized authors]
+        all_ext_counts: dict[str, int] = {}  # ext -> total files (for template default denominator)
+        ns_counts: dict[str, int] = {"document": 0, "email": 0, "pdf": 0}
+
+        for rec in records:
+            all_ext_counts[rec.extension] = all_ext_counts.get(rec.extension, 0) + 1
+            if not rec.specialist_metadata:
+                continue
+            raw_author: str | None = None
+            ns_source: str | None = None
+            if "document" in rec.specialist_metadata:
+                raw_author = rec.specialist_metadata["document"].get("author")
+                ns_source = "document"
+            elif "email" in rec.specialist_metadata:
+                raw_author = rec.specialist_metadata["email"].get("from")
+                ns_source = "email"
+            elif "pdf" in rec.specialist_metadata:
+                raw_author = rec.specialist_metadata["pdf"].get("author")
+                ns_source = "pdf"
+
+            if not raw_author or not isinstance(raw_author, str):
+                continue
+            # Normalize
+            normalized = " ".join(raw_author.strip().split())
+            if normalized.lower() in AUTHOR_AGGREGATE_EXCLUDED_VALUES:
+                continue
+            if normalized.startswith(("/o=", "/O=")):
+                continue
+
+            authors.append((normalized.lower(), raw_author.strip()))
+            if ns_source:
+                ns_counts[ns_source] = ns_counts.get(ns_source, 0) + 1
+            per_ext.setdefault(rec.extension, []).append(normalized.lower())
+
+        if not authors:
+            # Register with zero counts
+            rules_hash = compute_rules_hash(AUTHOR_AGGREGATE_RULES_DEFINITION)
+            tuning_hash = compute_tuning_hash(AUTHOR_AGGREGATE_STATIC_TUNING)
+            identity_digest = compute_vector_identity_digest(
+                AUTHOR_AGGREGATE_VECTOR_ID, AUTHOR_AGGREGATE_METHOD_VERSION,
+                rules_hash, tuning_hash,
+            )
+            self._vector_registry.register(VectorRecord(
+                vector_id=AUTHOR_AGGREGATE_VECTOR_ID,
+                method_version=AUTHOR_AGGREGATE_METHOD_VERSION,
+                scope="corpus",
+                rules_hash=rules_hash,
+                static_tuning_hash=tuning_hash,
+                dynamic_tuning_hash=None,
+                dictionary_id=None,
+                identity_digest=identity_digest,
+                applied_to_count=0,
+                summary={"distinct_authors": 0, "top_authors": [], "template_default_candidates": [], "per_namespace_counts": ns_counts, "per_extension_distinct_authors": {}},
+            ))
+            return
+
+        # Build frequency map: normalized_lower -> (best_casing, count)
+        casing_counts: dict[str, dict[str, int]] = {}
+        total_counts: dict[str, int] = {}
+        for norm_lower, original in authors:
+            casing_counts.setdefault(norm_lower, {})
+            casing_counts[norm_lower][original] = casing_counts[norm_lower].get(original, 0) + 1
+            total_counts[norm_lower] = total_counts.get(norm_lower, 0) + 1
+
+        # Pick best casing per normalized name
+        best_casing: dict[str, str] = {}
+        for norm_lower, casings in casing_counts.items():
+            best = max(casings.items(), key=lambda x: (x[1], x[0]))
+            best_casing[norm_lower] = best[0]
+
+        # Top authors
+        top_n = AUTHOR_AGGREGATE_STATIC_TUNING["top_n"]
+        sorted_authors = sorted(total_counts.items(), key=lambda x: (-x[1], x[0]))
+        top_authors = [[best_casing[norm], count] for norm, count in sorted_authors[:top_n]]
+
+        # Template default detection
+        threshold = AUTHOR_AGGREGATE_STATIC_TUNING["template_default_threshold"]
+        template_candidates: list[str] = []
+        for norm_lower in total_counts:
+            exts_with_author = set()
+            for ext, ext_authors in per_ext.items():
+                if norm_lower in ext_authors:
+                    exts_with_author.add(ext)
+            if len(exts_with_author) >= 2:
+                for ext in exts_with_author:
+                    ext_total = all_ext_counts.get(ext, 0)
+                    ext_author_count = sum(1 for a in per_ext[ext] if a == norm_lower)
+                    if ext_total > 0 and ext_author_count / ext_total > threshold:
+                        template_candidates.append(best_casing[norm_lower])
+                        break
+        template_candidates.sort()
+
+        # Per-extension distinct authors
+        per_ext_distinct = {ext: len(set(authors_list)) for ext, authors_list in sorted(per_ext.items())}
+
+        rules_hash = compute_rules_hash(AUTHOR_AGGREGATE_RULES_DEFINITION)
+        tuning_hash = compute_tuning_hash(AUTHOR_AGGREGATE_STATIC_TUNING)
+        identity_digest = compute_vector_identity_digest(
+            AUTHOR_AGGREGATE_VECTOR_ID, AUTHOR_AGGREGATE_METHOD_VERSION,
+            rules_hash, tuning_hash,
+        )
+        self._vector_registry.register(VectorRecord(
+            vector_id=AUTHOR_AGGREGATE_VECTOR_ID,
+            method_version=AUTHOR_AGGREGATE_METHOD_VERSION,
+            scope="corpus",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=None,
+            identity_digest=identity_digest,
+            applied_to_count=len(authors),
+            summary={
+                "distinct_authors": len(total_counts),
+                "top_authors": top_authors,
+                "template_default_candidates": template_candidates,
+                "per_namespace_counts": {k: v for k, v in ns_counts.items() if v > 0},
+                "per_extension_distinct_authors": per_ext_distinct,
+            },
+        ))
+
+    def _extract_filename_patterns(self, filename: str) -> dict[str, bool]:
+        """v0.10: detect structural patterns in filenames."""
+        stem = Path(filename).stem
+        stem_lower = stem.lower()
+        return {
+            "date_prefix": bool(FILENAME_DATE_PREFIX_RE.search(filename)),
+            "version_marker": bool(FILENAME_VERSION_MARKER_RE.search(stem)),
+            "numbered_revision": bool(FILENAME_NUMBERED_REVISION_RE.search(stem)),
+            "template_name": stem_lower in FILENAME_TEMPLATE_NAMES,
+            "uuid_filename": bool(FILENAME_UUID_RE.search(filename)),
+            "copy_suffix": bool(FILENAME_COPY_SUFFIX_RE.search(stem)),
+        }
+
+    def _build_summary(self, manifest: 'ScanManifest') -> str:
+        """v0.10: build a human-readable scan summary from manifest data."""
+        s = manifest.stats
+        q = manifest.quality
+        dir_count = len(q.per_directory_summary)
+
+        lines: list[str] = []
+
+        # Line 1: file counts
+        lines.append(
+            f"Scanned {s.total_files:,} files "
+            f"({s.text_files:,} text, {s.binary_files:,} binary) "
+            f"in {dir_count} {'directory' if dir_count == 1 else 'directories'}."
+        )
+
+        # Line 2: support and quality
+        specialist_count = sum(
+            1 for f in manifest.files
+            if f.specialist_metadata is not None
+        )
+        quality_parts = [f"{q.clean_files:,} clean"]
+        if q.degraded_files:
+            quality_parts.append(f"{q.degraded_files:,} degraded")
+        if q.error_files:
+            quality_parts.append(f"{q.error_files:,} errors")
+        quality_line = ", ".join(quality_parts)
+        extras: list[str] = []
+        if q.safety_flags:
+            extras.append(f"{q.safety_flags} safety flags")
+        if q.polyglots_detected:
+            extras.append(f"{q.polyglots_detected} polyglots")
+        extra_str = ". " + ", ".join(extras) + "." if extras else "."
+
+        lines.append(
+            f"{s.supported_files:,} supported "
+            f"({specialist_count:,} with specialist metadata). "
+            f"{s.unsupported_files:,} unsupported extensions. "
+            f"Quality: {quality_line}{extra_str}"
+        )
+
+        # Line 3: vector summaries
+        vec_parts: list[str] = []
+        for v in manifest.vectors_collected:
+            vid = v["vector_id"]
+            summary = v["summary"]
+            if vid == "chatlog":
+                matched = summary.get("matched_files", 0)
+                turns = summary.get("total_turns", 0)
+                speakers = len(summary.get("distinct_speakers", []))
+                vec_parts.append(f"chatlog matched {matched} files ({turns} turns, {speakers} speakers)")
+            elif vid == "reference_tokens":
+                applied = v["applied_to_count"]
+                urls = summary.get("url_count", 0)
+                paths = summary.get("path_references", 0)
+                mentions = summary.get("at_mentions", 0)
+                vec_parts.append(f"reference_tokens ran on {applied} files ({urls:,} URLs, {paths:,} paths, {mentions:,} @mentions)")
+            elif vid == "author_aggregate":
+                distinct = summary.get("distinct_authors", 0)
+                applied = v["applied_to_count"]
+                if distinct > 0:
+                    vec_parts.append(f"author_aggregate found {distinct} distinct authors across {applied} files")
+            elif vid == "filename_patterns":
+                applied = v["applied_to_count"]
+                any_count = summary.get("files_with_any_pattern", 0)
+                if any_count > 0:
+                    vec_parts.append(f"filename_patterns matched {any_count} of {applied} files")
+        if vec_parts:
+            lines.append("Vectors: " + ". ".join(vec_parts) + ".")
+
+        # Line 4: top directories
+        if q.per_directory_summary:
+            top_dirs = sorted(q.per_directory_summary, key=lambda d: -d["total_files"])[:3]
+            dir_strs = [f"{d['directory'] or '(root)'} ({d['total_files']:,})" for d in top_dirs]
+            lines.append("Largest directories: " + ", ".join(dir_strs) + ".")
+
+        return "\n\n".join(lines)
 
     def _build_context(self) -> ScanContext:
         deps: dict[str, dict[str, Any]] = {}
@@ -1022,6 +1307,14 @@ class Scanner:
                 message=str(exc),
                 stage="universal",
             ))
+            # v0.10: filename_patterns still runs on error path (only needs filename)
+            fp = self._extract_filename_patterns(path.name)
+            self._filename_patterns_applied_count += 1
+            if any(fp.values()):
+                self._filename_patterns_files_with_any += 1
+                for subcat, matched in fp.items():
+                    if matched:
+                        self._filename_patterns_sums[subcat] = self._filename_patterns_sums.get(subcat, 0) + 1
             return FileRecord(
                 path=rel_path.as_posix(),
                 filename=path.name,
@@ -1050,6 +1343,7 @@ class Scanner:
                     matches_extension=False,
                 ),
                 specialist_metadata=None,
+                filename_patterns=fp,
                 signal_provenance={},
                 errors=errors,
             )
@@ -1308,6 +1602,17 @@ class Scanner:
             zip_entries = self._get_zip_entries(path, eff["specialist_budget"])
         safety_flags = self.detect_safety_flags(extension, sample, zip_entries)
 
+        # v0.10: filename_patterns vector — runs on every file
+        fp = self._extract_filename_patterns(path.name)
+        self._filename_patterns_applied_count += 1
+        has_any_fp = False
+        for subcat, matched in fp.items():
+            if matched:
+                self._filename_patterns_sums[subcat] = self._filename_patterns_sums.get(subcat, 0) + 1
+                has_any_fp = True
+        if has_any_fp:
+            self._filename_patterns_files_with_any += 1
+
         if self.config.enable_specialists:
             try:
                 self.run_specialist_probe(path, extension, errors)
@@ -1437,6 +1742,7 @@ class Scanner:
             is_polyglot=is_polyglot,
             is_chatlog=is_chatlog,
             reference_tokens=reference_tokens_result,
+            filename_patterns=fp,
             safety_flags=safety_flags,
             signal_provenance=provenance,
             errors=errors,
@@ -2643,6 +2949,7 @@ def manifest_to_jsonl(manifest: ScanManifest) -> str:
         "manifest_checksum": manifest.manifest_checksum,
         "manifest_signature": manifest.manifest_signature,
         "vectors_collected": manifest.vectors_collected,
+        "summary": manifest.summary,
     }
     lines.append(json.dumps(header, ensure_ascii=False))
     # One line per file record

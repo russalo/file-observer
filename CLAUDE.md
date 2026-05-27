@@ -8,7 +8,8 @@ File capability scanner — observation layer only. Recursively discovers files,
 
 ## Spec
 
-- `docs/v0.9.0_RFC_Specification.md` — **current release spec**. Vector abstraction (identity digest, rules_hash, static_tuning_hash), `vectors_collected[]` manifest block, chatlog vector (refactored from v0.8), reference_tokens vector (7 subcategories), email body chatlog cross-cut, per-directory aggregation, Dublin Core adoption. All v0.9 additions provisional.
+- `docs/v0.10.0_RFC_Specification.md` — **current release spec**. Human-readable scan summary, author_aggregate corpus vector, filename_patterns vector.
+- `docs/v0.9.0_RFC_Specification.md` — prior release. Vector abstraction (identity digest, rules_hash, static_tuning_hash), `vectors_collected[]` manifest block, chatlog vector (refactored from v0.8), reference_tokens vector (7 subcategories), email body chatlog cross-cut, per-directory aggregation, Dublin Core adoption. All v0.9 additions provisional.
 - `docs/v0.8.0_RFC_Specification.md` — prior release. Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate).
 - `docs/v0.7.0_RFC_Specification.md` — v0.7.x line. XLS specialist, spreadsheet `format` field, safety_flags, ScanQuality block. v0.7.1 and v0.7.2 are patch releases against this spec — see HISTORY.md.
 - `docs/v0.6.0_RFC_Specification.md` — configurable depth (specialist_budget, extension_overrides, profiles), structural signatures, polyglot detection, integrity envelope (HMAC manifest_signature).
@@ -28,7 +29,8 @@ Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (fr
 
 ## Version roadmap
 
-- **v0.9.0 (current on `main`):** Vector abstraction — the scanner becomes a corpus observer. `Vector` dataclass with identity digest (SHA-256). New `vectors_collected[]` manifest block. Two exemplar vectors: `chatlog` (refactored from v0.8) and `reference_tokens` (7 subcategories: at_mentions, wiki_links, code_fence_blocks, url_count, email_mentions, path_references, numeric_id_patterns). Per-file `reference_tokens` field on text files. Email body chatlog cross-cut. Per-directory aggregation in `quality.per_directory_summary[]`. Dublin Core adopted in standards tracking. All v0.9 additions provisional. SCHEMA_VERSION 0.8 → 0.9 (additive).
+- **v0.10.0 (current on `main`):** Human-readable scan summary, `author_aggregate` corpus vector (cross-specialist author normalization + template-default detection), `filename_patterns` vector (6 boolean subcategories on every file). Four vectors in `vectors_collected[]`. SCHEMA_VERSION 0.9 → 0.10 (additive).
+- **v0.9.x:** Vector abstraction — the scanner becomes a corpus observer. `Vector` dataclass with identity digest (SHA-256). New `vectors_collected[]` manifest block. Two exemplar vectors: `chatlog` (refactored from v0.8) and `reference_tokens` (7 subcategories: at_mentions, wiki_links, code_fence_blocks, url_count, email_mentions, path_references, numeric_id_patterns). Per-file `reference_tokens` field on text files. Email body chatlog cross-cut. Per-directory aggregation in `quality.per_directory_summary[]`. Dublin Core adopted in standards tracking. All v0.9 additions provisional. SCHEMA_VERSION 0.8 → 0.9 (additive).
 - **v0.8.0:** chatlog content-based specialist. First content-detected (not extension-driven) dispatch in the scanner: `is_chatlog` flag runs even with specialists disabled; `_extract_chatlog_metadata` produces 11 drift-visible fields when enabled; new `chatlog` namespace + MIME guard; `quality.chatlog_files` counter. SCHEMA_VERSION 0.7 → 0.8 (additive).
 - **v0.7.x:** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both patches found from real-world corpus scanning.
 - **v1.0.0 (target):** schema freeze + backward compatibility policy. Scanner is a configurable observation engine that's honest, verifiable, and stable.
@@ -129,4 +131,4 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 
 `tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). v0.8 will add chatlog fixtures to `tests/fixtures/edge_cases/`.
 
-Test suite: 514 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v0.9).
+Test suite: 553 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v0.9).
