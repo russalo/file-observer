@@ -39,6 +39,7 @@ Every manifest contains these top-level keys (post-v1.0):
 | `manifest_checksum` | string (sha256 hex) | **Stable** — deterministic over the manifest content |
 | `manifest_signature` | object or null | **Stable** — null when signing not configured |
 | `files` | array | **Stable** — sorted by path |
+| `vectors_collected` | array | **Provisional** (since 0.9) — one entry per vector that ran; sorted by vector_id |
 
 ### 1.3 FileRecord Structure
 
@@ -63,6 +64,7 @@ Every entry in `files` has these stable fields:
 | `signal_provenance` | object | **Stable** — keys are field paths, values are provenance entries |
 | `safety_flags` | array of strings | **Stable** (since 0.7) — flag tokens stable, additions in MINOR |
 | `is_chatlog` | bool | **Stable** (since 0.8) — always present; true when content detection rules match |
+| `reference_tokens` | object or null | **Provisional** (since 0.9) — seven subcategory counts on text files; null on binary |
 | `errors` | array of objects | **Stable** — error codes stable (see error code registry) |
 
 ### 1.4 Specialist Metadata Namespaces
@@ -75,7 +77,7 @@ Every entry in `files` has these stable fields:
 | `image` | Stable since 0.5 | `.png`, `.jpg`, `.jpeg` |
 | `email` | Stable since 0.5 | `.msg`, `.eml` |
 | `spreadsheet` | Stable since 0.5 | `.xlsx`, `.xls` |
-| `document` | Stable since 0.5 | `.docx`, `.doc`, `.rtf` |
+| `document` | Stable since 0.5 | `.docx`, `.doc`, `.rtf`. Dublin Core alignment (since 0.9): `document.title` corresponds to `dc:title`, `document.author` corresponds to `dc:creator`. |
 | `chatlog` | Stable since 0.8 | Content-detected in `.txt`, `.md`, `.mdx` — not extension-driven |
 
 **Rules:**
@@ -206,6 +208,10 @@ These fields exist in the manifest but are subject to change in MINOR releases w
 
 - `format_signatures` — internal magic signature scan results
 - `is_polyglot` — derived from format_signatures
+- `vectors_collected[]` — vector identity, digest, and corpus summary (since 0.9)
+- `reference_tokens` — per-file reference token counts (since 0.9)
+- `quality.per_directory_summary[]` — per-directory aggregated counts (since 0.9)
+- `specialist_metadata.email.body_chatlog` — chatlog cross-cut on email bodies (since 0.9)
 
 These fields are useful but not yet stabilized. Treat them as informational until they're explicitly listed as stable here.
 
@@ -223,6 +229,7 @@ Files in `scratch/` and any document with `_DRAFT` in the filename are not commi
 | `0.6` | 0.6.0 | Configurable depth, file_signature, format_signatures, is_polyglot, manifest_signature, previous_manifest_checksum |
 | `0.7` | 0.7.0 | XLS specialist, safety_flags, quality block |
 | `0.8` | 0.8.0 | Chatlog specialist (first content-detected dispatch), `is_chatlog` FileRecord flag, `chatlog` namespace, `chatlog_signals` tool, `quality.chatlog_files` counter |
+| `0.9` | 0.9.0 | Vector abstraction (`vectors_collected[]`), `reference_tokens` per-file field, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog` cross-cut, Dublin Core adopted. All v0.9 additions provisional. |
 
 ---
 
@@ -271,6 +278,20 @@ for f in manifest["files"]:
 ```
 
 Consumers that key on `specialist_tool` values should be aware that `"chatlog_signals"` is a new valid value in 0.8 and MAY appear on `.txt` / `.md` / `.mdx` files. A consumer that switches on the full set of tool names should add a `chatlog_signals` case (or a default) to avoid routing these files nowhere.
+
+### 4.4 From schema 0.8 to 0.9
+
+Five additive changes. All v0.8 fields unchanged. No code changes required for consumers that ignore unknown fields. All v0.9 additions are **provisional** (§2.4) and may change in future minor versions.
+
+1. **New top-level manifest array `vectors_collected[]`**. One entry per vector that ran, sorted by `vector_id`. Each entry includes `vector_id`, `method_version`, `scope`, `rules_hash`, `static_tuning_hash`, `identity_digest`, `applied_to_count`, and `summary`. The identity digest is deterministic — same vector config + same input = same digest.
+
+2. **New FileRecord field `reference_tokens`** (object or null). Seven subcategory counts (`at_mentions`, `wiki_links`, `code_fence_blocks`, `url_count`, `email_mentions`, `path_references`, `numeric_id_patterns`). Present on text-decoded files; null on binary files.
+
+3. **New ScanQuality field `quality.per_directory_summary[]`**. One entry per top-level subdirectory with aggregated counts (total_files, chatlog_files, safety_flags_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions).
+
+4. **New email namespace field `specialist_metadata.email.body_chatlog`** (object, optional). Present when the chatlog vector's detection rules match on an email's extracted body text. Same shape as `specialist_metadata.chatlog`. Note: `is_chatlog` stays `false` on the email FileRecord — the file itself is binary; only the body was tested.
+
+5. **Dublin Core alignment** documented for the `document` namespace. `document.title` corresponds to `dc:title`, `document.author` corresponds to `dc:creator`. No field changes — documentation only.
 
 ---
 

@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.8.0"
-        assert ctx.logic_version == "0.8.0"
+        assert ctx.scanner_version == "0.9.0"
+        assert ctx.logic_version == "0.9.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.8.0"
+        assert data["context"]["scanner_version"] == "0.9.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1957,8 +1957,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.8.0"
-        assert LOGIC_VERSION == "0.8.0"
+        assert SCANNER_VERSION == "0.9.0"
+        assert LOGIC_VERSION == "0.9.0"
 
 
 # ---------------------------------------------------------------------------
@@ -2682,3 +2682,413 @@ class TestScanQuality:
         (tmp_path / "doc.pdf").write_bytes(b"%PDF-1.4\n/JavaScript test\n")
         manifest = Scanner(source_dir=tmp_path).scan()
         assert manifest.quality.safety_flags >= 1
+
+
+# ---------------------------------------------------------------------------
+# v0.9: Vector Abstraction Tests
+# ---------------------------------------------------------------------------
+
+
+class TestVectorIdentityDigest:
+    """Test the identity digest computation per spec §2.4."""
+
+    def test_deterministic(self) -> None:
+        from scanner.scanner import compute_vector_identity_digest
+        d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        d2 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        assert d1 == d2
+        assert len(d1) == 64  # SHA-256 hex
+
+    def test_different_vector_id(self) -> None:
+        from scanner.scanner import compute_vector_identity_digest
+        d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        d2 = compute_vector_identity_digest("reference_tokens", 1, "abc", "def")
+        assert d1 != d2
+
+    def test_different_method_version(self) -> None:
+        from scanner.scanner import compute_vector_identity_digest
+        d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        d2 = compute_vector_identity_digest("chatlog", 2, "abc", "def")
+        assert d1 != d2
+
+    def test_different_rules_hash(self) -> None:
+        from scanner.scanner import compute_vector_identity_digest
+        d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        d2 = compute_vector_identity_digest("chatlog", 1, "xyz", "def")
+        assert d1 != d2
+
+    def test_different_tuning_hash(self) -> None:
+        from scanner.scanner import compute_vector_identity_digest
+        d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        d2 = compute_vector_identity_digest("chatlog", 1, "abc", "ghi")
+        assert d1 != d2
+
+    def test_null_future_fields(self) -> None:
+        from scanner.scanner import compute_vector_identity_digest
+        d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def", None, None)
+        d2 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        assert d1 == d2  # None defaults to "null" in preimage
+
+    def test_preimage_is_pipe_delimited(self) -> None:
+        from hashlib import sha256
+        from scanner.scanner import compute_vector_identity_digest
+        expected_preimage = "chatlog|1|abc|def|null|null"
+        expected = sha256(expected_preimage.encode("utf-8")).hexdigest()
+        actual = compute_vector_identity_digest("chatlog", 1, "abc", "def")
+        assert actual == expected
+
+
+class TestRulesAndTuningHash:
+    def test_rules_hash_deterministic(self) -> None:
+        from scanner.scanner import compute_rules_hash
+        h1 = compute_rules_hash("some rule definition")
+        h2 = compute_rules_hash("some rule definition")
+        assert h1 == h2
+
+    def test_rules_hash_changes_with_content(self) -> None:
+        from scanner.scanner import compute_rules_hash
+        h1 = compute_rules_hash("rule v1")
+        h2 = compute_rules_hash("rule v2")
+        assert h1 != h2
+
+    def test_tuning_hash_deterministic(self) -> None:
+        from scanner.scanner import compute_tuning_hash
+        h1 = compute_tuning_hash({"threshold": 3, "top_n": 20})
+        h2 = compute_tuning_hash({"threshold": 3, "top_n": 20})
+        assert h1 == h2
+
+    def test_tuning_hash_key_order_independent(self) -> None:
+        from scanner.scanner import compute_tuning_hash
+        h1 = compute_tuning_hash({"top_n": 20, "threshold": 3})
+        h2 = compute_tuning_hash({"threshold": 3, "top_n": 20})
+        assert h1 == h2
+
+    def test_tuning_hash_changes_with_values(self) -> None:
+        from scanner.scanner import compute_tuning_hash
+        h1 = compute_tuning_hash({"threshold": 3})
+        h2 = compute_tuning_hash({"threshold": 4})
+        assert h1 != h2
+
+
+class TestVectorRegistry:
+    def test_empty_registry(self) -> None:
+        from scanner.scanner import VectorRegistry
+        reg = VectorRegistry()
+        assert reg.to_list() == []
+
+    def test_register_and_retrieve(self) -> None:
+        from scanner.scanner import VectorRegistry, VectorRecord
+        reg = VectorRegistry()
+        rec = VectorRecord(
+            vector_id="chatlog", method_version=1, scope="file",
+            rules_hash="abc", static_tuning_hash="def",
+            dynamic_tuning_hash=None, dictionary_id=None,
+            identity_digest="fff", applied_to_count=5,
+            summary={"matched_files": 5},
+        )
+        reg.register(rec)
+        result = reg.to_list()
+        assert len(result) == 1
+        assert result[0]["vector_id"] == "chatlog"
+
+    def test_sorted_alphabetically(self) -> None:
+        from scanner.scanner import VectorRegistry, VectorRecord
+        reg = VectorRegistry()
+        for vid in ["reference_tokens", "chatlog"]:
+            reg.register(VectorRecord(
+                vector_id=vid, method_version=1, scope="file",
+                rules_hash="x", static_tuning_hash="y",
+                dynamic_tuning_hash=None, dictionary_id=None,
+                identity_digest="z", applied_to_count=0,
+                summary={},
+            ))
+        result = reg.to_list()
+        assert result[0]["vector_id"] == "chatlog"
+        assert result[1]["vector_id"] == "reference_tokens"
+
+
+class TestManifestVectorsCollected:
+    def test_vectors_collected_present_on_manifest(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert hasattr(manifest, "vectors_collected")
+        assert isinstance(manifest.vectors_collected, list)
+
+    def test_vectors_collected_in_json_output(self, tmp_path: Path) -> None:
+        import json
+        from scanner.scanner import manifest_to_json
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        data = json.loads(manifest_to_json(manifest))
+        assert "vectors_collected" in data
+
+    def test_vectors_collected_in_jsonl_output(self, tmp_path: Path) -> None:
+        import json
+        from scanner.scanner import manifest_to_jsonl
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        lines = manifest_to_jsonl(manifest).strip().split("\n")
+        header = json.loads(lines[0])
+        assert "vectors_collected" in header
+
+
+class TestChatlogVector:
+    """Test chatlog vector registration and corpus summary."""
+
+    CHATLOG_TEXT = (
+        "User: hello there\n"
+        "Assistant: hi back\n"
+        "User: how are you\n"
+        "Assistant: doing well\n"
+        "User: thanks\n"
+        "Assistant: anytime\n"
+    )
+
+    def test_chatlog_vector_registered_when_chatlog_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.txt").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert "chatlog" in vec_ids
+
+    def test_chatlog_vector_always_registered(self, tmp_path: Path) -> None:
+        """Chatlog vector is registered even with no chatlog files."""
+        (tmp_path / "a.txt").write_text("hello world")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert "chatlog" in vec_ids
+
+    def test_chatlog_vector_applied_count(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.txt").write_text(self.CHATLOG_TEXT)
+        (tmp_path / "plain.txt").write_text("not a chatlog")
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        chatlog_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "chatlog"][0]
+        assert chatlog_vec["applied_to_count"] == 1
+
+    def test_chatlog_vector_summary_fields(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.txt").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        chatlog_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "chatlog"][0]
+        summary = chatlog_vec["summary"]
+        assert summary["matched_files"] == 1
+        assert summary["total_turns"] == 6
+        assert "User" in summary["distinct_speakers"]
+        assert "Assistant" in summary["distinct_speakers"]
+
+    def test_chatlog_vector_identity_digest_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.txt").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        m1 = Scanner(source_dir=tmp_path, config=config).scan()
+        m2 = Scanner(source_dir=tmp_path, config=config).scan()
+        d1 = [v for v in m1.vectors_collected if v["vector_id"] == "chatlog"][0]["identity_digest"]
+        d2 = [v for v in m2.vectors_collected if v["vector_id"] == "chatlog"][0]["identity_digest"]
+        assert d1 == d2
+
+    def test_chatlog_vector_v08_backwards_compat(self, tmp_path: Path) -> None:
+        """v0.8 fields (is_chatlog, specialist_metadata.chatlog) still work."""
+        (tmp_path / "chat.txt").write_text(self.CHATLOG_TEXT)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        chat_rec = [r for r in manifest.files if r.filename == "chat.txt"][0]
+        assert chat_rec.is_chatlog is True
+        assert chat_rec.specialist_metadata is not None
+        assert "chatlog" in chat_rec.specialist_metadata
+
+
+class TestReferenceTokensVector:
+    """Test reference_tokens vector extraction and registration."""
+
+    def test_reference_tokens_on_text_file(self, tmp_path: Path) -> None:
+        text = "Contact @admin or visit https://example.com. See [[WikiPage]].\n"
+        (tmp_path / "doc.md").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens is not None
+        assert rec.reference_tokens["at_mentions"] == 1
+        assert rec.reference_tokens["url_count"] == 1
+        assert rec.reference_tokens["wiki_links"] == 1
+
+    def test_reference_tokens_null_on_binary(self, tmp_path: Path) -> None:
+        (tmp_path / "img.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 30)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens is None
+
+    def test_reference_tokens_vector_registered(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert "reference_tokens" in vec_ids
+
+    def test_reference_tokens_applied_count(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        (tmp_path / "b.md").write_text("world")
+        (tmp_path / "c.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 30)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rt_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "reference_tokens"][0]
+        assert rt_vec["applied_to_count"] == 2  # txt + md, not png
+
+    def test_reference_tokens_corpus_summary(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("@alice @bob https://example.com")
+        (tmp_path / "b.md").write_text("@charlie see [[Page]]")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rt_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "reference_tokens"][0]
+        assert rt_vec["summary"]["at_mentions"] == 3  # alice, bob, charlie (actually the RE may match differently)
+        assert rt_vec["summary"]["files_with_any_reference"] == 2
+
+    def test_reference_tokens_email_pattern(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("Contact user@example.com and admin@test.org")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["email_mentions"] == 2
+
+    def test_reference_tokens_path_references(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("See /usr/local/bin or C:\\Users\\test\\file")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["path_references"] >= 1
+
+    def test_reference_tokens_numeric_ids(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("Fix #123 and PROJ-456 for v2.1 release")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["numeric_id_patterns"] >= 3
+
+    def test_reference_tokens_identity_digest_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("@test https://example.com")
+        m1 = Scanner(source_dir=tmp_path).scan()
+        m2 = Scanner(source_dir=tmp_path).scan()
+        d1 = [v for v in m1.vectors_collected if v["vector_id"] == "reference_tokens"][0]["identity_digest"]
+        d2 = [v for v in m2.vectors_collected if v["vector_id"] == "reference_tokens"][0]["identity_digest"]
+        assert d1 == d2
+
+    def test_vectors_sorted_alphabetically(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert vec_ids == sorted(vec_ids)
+
+
+class TestEmailBodyChatlogCrosscut:
+    """Test email body chatlog cross-cut per spec §4.1."""
+
+    CHATLOG_EML = (
+        "From: sender@example.com\r\n"
+        "To: recipient@example.com\r\n"
+        "Subject: Chat thread\r\n"
+        "Date: Mon, 1 Jan 2026 12:00:00 +0000\r\n"
+        "Message-ID: <test@example.com>\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        "\r\n"
+        "User: hello there\r\n"
+        "Assistant: hi back\r\n"
+        "User: how are you\r\n"
+        "Assistant: doing well\r\n"
+        "User: thanks for the help\r\n"
+        "Assistant: anytime\r\n"
+    )
+
+    PLAIN_EML = (
+        "From: sender@example.com\r\n"
+        "To: recipient@example.com\r\n"
+        "Subject: Normal email\r\n"
+        "Date: Mon, 1 Jan 2026 12:00:00 +0000\r\n"
+        "Message-ID: <plain@example.com>\r\n"
+        "Content-Type: text/plain; charset=utf-8\r\n"
+        "\r\n"
+        "Hello, this is a normal email body with no chatlog patterns.\r\n"
+    )
+
+    def test_body_chatlog_fires_on_chatlog_email(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.specialist_metadata is not None
+        assert "email" in rec.specialist_metadata
+        assert "body_chatlog" in rec.specialist_metadata["email"]
+        body_chatlog = rec.specialist_metadata["email"]["body_chatlog"]
+        assert body_chatlog["turn_count"] >= 3
+
+    def test_body_chatlog_absent_on_plain_email(self, tmp_path: Path) -> None:
+        (tmp_path / "plain.eml").write_text(self.PLAIN_EML)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        if rec.specialist_metadata and "email" in rec.specialist_metadata:
+            assert "body_chatlog" not in rec.specialist_metadata["email"]
+
+    def test_is_chatlog_stays_false_on_email(self, tmp_path: Path) -> None:
+        """Per spec §4.1: is_chatlog stays false — file is binary, only body was tested."""
+        (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert rec.is_chatlog is False
+
+    def test_body_chatlog_provenance(self, tmp_path: Path) -> None:
+        (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        rec = manifest.files[0]
+        assert "specialist_metadata.email.body_chatlog" in rec.signal_provenance
+
+
+class TestPerDirectorySummary:
+    """Test per-directory aggregation in ScanQuality (spec §4.2)."""
+
+    def test_per_directory_summary_present(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert hasattr(manifest.quality, "per_directory_summary")
+        assert isinstance(manifest.quality.per_directory_summary, list)
+
+    def test_files_at_root_use_empty_directory(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        dirs = [d["directory"] for d in manifest.quality.per_directory_summary]
+        assert "" in dirs
+
+    def test_subdirectory_aggregation(self, tmp_path: Path) -> None:
+        (tmp_path / "alpha").mkdir()
+        (tmp_path / "beta").mkdir()
+        (tmp_path / "alpha" / "a.txt").write_text("hello")
+        (tmp_path / "alpha" / "b.txt").write_text("world")
+        (tmp_path / "beta" / "c.txt").write_text("test")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        summary = {d["directory"]: d for d in manifest.quality.per_directory_summary}
+        assert "alpha" in summary
+        assert "beta" in summary
+        assert summary["alpha"]["total_files"] == 2
+        assert summary["beta"]["total_files"] == 1
+
+    def test_sorted_alphabetically(self, tmp_path: Path) -> None:
+        (tmp_path / "zebra").mkdir()
+        (tmp_path / "alpha").mkdir()
+        (tmp_path / "zebra" / "z.txt").write_text("z")
+        (tmp_path / "alpha" / "a.txt").write_text("a")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        dirs = [d["directory"] for d in manifest.quality.per_directory_summary]
+        assert dirs == sorted(dirs)
+
+    def test_chatlog_files_counted_per_directory(self, tmp_path: Path) -> None:
+        chatlog_text = "User: hi\nAssistant: hello\nUser: bye\nAssistant: see ya\nUser: thanks\nAssistant: np\n"
+        (tmp_path / "logs").mkdir()
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "logs" / "chat.txt").write_text(chatlog_text)
+        (tmp_path / "docs" / "readme.txt").write_text("no chatlog here")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        summary = {d["directory"]: d for d in manifest.quality.per_directory_summary}
+        assert summary["logs"]["chatlog_files"] == 1
+        assert summary["docs"]["chatlog_files"] == 0
+
+    def test_per_directory_in_json_output(self, tmp_path: Path) -> None:
+        import json
+        from scanner.scanner import manifest_to_json
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        data = json.loads(manifest_to_json(manifest))
+        assert "per_directory_summary" in data["quality"]

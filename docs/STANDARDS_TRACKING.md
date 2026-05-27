@@ -21,7 +21,7 @@ Things on the radar but not committed to. Some will graduate; some will be parke
 | **PREMIS** | Preservation | Closest conceptual fit. Library/archive/government segment unlock. Worth its own spec eventually. See `scratch/standards_roadmap.md`. |
 | **SPDX** | SBOM | License compliance + audit trail format. ISO/IEC 5962. Useful as export option for LLM training and pipeline credibility. |
 | **CycloneDX** | SBOM | Lightweight alternative to SPDX, security-focused. Same use case as SPDX export. |
-| **Dublin Core** | Metadata | We already extract these fields from DOCX. Just need to document the alignment — no code work. |
+| ~~Dublin Core~~ | ~~Metadata~~ | ~~Graduated to Adopted in v0.9~~ |
 | **PRONOM** | Format identification | UK National Archives registry. Could add PUID lookup for known formats. Cheap credibility win. |
 | **DBoM** | Data governance | GDPR Article 30 use cases. Wait for a real customer ask. |
 | **JHOVE** | Format validation | Different tool with different goals. Position scanner as upstream layer, not integration. |
@@ -41,7 +41,7 @@ Items the scanner actively supports. The form here is "what we ship that this st
 
 | Item | Since version | Form | Notes |
 |---|---|---|---|
-| (none yet — populate when items graduate from "moving toward") | | | |
+| **Dublin Core** | 0.9 | DOCX specialist extracts `dc:title` → `document.title`, `dc:creator` → `document.author`. Alignment documented in PUBLIC_CONTRACT.md §1.4. | First item promoted through the standards tracking workflow. |
 
 ### 1.4 Obligations — things we don't get to ignore
 
@@ -56,6 +56,8 @@ Things we should be aware of even if we haven't acted on them. License obligatio
 | `PyYAML` license (MIT) | optional dependency | Attribution | Same |
 
 **Rule:** Anything in this list that needs action gets a date or a triggering event next to it. Don't let things rot here without a follow-up.
+
+**Related discipline — CVE response readiness:** Each of the dependencies above will eventually receive a security advisory filed in the CVE (Common Vulnerabilities and Exposures) database. Preparedness for that inevitability is tracked separately in `scratch/inevitable_track.md §3.1` rather than here, because CVE response is a *process* concern (do we have a SECURITY.md, a disclosure contact, a response-time commitment) rather than a *standards* concern.
 
 ---
 
