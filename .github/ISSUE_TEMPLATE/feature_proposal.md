@@ -12,7 +12,7 @@ What does the feature do? One paragraph.
 
 ## Why
 
-Why does this belong in the scanner (not in a downstream consumer)?
+Why does this belong in File Observer (not in a downstream consumer)?
 
 ## Scope
 

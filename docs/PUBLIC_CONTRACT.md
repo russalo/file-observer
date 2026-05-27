@@ -1,8 +1,8 @@
-# Scanner Public Contract
+# File Observer Public Contract
 
-This document defines what **consumers** of the scanner manifest can rely on. It is the stability commitment from the scanner to downstream systems (ingestors, BI tools, classifiers, audit pipelines).
+This document defines what **consumers** of the File Observer manifest can rely on. It is the stability commitment from File Observer to downstream systems (ingestors, BI tools, classifiers, audit pipelines).
 
-> **Status note:** Scanner is currently pre-1.0. The contract below describes what we *intend* to commit to at v1.0. Pre-1.0, the schema may still change between minor versions. After v1.0, this document becomes binding.
+> **Status note:** File Observer is currently pre-1.0. The contract below describes what we *intend* to commit to at v1.0. Pre-1.0, the schema may still change between minor versions. After v1.0, this document becomes binding.
 
 ---
 
@@ -312,7 +312,7 @@ If you are building a consumer for a long-lived integration:
 
 ## 6. Pre-v1.0 Status
 
-Until the scanner releases v1.0, this document describes the **intended** stability commitments. The actual contract becomes binding at v1.0. Consumers building on pre-v1.0 versions should expect occasional schema changes between minor versions and refer to per-version RFCs and compliance reports for migration guidance.
+Until File Observer releases v1.0, this document describes the **intended** stability commitments. The actual contract becomes binding at v1.0. Consumers building on pre-v1.0 versions should expect occasional schema changes between minor versions and refer to per-version RFCs and compliance reports for migration guidance.
 
 The path to v1.0 is documented in the version roadmap in `CLAUDE.md` and the per-version RFCs in `docs/`.
 
