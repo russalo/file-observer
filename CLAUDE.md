@@ -46,10 +46,10 @@ source .venv/bin/activate
 # Install in dev mode (editable)
 pip install -e ".[dev]"
 
-# Run scanner (after install)
-scanner
+# Run file-observer (after install)
+file-observer
 
-# Run scanner directly
+# Run directly
 python src/scanner/scanner.py
 
 # Run all tests

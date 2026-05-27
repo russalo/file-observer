@@ -93,17 +93,18 @@ print(manifest_to_json(manifest))
 ### CLI
 
 ```bash
-# Scan current directory
-scanner
+# Scan current directory (fo is a shorthand alias)
+file-observer
+fo
 
 # Scan with a named profile and JSONL output
-scanner ./project --profile deep_extract --format jsonl
+fo ./project --profile deep_extract --format jsonl
 
 # Scan with ignore rules and delta comparison
-scanner ./project --ignore-file .scannerignore --previous-manifest ./last.json
+fo ./project --ignore-file .scannerignore --previous-manifest ./last.json
 
 # Scan with specialists enabled and a signed manifest
-scanner /path/to/files -o ./output --specialists --signing-key-file ./secret.key --format json
+fo /path/to/files -o ./output --specialists --signing-key-file ./secret.key --format json
 ```
 
 ---
@@ -318,19 +319,19 @@ usage: scanner [-h] [-o OUTPUT] [--specialists] [--exclude-hidden]
 
 ```bash
 # Basic scan
-scanner ./project
+fo ./project
 
 # Deep scan with specialists and JSONL output
-scanner ./project --profile deep_extract --format jsonl
+fo ./project --profile deep_extract --format jsonl
 
 # Delta scan against a previous manifest, signed
-scanner ./project \
+fo ./project \
   --previous-manifest ./manifests/last.json \
   --signing-key-file ./secret.key \
   --signing-key-id key-2026
 
 # Per-extension override: give PDFs a larger specialist budget
-scanner ./docs --specialists --extension-override .pdf:specialist_budget=524288
+fo ./docs --specialists --extension-override .pdf:specialist_budget=524288
 
 # Run directly without installing
 python src/scanner/scanner.py ./project -o ./output

@@ -15,7 +15,8 @@ security = ["defusedxml"]
 dev = ["pytest", "PyYAML", "olefile", "defusedxml"]
 
 [project.scripts]
-scanner = "scanner.scanner:main"
+file-observer = "scanner.scanner:main"
+fo = "scanner.scanner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
