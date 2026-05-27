@@ -811,7 +811,7 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.9.0"
+        assert ctx.scanner_version == "0.9.1"
         assert ctx.logic_version == "0.9.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.9.0"
+        assert data["context"]["scanner_version"] == "0.9.1"
 
 
 # ---------------------------------------------------------------------------
@@ -1261,9 +1261,9 @@ class TestMsgFromFieldOrder:
 class TestDetectChatlogPattern:
     """Unit tests for the _detect_chatlog_pattern detection rules.
 
-    Per spec §2.3, ANY of three rules triggers detection:
-      1. 3+ lines matching the speaker label pattern
-      2. 3+ occurrences of `### ` headers
+    Per spec §2.3 (v0.9.1 tuned), ANY of three rules triggers detection:
+      1. 3+ lines matching the speaker label pattern (excluding stop-list)
+      2. 5+ occurrences of `### ` headers (raised from 3 in v0.9.1)
       3. 3+ section divider lines
     """
 
@@ -1312,9 +1312,19 @@ class TestDetectChatlogPattern:
 
     # ---- Rule 2: ### headers ----
 
-    def test_three_h3_headers_triggers(self, scanner: Scanner) -> None:
-        text = "### One\nbody\n### Two\nbody\n### Three\nbody\n"
+    def test_five_h3_headers_triggers(self, scanner: Scanner) -> None:
+        text = "### One\nbody\n### Two\nbody\n### Three\nbody\n### Four\nbody\n### Five\nbody\n"
         assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_four_h3_headers_does_not_trigger(self, scanner: Scanner) -> None:
+        """v0.9.1: threshold raised from 3 to 5 — 4 headers no longer trigger."""
+        text = "### One\nbody\n### Two\nbody\n### Three\nbody\n### Four\nbody\n"
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_three_h3_headers_does_not_trigger(self, scanner: Scanner) -> None:
+        """v0.9.1: 3 H3 headers was the old threshold, now requires 5."""
+        text = "### One\nbody\n### Two\nbody\n### Three\nbody\n"
+        assert scanner._detect_chatlog_pattern(text) is False
 
     def test_two_h3_headers_does_not_trigger(self, scanner: Scanner) -> None:
         text = "### One\nbody\n### Two\nbody\nplain prose finishing the file.\n"
@@ -1397,6 +1407,62 @@ class TestDetectChatlogPattern:
             assert scanner._detect_chatlog_pattern(text) is False, (
                 f"{divider} should not trigger rule-3 detection"
             )
+
+
+class TestChatlogSpeakerStopList:
+    """v0.9.1: speaker label stop-list prevents false positives from
+    documentation patterns like Note:, Example:, Result:, Disallow:."""
+
+    def test_stop_list_words_dont_trigger_detection(self, scanner: Scanner) -> None:
+        text = "Note: something\nNote: another\nNote: third\n"
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_stop_list_mixed_with_real_speakers(self, scanner: Scanner) -> None:
+        """Stop-list entries are excluded; real speakers still count."""
+        text = (
+            "User: hello\n"
+            "Note: this is a note\n"
+            "Assistant: hi there\n"
+            "Example: some example\n"
+            "User: thanks\n"
+        )
+        assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_stop_list_only_speakers_no_trigger(self, scanner: Scanner) -> None:
+        """All speaker-like patterns are stop-listed — should not trigger."""
+        text = (
+            "Warning: be careful\n"
+            "Error: something broke\n"
+            "IMPORTANT: read this\n"
+            "TIP: do this instead\n"
+        )
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_stop_list_filtered_from_extraction(self, scanner: Scanner) -> None:
+        """Stop-list entries don't appear in speaker_labels output."""
+        text = (
+            "User: hi\nUser: hi\nUser: hi\n"
+            "Note: a\nNote: b\nNote: c\n"
+            "Assistant: hey\nAssistant: hey\nAssistant: hey\n"
+        )
+        result = scanner._extract_chatlog_metadata(text)
+        assert result is not None
+        assert "Note" not in result["speaker_labels"]
+        assert "User" in result["speaker_labels"]
+        assert "Assistant" in result["speaker_labels"]
+
+    def test_example_and_result_filtered(self, scanner: Scanner) -> None:
+        """FastAPI-style false positives are filtered."""
+        text = (
+            "Example: first\nExample: second\nExample: third\n"
+            "Result: a\nResult: b\nResult: c\n"
+        )
+        assert scanner._detect_chatlog_pattern(text) is False
+
+    def test_disallow_filtered(self, scanner: Scanner) -> None:
+        """robots.txt-style false positives are filtered."""
+        text = "Disallow: /admin\nDisallow: /private\nDisallow: /secret\n"
+        assert scanner._detect_chatlog_pattern(text) is False
 
 
 class TestMarkdownMimetypeRegistration:
@@ -1519,7 +1585,7 @@ class TestIsChatlogIntegration:
     def test_is_chatlog_serializes_to_json(self, tmp_path: Path) -> None:
         from scanner.scanner import manifest_to_json
         import json as _json
-        content = "### A\n### B\n### C\n"
+        content = "### A\n### B\n### C\n### D\n### E\n"
         (tmp_path / "headers.md").write_text(content)
         manifest = Scanner(source_dir=tmp_path).scan()
         data = _json.loads(manifest_to_json(manifest))
@@ -1926,7 +1992,7 @@ class TestChatlogFixtures:
         rec = self._scan_one_file("chatlog_headers.md", tmp_path)
         assert rec.is_chatlog is True
         chat = rec.specialist_metadata["chatlog"]
-        assert chat["section_marker_count"] >= 4  # 4 ### headers + 1 # header
+        assert chat["section_marker_count"] >= 6  # 5 ### headers + 1 # header = 6
         assert "### " in chat["section_marker_styles"]
 
 
@@ -1957,7 +2023,7 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.9.0"
+        assert SCANNER_VERSION == "0.9.1"
         assert LOGIC_VERSION == "0.9.0"
 
 

@@ -16,4 +16,8 @@ Content for section C.
 
 ### Section D
 
-Content for section D — pushes the count over the threshold.
+Content for section D.
+
+### Section E
+
+Content for section E — pushes the count over the v0.9.1 threshold of 5.
