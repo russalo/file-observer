@@ -39,7 +39,7 @@ Every manifest contains these top-level keys (post-v1.0):
 | `manifest_checksum` | string (sha256 hex) | **Stable** — deterministic over the manifest content |
 | `manifest_signature` | object or null | **Stable** — null when signing not configured |
 | `files` | array | **Stable** — sorted by path |
-| `vectors_collected` | array | **Provisional** (since 0.9) — one entry per vector that ran; sorted by vector_id |
+| `vectors_collected` | array | **Stable** (since 0.9, promoted 0.11) — one entry per vector that ran; sorted by vector_id |
 | `summary` | string | **Stable** (since 0.10) — deterministic Markdown, included in checksum |
 
 ### 1.3 FileRecord Structure
@@ -65,8 +65,8 @@ Every entry in `files` has these stable fields:
 | `signal_provenance` | object | **Stable** — keys are field paths, values are provenance entries |
 | `safety_flags` | array of strings | **Stable** (since 0.7) — flag tokens stable, additions in MINOR |
 | `is_chatlog` | bool | **Stable** (since 0.8) — always present; true when content detection rules match |
-| `reference_tokens` | object or null | **Provisional** (since 0.9) — seven subcategory counts on text files; null on binary |
-| `filename_patterns` | object | **Provisional** (since 0.10) — six boolean subcategories on every file |
+| `reference_tokens` | object or null | **Stable** (since 0.9, promoted 0.11) — seven subcategory counts on text files; null on binary |
+| `filename_patterns` | object | **Stable** (since 0.10, promoted 0.11) — six boolean subcategories on every file |
 | `errors` | array of objects | **Stable** — error codes stable (see error code registry) |
 
 ### 1.4 Specialist Metadata Namespaces
@@ -210,10 +210,8 @@ These fields exist in the manifest but are subject to change in MINOR releases w
 
 - `format_signatures` — internal magic signature scan results
 - `is_polyglot` — derived from format_signatures
-- `vectors_collected[]` — vector identity, digest, and corpus summary (since 0.9)
-- `reference_tokens` — per-file reference token counts (since 0.9)
-- `quality.per_directory_summary[]` — per-directory aggregated counts (since 0.9)
-- `specialist_metadata.email.body_chatlog` — chatlog cross-cut on email bodies (since 0.9)
+
+The following were promoted to stable in v0.11: `vectors_collected[]`, `reference_tokens`, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog`, `filename_patterns`.
 
 These fields are useful but not yet stabilized. Treat them as informational until they're explicitly listed as stable here.
 
@@ -233,6 +231,7 @@ Files in `scratch/` and any document with `_DRAFT` in the filename are not commi
 | `0.8` | 0.8.0 | Chatlog specialist (first content-detected dispatch), `is_chatlog` FileRecord flag, `chatlog` namespace, `chatlog_signals` tool, `quality.chatlog_files` counter |
 | `0.9` | 0.9.0 | Vector abstraction (`vectors_collected[]`), `reference_tokens` per-file field, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog` cross-cut, Dublin Core adopted. All v0.9 additions provisional. |
 | `0.10` | 0.10.0 | Human-readable `summary` field (stable). `author_aggregate` corpus vector. `filename_patterns` per-file field (6 booleans). |
+| `0.11` | 0.11.0 | Provisional → stable promotions: `vectors_collected[]`, `reference_tokens`, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog`, `filename_patterns`. SECURITY.md added. No new fields. |
 
 ---
 

@@ -18,7 +18,7 @@ The scanner has five distinct things that carry versions. They are independent â
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/scanner/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `0.10.1`
+**Current:** `0.11.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic â€” code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent â
 - MAJOR (x.0 â†’ x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `0.10`
+**Current:** `0.11`
 **Note:** This IS a public contract field. After v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, since v0.9)
