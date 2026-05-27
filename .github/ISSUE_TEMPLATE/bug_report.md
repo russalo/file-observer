@@ -8,7 +8,7 @@ assignees: ''
 
 ## Environment
 
-- Scanner version:
+- File Observer version:
 - Python version:
 - Platform (Linux/macOS/Windows):
 - libmagic available (yes/no):

@@ -42,8 +42,8 @@ Out of scope:
 ## Development setup
 
 ```bash
-git clone https://github.com/russalo/scanner.git
-cd scanner
+git clone https://github.com/russalo/file-observer.git
+cd file-observer
 
 python -m venv .venv
 source .venv/bin/activate
@@ -70,7 +70,7 @@ All tests must pass before a PR will be reviewed.
 ### Bug reports
 
 Open an issue with:
-- Scanner version (`scanner --version` or check `SCANNER_VERSION` in the code)
+- File Observer version (check `SCANNER_VERSION` in `src/scanner/scanner.py`)
 - Python version
 - Platform
 - Steps to reproduce
