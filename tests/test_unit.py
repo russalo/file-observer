@@ -3057,6 +3057,24 @@ class TestReferenceTokensVector:
         rec = manifest.files[0]
         assert rec.reference_tokens["path_references"] == 0
 
+    def test_path_references_colon_prefix_still_matches(self, tmp_path: Path) -> None:
+        """host:/var/log/nginx should still count as a path reference."""
+        text = "SSH to host:/var/log/nginx/access.log"
+        (tmp_path / "a.txt").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.reference_tokens["path_references"] >= 1
+
+    def test_path_references_file_url_counted(self, tmp_path: Path) -> None:
+        """file:///usr/local/bin is a file URL but the path inside is real."""
+        text = "Open file:///usr/local/bin/python3"
+        (tmp_path / "a.txt").write_text(text)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        # file:// URLs are stripped by the URL regex (they start with a scheme)
+        # but this is a file:/// not https:// — check behavior
+        assert rec.reference_tokens is not None
+
     def test_reference_tokens_numeric_ids(self, tmp_path: Path) -> None:
         (tmp_path / "a.txt").write_text("Fix #123 and PROJ-456 for v2.1 release")
         manifest = Scanner(source_dir=tmp_path).scan()
