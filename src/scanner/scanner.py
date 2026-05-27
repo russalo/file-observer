@@ -533,7 +533,9 @@ CHATLOG_RULES_DEFINITION = (
     "detect:speaker_label_re(3+,stop_list),h3_header_re(5+),section_divider_re(3+);"
     "extract:turn_count,speaker_labels(freq>=3,stop_list),section_markers,"
     "turn_char_stats,reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
-    "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate"
+    "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
+    "stop_list:Allow,CAUTION,Disallow,Error,Example,Examples,FIXME,"
+    "IMPORTANT,NOTE,Note,Result,TIP,TODO,Warning"
 )
 CHATLOG_STATIC_TUNING = {
     "detection_threshold": 3,
@@ -2151,15 +2153,18 @@ class Scanner:
             return None
 
         # --- Speaker labels and turn statistics ---
-        raw_label_matches = list(CHATLOG_SPEAKER_LABEL_RE.finditer(text))
+        # v0.9.1: filter stop-list tokens from both detection and turn metrics
+        raw_label_matches = [
+            m for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
+            if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
+        ]
         turn_count = len(raw_label_matches)
         label_counts = Counter(m.group(1) for m in raw_label_matches)
-        # v0.9.1: filter stop-list tokens from speaker labels output
         speaker_labels = sorted(
             label for label, count in label_counts.items()
-            if count >= 3 and label not in CHATLOG_SPEAKER_STOP_LIST
+            if count >= 3
         )
-        # Char distance between consecutive raw speaker labels.
+        # Char distance between consecutive speaker labels.
         avg_turn_chars = 0
         max_turn_chars = 0
         min_turn_chars = 0

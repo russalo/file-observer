@@ -1317,7 +1317,7 @@ class TestDetectChatlogPattern:
         assert scanner._detect_chatlog_pattern(text) is True
 
     def test_four_h3_headers_does_not_trigger(self, scanner: Scanner) -> None:
-        """v0.9.1: threshold raised from 3 to 5 — 4 headers no longer triggers."""
+        """v0.9.1: threshold raised from 3 to 5 — 4 headers no longer trigger."""
         text = "### One\nbody\n### Two\nbody\n### Three\nbody\n### Four\nbody\n"
         assert scanner._detect_chatlog_pattern(text) is False
 
@@ -1992,7 +1992,7 @@ class TestChatlogFixtures:
         rec = self._scan_one_file("chatlog_headers.md", tmp_path)
         assert rec.is_chatlog is True
         chat = rec.specialist_metadata["chatlog"]
-        assert chat["section_marker_count"] >= 5  # 5 ### headers + 1 # header
+        assert chat["section_marker_count"] >= 6  # 5 ### headers + 1 # header = 6
         assert "### " in chat["section_marker_styles"]
 
 
