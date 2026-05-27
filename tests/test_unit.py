@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "0.9.2"
-        assert ctx.logic_version == "0.9.0"
+        assert ctx.scanner_version == "0.10.0"
+        assert ctx.logic_version == "0.10.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "0.9.2"
+        assert data["context"]["scanner_version"] == "0.10.0"
 
 
 # ---------------------------------------------------------------------------
@@ -2023,8 +2023,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "0.9.2"
-        assert LOGIC_VERSION == "0.9.0"
+        assert SCANNER_VERSION == "0.10.0"
+        assert LOGIC_VERSION == "0.10.0"
 
 
 # ---------------------------------------------------------------------------
@@ -3226,3 +3226,183 @@ class TestPerDirectorySummary:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json.loads(manifest_to_json(manifest))
         assert "per_directory_summary" in data["quality"]
+
+
+# ---------------------------------------------------------------------------
+# v0.10: Scan Summary Tests
+# ---------------------------------------------------------------------------
+
+
+class TestScanSummary:
+    """Test the human-readable scan summary."""
+
+    def test_summary_present_on_manifest(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert isinstance(manifest.summary, str)
+        assert len(manifest.summary) > 0
+
+    def test_summary_contains_file_count(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        (tmp_path / "b.txt").write_text("world")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert "2" in manifest.summary
+
+    def test_summary_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        m1 = Scanner(source_dir=tmp_path).scan()
+        m2 = Scanner(source_dir=tmp_path).scan()
+        assert m1.summary == m2.summary
+
+    def test_summary_in_json_output(self, tmp_path: Path) -> None:
+        import json
+        from scanner.scanner import manifest_to_json
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        data = json.loads(manifest_to_json(manifest))
+        assert "summary" in data
+        assert "Scanned" in data["summary"]
+
+    def test_summary_in_jsonl_output(self, tmp_path: Path) -> None:
+        import json
+        from scanner.scanner import manifest_to_jsonl
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        header = json.loads(manifest_to_jsonl(manifest).split("\n")[0])
+        assert "summary" in header
+
+    def test_summary_includes_vector_info(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("@user https://example.com")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert "reference_tokens" in manifest.summary
+
+    def test_summary_includes_directory_info(self, tmp_path: Path) -> None:
+        (tmp_path / "sub").mkdir()
+        (tmp_path / "sub" / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        assert "sub" in manifest.summary
+
+
+# ---------------------------------------------------------------------------
+# v0.10: Filename Patterns Tests
+# ---------------------------------------------------------------------------
+
+
+class TestFilenamePatterns:
+    """Test filename_patterns vector."""
+
+    def test_date_prefix_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "2026-04-10_report.txt").write_text("report")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns["date_prefix"] is True
+
+    def test_no_date_prefix(self, tmp_path: Path) -> None:
+        (tmp_path / "report.txt").write_text("report")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns["date_prefix"] is False
+
+    def test_version_marker_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "schema_v0.9.json").write_text("{}")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns["version_marker"] is True
+
+    def test_template_name_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "Document1.docx").write_bytes(b"PK\x03\x04" + b"\x00" * 30)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns["template_name"] is True
+
+    def test_uuid_filename_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "a1b2c3d4-e5f6-7890-abcd-ef1234567890.json").write_text("{}")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns["uuid_filename"] is True
+
+    def test_copy_suffix_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "Copy of report.txt").write_text("report")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns["copy_suffix"] is True
+
+    def test_numbered_revision_detected(self, tmp_path: Path) -> None:
+        (tmp_path / "Invoice (2).txt").write_text("invoice")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns["numbered_revision"] is True
+
+    def test_no_patterns_all_false(self, tmp_path: Path) -> None:
+        (tmp_path / "readme.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert all(v is False for v in rec.filename_patterns.values())
+
+    def test_present_on_binary_files(self, tmp_path: Path) -> None:
+        (tmp_path / "photo.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 30)
+        manifest = Scanner(source_dir=tmp_path).scan()
+        rec = manifest.files[0]
+        assert rec.filename_patterns is not None
+
+    def test_vector_registered(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert "filename_patterns" in vec_ids
+
+    def test_vector_corpus_summary(self, tmp_path: Path) -> None:
+        (tmp_path / "2026-01-01_a.txt").write_text("dated")
+        (tmp_path / "report_v2.1.txt").write_text("versioned")
+        (tmp_path / "plain.txt").write_text("nothing")
+        manifest = Scanner(source_dir=tmp_path).scan()
+        fp_vec = [v for v in manifest.vectors_collected if v["vector_id"] == "filename_patterns"][0]
+        assert fp_vec["summary"]["date_prefix"] >= 1
+        assert fp_vec["summary"]["version_marker"] >= 1
+        assert fp_vec["summary"]["files_with_any_pattern"] >= 2
+
+
+# ---------------------------------------------------------------------------
+# v0.10: Author Aggregate Tests
+# ---------------------------------------------------------------------------
+
+
+class TestAuthorAggregate:
+    """Test author_aggregate corpus vector."""
+
+    def test_not_registered_without_specialists(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(enable_specialists=False)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert "author_aggregate" not in vec_ids
+
+    def test_registered_with_specialists(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert "author_aggregate" in vec_ids
+
+    def test_empty_corpus_zero_authors(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        aa = [v for v in manifest.vectors_collected if v["vector_id"] == "author_aggregate"][0]
+        assert aa["summary"]["distinct_authors"] == 0
+
+    def test_identity_digest_deterministic(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(enable_specialists=True)
+        m1 = Scanner(source_dir=tmp_path, config=config).scan()
+        m2 = Scanner(source_dir=tmp_path, config=config).scan()
+        d1 = [v for v in m1.vectors_collected if v["vector_id"] == "author_aggregate"][0]["identity_digest"]
+        d2 = [v for v in m2.vectors_collected if v["vector_id"] == "author_aggregate"][0]["identity_digest"]
+        assert d1 == d2
+
+    def test_vectors_sorted_alphabetically(self, tmp_path: Path) -> None:
+        (tmp_path / "a.txt").write_text("hello")
+        config = ScannerConfig(enable_specialists=True)
+        manifest = Scanner(source_dir=tmp_path, config=config).scan()
+        vec_ids = [v["vector_id"] for v in manifest.vectors_collected]
+        assert vec_ids == sorted(vec_ids)
