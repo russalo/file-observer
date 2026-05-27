@@ -5,7 +5,7 @@ Observation layer for the PKP document pipeline. Recursively discovers
 files, extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    scanner
-    Version:    0.9.1
+    Version:    0.9.2
     Schema:     0.9
     Python:     >= 3.12
     Spec:       docs/v0.9.0_RFC_Specification.md (current)
@@ -71,7 +71,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "0.9.1"
+SCANNER_VERSION = "0.9.2"
 LOGIC_VERSION = "0.9.0"
 SCHEMA_VERSION = "0.9"
 
@@ -552,11 +552,11 @@ CHATLOG_SPEAKER_STOP_LIST: set[str] = {
 
 # v0.9: Reference tokens vector identity constants.
 REFERENCE_TOKENS_VECTOR_ID = "reference_tokens"
-REFERENCE_TOKENS_METHOD_VERSION = 1
+REFERENCE_TOKENS_METHOD_VERSION = 2
 REFERENCE_TOKENS_RULES_DEFINITION = (
     "count:at_mentions(@[a-zA-Z0-9_]+),wiki_links([[.+?]]),"
     "code_fence_blocks(```pairs),url_count(https?://\\S+),"
-    "email_mentions(addr_re),path_references(unix+windows,3+segments),"
+    "email_mentions(addr_re),path_references(unix+windows,3+segments,url_stripped),"
     "numeric_id_patterns(#dd+,semver,PROJECT-dd+)"
 )
 REFERENCE_TOKENS_STATIC_TUNING = {
@@ -2273,13 +2273,17 @@ class Scanner:
 
         Runs on every text-eligible file. Returns counts for seven subcategories.
         """
+        # v0.9.2: strip URLs before counting path references to avoid
+        # matching URL path fragments (e.g. googleapis.com/auth/chat).
+        # The original regex is kept simple; URL removal handles context.
+        text_no_urls = CHATLOG_URL_RE.sub("", text)
         return {
             "at_mentions": len(CHATLOG_AT_MENTION_RE.findall(text)),
             "wiki_links": len(CHATLOG_WIKI_LINK_RE.findall(text)),
             "code_fence_blocks": text.count("```") // 2,
             "url_count": len(CHATLOG_URL_RE.findall(text)),
             "email_mentions": len(REFERENCE_EMAIL_RE.findall(text)),
-            "path_references": len(REFERENCE_PATH_UNIX_RE.findall(text)) + len(REFERENCE_PATH_WIN_RE.findall(text)),
+            "path_references": len(REFERENCE_PATH_UNIX_RE.findall(text_no_urls)) + len(REFERENCE_PATH_WIN_RE.findall(text_no_urls)),
             "numeric_id_patterns": len(REFERENCE_TICKET_RE.findall(text)) + len(REFERENCE_SEMVER_RE.findall(text)) + len(REFERENCE_PROJECT_ID_RE.findall(text)),
         }
 
