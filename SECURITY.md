@@ -51,6 +51,6 @@ These are **observations, not assessments**. The scanner reports what it sees. C
 
 | Version | Supported |
 |---|---|
-| 0.11.x | Yes |
-| 0.10.x | Until 0.11 ships |
-| < 0.10 | No |
+| 1.0.x | Yes |
+| 0.11.x | Security fixes only |
+| < 0.11 | No |

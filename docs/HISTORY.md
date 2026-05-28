@@ -39,9 +39,7 @@ This is the running index of all scanner versions, their specifications, and the
 
 ## Drafts in Flight
 
-| Version | Status | Notes | File |
-|---|---|---|---|
-| 1.0.0 | Forward-looking | Schema freeze + backward compatibility policy. Becomes binding when scanner reaches maturity (see scanner version policy in CLAUDE.md). | [v1.0.0_RFC_DRAFT.md](v1.0.0_RFC_DRAFT.md) |
+No drafts in flight. v1.0.0 has shipped.
 
 ---
 
