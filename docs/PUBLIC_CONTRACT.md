@@ -2,7 +2,7 @@
 
 This document defines what **consumers** of the File Observer manifest can rely on. It is the stability commitment from File Observer to downstream systems (ingestors, BI tools, classifiers, audit pipelines).
 
-> **Status note:** File Observer is currently pre-1.0. The contract below describes what we *intend* to commit to at v1.0. Pre-1.0, the schema may still change between minor versions. After v1.0, this document becomes binding.
+> **This contract is binding as of v1.0.** The stability commitments below are obligations, not intentions. Fields marked stable will not be removed, renamed, or change type without a MAJOR version bump (v2.0). See the backward compatibility and deprecation policies below.
 
 ---
 
@@ -232,6 +232,7 @@ Files in `scratch/` and any document with `_DRAFT` in the filename are not commi
 | `0.9` | 0.9.0 | Vector abstraction (`vectors_collected[]`), `reference_tokens` per-file field, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog` cross-cut, Dublin Core adopted. All v0.9 additions provisional. |
 | `0.10` | 0.10.0 | Human-readable `summary` field (stable). `author_aggregate` corpus vector. `filename_patterns` per-file field (6 booleans). |
 | `0.11` | 0.11.0 | Provisional → stable promotions: `vectors_collected[]`, `reference_tokens`, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog`, `filename_patterns`. SECURITY.md added. No new fields. |
+| `1.0` | 1.0.0 | Schema freeze. Public contract binding. Backward compatibility policy in effect. No new fields — governance only. |
 
 ---
 
@@ -310,11 +311,14 @@ If you are building a consumer for a long-lived integration:
 
 ---
 
-## 6. Pre-v1.0 Status
+## 6. Backward Compatibility Policy (since v1.0)
 
-Until File Observer releases v1.0, this document describes the **intended** stability commitments. The actual contract becomes binding at v1.0. Consumers building on pre-v1.0 versions should expect occasional schema changes between minor versions and refer to per-version RFCs and compliance reports for migration guidance.
-
-The path to v1.0 is documented in the version roadmap in `CLAUDE.md` and the per-version RFCs in `docs/`.
+- **MAJOR** (1.x → 2.0): Breaking change. Field removed, renamed, or type changed. Preceded by deprecation in at least one full MINOR release.
+- **MINOR** (1.0 → 1.1): Additive only. New fields, vectors, namespaces. Existing fields untouched.
+- **PATCH** (1.0.0 → 1.0.1): No schema change. Bug fixes, vector tuning (method_version bumps).
+- Code written for schema `1.x` WILL work with schema `1.y` where `y > x`.
+- Consumers SHOULD ignore unknown fields for forward compatibility.
+- The vector identity digest preimage shape and hash function (SHA-256) MUST NOT change without a MAJOR version bump.
 
 ---
 
