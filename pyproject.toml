@@ -5,7 +5,34 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "file-observer"
 version = "0.11.0"
+description = "Know what's in your files before you open them. Deterministic file observation engine with cryptographic vector identity."
+readme = "docs/README.md"
 requires-python = ">=3.12"
+license = {text = "AGPL-3.0-or-later"}
+authors = [
+    {name = "Russalo LLC", email = "russalo@russalo.com"},
+]
+keywords = [
+    "file-analysis", "metadata", "observation", "document-pipeline",
+    "manifest", "deterministic", "provenance", "audit",
+    "chatlog", "vector", "corpus",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: File Formats",
+    "Topic :: System :: Filesystems",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Software Development :: Quality Assurance",
+    "Typing :: Typed",
+]
 dependencies = ["python-magic", "chardet"]
 
 [project.optional-dependencies]
@@ -13,6 +40,13 @@ yaml = ["PyYAML"]
 msg = ["olefile"]
 security = ["defusedxml"]
 dev = ["pytest", "PyYAML", "olefile", "defusedxml"]
+
+[project.urls]
+Homepage = "https://github.com/russalo/file-observer"
+Repository = "https://github.com/russalo/file-observer"
+Issues = "https://github.com/russalo/file-observer/issues"
+Documentation = "https://github.com/russalo/file-observer/blob/main/docs/README.md"
+Changelog = "https://github.com/russalo/file-observer/blob/main/docs/HISTORY.md"
 
 [project.scripts]
 file-observer = "scanner.scanner:main"
