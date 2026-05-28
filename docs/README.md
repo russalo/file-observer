@@ -28,8 +28,8 @@ That's the human-readable summary. The full manifest has per-file metadata, prov
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `0.11.0` |
-| **Schema** | `0.11` |
+| **Version** | `1.0.0` |
+| **Schema** | `1.0` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](../LICENSE) (commercial license available) |
 | **Tests** | 564 passed, validated against 9 corpora / 28K files |
@@ -227,7 +227,7 @@ File Observer has been tested against 9 real-world corpora totaling 28,000+ file
 | [HISTORY.md](HISTORY.md) | Every version from v0.1 to v0.11, with specs and compliance reports |
 | [PUBLIC_CONTRACT.md](PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [CONVENTIONS.md](CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v0.11.0 RFC Specification](v0.11.0_RFC_Specification.md) | Current release spec |
+| [v1.0.0 RFC Specification](v1.0.0_RFC_Specification.md) | Current release spec — schema freeze, binding contract |
 
 ---
 
