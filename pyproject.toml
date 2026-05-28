@@ -10,7 +10,7 @@ readme = "docs/README.md"
 requires-python = ">=3.12"
 license = {text = "AGPL-3.0-or-later"}
 authors = [
-    {name = "Russalo LLC", email = "russalo@russalo.com"},
+    {name = "Russell Pfister", email = "russalo@russalo.com"},
 ]
 keywords = [
     "file-analysis", "metadata", "observation", "document-pipeline",
