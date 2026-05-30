@@ -1,9 +1,9 @@
 # v0.10 Spec Compliance Report
 
 **Report Date:** 2026-05-27
-**Spec:** docs/v0.10.0_RFC_Specification.md
+**Spec:** docs/archive/0.x/v0.10.0_RFC_Specification.md
 **Implementation:** src/scanner/scanner.py (v0.10.1, main branch)
-**Prior Compliance:** docs/COMPLIANCE-v0.9.md (v0.9 — 94 requirements, all PASS)
+**Prior Compliance:** docs/archive/0.x/COMPLIANCE-v0.9.md (v0.9 — 94 requirements, all PASS)
 
 ---
 
