@@ -18,12 +18,41 @@ File Observer — observation layer only. Recursively discovers files, extracts 
 - `docs/v0.5.0_RFC_Specification.md` — schema reshape: namespaced specialist_metadata, schema_version field, baseline_max_bytes, cross-platform hardening.
 - `docs/v0.4.0_RFC_Specification.md` — semantic specialist tool naming, deviation policy, coverage expansion (JPEG, EML, XLSX, MSG enrichment).
 - `docs/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering, provenance, bounded observation.
-- v1.0 target: schema freeze + backward compatibility policy. v0.11 completed field promotions and SECURITY.md — v1.0 is the governance declaration.
 - `docs/HISTORY.md` — running index of all versions and patch releases. Start here when orienting.
 - `docs/CONVENTIONS.md` — internal naming, version-bump rules, document promotion paths, tracking inventory of specialists / namespaces / signatures / safety flags / error codes.
-- `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments. Becomes binding at v1.0.
+- `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments. **Binding as of v1.0.**
 
-RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v0.11 RFC plus HISTORY.md before making changes to scanner behavior.
+RFC normative language applies (MUST/SHOULD/MAY per BCP 14). Read the v1.0 RFC plus HISTORY.md before making changes.
+
+## Package and distribution
+
+| | |
+|---|---|
+| **Package name** | `file-observer` |
+| **CLI commands** | `file-observer` or `fo` (shorthand) |
+| **PyPI** | https://pypi.org/project/file-observer/ |
+| **GitHub** | https://github.com/russalo/file-observer (public) |
+| **License** | AGPL-3.0 + dual commercial (see LICENSE) |
+| **Copyright** | Russell Pfister |
+| **Publishing** | GitHub Release triggers `.github/workflows/publish.yml` → PyPI via trusted publisher |
+
+## Workbench (shared working surface)
+
+The project uses Tether for human-AI collaboration. The workbench serves editable JSON docs in a browser over tailnet.
+
+- **Tether repo:** `/srv/projects/pkplab/tether/` (see BOOTSTRAP.md and WORKBENCH.md there)
+- **Scanner workbench data:** `scratch/workbench/` (gitignored)
+- **Hub port:** 8800 (manages all project instances on this node)
+- **Scanner instance port:** 8801
+
+**After a server reboot**, the workbench must be restarted:
+```bash
+cd /srv/projects/pkplab/tether
+nohup python3 hub.py --port 8800 > /tmp/workbench-hub.log 2>&1 &
+curl -s -X POST http://localhost:8800/api/start \
+  -H 'Content-Type: application/json' \
+  -d '{"project": "scanner", "data_dir": "/srv/projects/pkplab/scanner/scratch/workbench", "port": 8801}'
+```
 
 ## Stack
 
