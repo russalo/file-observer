@@ -1,9 +1,9 @@
 # v0.8 Spec Compliance Report
 
 **Report Date:** 2026-04-10
-**Spec:** docs/v0.8.0_RFC_Specification.md
+**Spec:** docs/archive/0.x/v0.8.0_RFC_Specification.md
 **Implementation:** src/scanner/scanner.py (branch `v0.8.0`, commit `54f8f4a`)
-**Prior Compliance:** docs/COMPLIANCE-v0.6.md (v0.6 — all PASS). v0.7.0 and v0.7.1/.2 patches have no compliance reports; see HISTORY.md "Compliance Report Gaps."
+**Prior Compliance:** docs/archive/0.x/COMPLIANCE-v0.6.md (v0.6 — all PASS). v0.7.0 and v0.7.1/.2 patches have no compliance reports; see HISTORY.md "Compliance Report Gaps."
 
 ---
 
