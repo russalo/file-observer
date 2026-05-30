@@ -44,6 +44,10 @@ The project uses Tether for human-AI collaboration. The workbench serves editabl
 - **Scanner workbench data:** `scratch/workbench/` (gitignored)
 - **Hub port:** 8800 (manages all project instances on this node)
 - **Scanner instance port:** 8801
+- **Tailnet access:** `http://origin-core:8800` (hub) / `http://origin-core:8801` (scanner workbench)
+  - Full DNS: `origin-core.taild63637.ts.net`
+  - Short: `origin-core` (works inside tailnet via search-domain)
+  - IPv4: `100.89.175.30`
 
 **After a server reboot**, the workbench must be restarted:
 ```bash
@@ -53,6 +57,8 @@ curl -s -X POST http://localhost:8800/api/start \
   -H 'Content-Type: application/json' \
   -d '{"project": "scanner", "data_dir": "/srv/projects/pkplab/scanner/scratch/workbench", "port": 8801}'
 ```
+
+**Future:** systemd unit for auto-start on boot (pattern: `/etc/systemd/system/blog.service` on origin-core). Manual restart is acceptable while iterating.
 
 ## Stack
 
