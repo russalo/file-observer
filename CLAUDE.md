@@ -9,15 +9,15 @@ File Observer — observation layer only. Recursively discovers files, extracts 
 ## Spec
 
 - `docs/v1.0.0_RFC_Specification.md` — **current release spec**. Schema freeze. Public contract binding. Backward compatibility policy.
-- `docs/v0.11.0_RFC_Specification.md` — prior release. Provisional → stable promotions, SECURITY.md.
-- `docs/v0.10.0_RFC_Specification.md` — prior release. Human-readable scan summary, author_aggregate corpus vector, filename_patterns vector.
-- `docs/v0.9.0_RFC_Specification.md` — prior release. Vector abstraction (identity digest, rules_hash, static_tuning_hash), `vectors_collected[]` manifest block, chatlog vector (refactored from v0.8), reference_tokens vector (7 subcategories), email body chatlog cross-cut, per-directory aggregation, Dublin Core adoption. All v0.9 additions provisional.
-- `docs/v0.8.0_RFC_Specification.md` — prior release. Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate).
-- `docs/v0.7.0_RFC_Specification.md` — v0.7.x line. XLS specialist, spreadsheet `format` field, safety_flags, ScanQuality block. v0.7.1 and v0.7.2 are patch releases against this spec — see HISTORY.md.
-- `docs/v0.6.0_RFC_Specification.md` — configurable depth (specialist_budget, extension_overrides, profiles), structural signatures, polyglot detection, integrity envelope (HMAC manifest_signature).
-- `docs/v0.5.0_RFC_Specification.md` — schema reshape: namespaced specialist_metadata, schema_version field, baseline_max_bytes, cross-platform hardening.
-- `docs/v0.4.0_RFC_Specification.md` — semantic specialist tool naming, deviation policy, coverage expansion (JPEG, EML, XLSX, MSG enrichment).
-- `docs/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering, provenance, bounded observation.
+- `docs/archive/0.x/v0.11.0_RFC_Specification.md` — prior release. Provisional → stable promotions, SECURITY.md.
+- `docs/archive/0.x/v0.10.0_RFC_Specification.md` — prior release. Human-readable scan summary, author_aggregate corpus vector, filename_patterns vector.
+- `docs/archive/0.x/v0.9.0_RFC_Specification.md` — prior release. Vector abstraction (identity digest, rules_hash, static_tuning_hash), `vectors_collected[]` manifest block, chatlog vector (refactored from v0.8), reference_tokens vector (7 subcategories), email body chatlog cross-cut, per-directory aggregation, Dublin Core adoption. All v0.9 additions provisional.
+- `docs/archive/0.x/v0.8.0_RFC_Specification.md` — prior release. Chatlog specialist (first content-detected, not extension-based): is_chatlog flag, drift-visible signals (turn counts, speaker labels, section markers, reference tokens, top capitalized tokens, vocabulary estimate).
+- `docs/archive/0.x/v0.7.0_RFC_Specification.md` — v0.7.x line. XLS specialist, spreadsheet `format` field, safety_flags, ScanQuality block. v0.7.1 and v0.7.2 are patch releases against this spec — see HISTORY.md.
+- `docs/archive/0.x/v0.6.0_RFC_Specification.md` — configurable depth (specialist_budget, extension_overrides, profiles), structural signatures, polyglot detection, integrity envelope (HMAC manifest_signature).
+- `docs/archive/0.x/v0.5.0_RFC_Specification.md` — schema reshape: namespaced specialist_metadata, schema_version field, baseline_max_bytes, cross-platform hardening.
+- `docs/archive/0.x/v0.4.0_RFC_Specification.md` — semantic specialist tool naming, deviation policy, coverage expansion (JPEG, EML, XLSX, MSG enrichment).
+- `docs/archive/0.x/v0.3.0 RFC_Specification.md` — base contract: capability-locked determinism, signal layering, provenance, bounded observation.
 - `docs/HISTORY.md` — running index of all versions and patch releases. Start here when orienting.
 - `docs/CONVENTIONS.md` — internal naming, version-bump rules, document promotion paths, tracking inventory of specialists / namespaces / signatures / safety flags / error codes.
 - `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments. **Binding as of v1.0.**
@@ -176,4 +176,4 @@ Single-module implementation in `src/scanner/scanner.py`. No package structure b
 
 `tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). Chatlog fixtures in `tests/fixtures/edge_cases/`.
 
-Test suite: 564 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v1.0).
+Test suite: 565 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v1.0).
