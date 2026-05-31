@@ -1225,6 +1225,8 @@ class Scanner:
         # Reuses checksum_sha256 (also used by delta). count >= 2 only.
         checksum_groups: dict[str, list[FileRecord]] = {}
         for r in records:
+            if not r.checksum_sha256:
+                continue  # skip files that failed to stat/checksum (empty digest)
             checksum_groups.setdefault(r.checksum_sha256, []).append(r)
         duplicate_clusters: list[dict[str, Any]] = []
         for checksum, group in checksum_groups.items():

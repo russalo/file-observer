@@ -77,12 +77,12 @@ class TestDuplicateClusters:
 
 class TestSpecialistStats:
     def test_empty_when_specialists_disabled(self, tmp_path):
-        shutil.copy(FIXTURES / "logo_rgb.png", tmp_path / "img.png")
+        shutil.copy(FIXTURES / "sample_logo.png", tmp_path / "img.png")
         q = _scan(tmp_path, specialists=False).quality
         assert q.specialist_stats == {}
 
     def test_populated_when_enabled(self, tmp_path):
-        shutil.copy(FIXTURES / "logo_rgb.png", tmp_path / "img.png")
+        shutil.copy(FIXTURES / "sample_logo.png", tmp_path / "img.png")
         q = _scan(tmp_path, specialists=True).quality
         assert "image_structure" in q.specialist_stats
         s = q.specialist_stats["image_structure"]
@@ -90,7 +90,7 @@ class TestSpecialistStats:
         assert s["attempted"] == s["succeeded"] + s["failed"]
 
     def test_aggregate_reconciles_with_per_tool(self, tmp_path):
-        shutil.copy(FIXTURES / "logo_rgb.png", tmp_path / "img.png")
+        shutil.copy(FIXTURES / "sample_logo.png", tmp_path / "img.png")
         q = _scan(tmp_path, specialists=True).quality
         per_tool_failed = sum(s["failed"] for s in q.specialist_stats.values())
         assert per_tool_failed == q.specialist_failures
