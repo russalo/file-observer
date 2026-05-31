@@ -17,7 +17,7 @@ def test_canonical_top_level_api():
 
     import file_observer
 
-    assert file_observer.__version__ == "1.0.2"
+    assert file_observer.__version__ == "1.1.0"
     assert "Scanner" in file_observer.__all__
 
 
@@ -46,11 +46,11 @@ def test_module_cli_entrypoint(module):
 
 
 def test_canonical_submodule_constants_unchanged():
-    """Constants and the manifest field they feed are NOT renamed in 1.0.1."""
+    """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.0.2"
-    assert SCHEMA_VERSION == "1.0"  # frozen contract, no patch bump
+    assert SCANNER_VERSION == "1.1.0"
+    assert SCHEMA_VERSION == "1.1"  # additive minor bump (v1.1 corpus-intelligence fields)
     assert LOGIC_VERSION == "1.0.0"  # no routing change
 
 

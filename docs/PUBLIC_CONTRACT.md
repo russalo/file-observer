@@ -210,6 +210,8 @@ These fields exist in the manifest but are subject to change in MINOR releases w
 
 - `format_signatures` — internal magic signature scan results
 - `is_polyglot` — derived from format_signatures
+- `quality.duplicate_clusters`, `quality.duplicate_cluster_count`, `quality.redundant_file_count` — duplicate detection (provisional since v1.1)
+- `quality.specialist_stats` — per-specialist attempted/succeeded/failed counts (provisional since v1.1)
 
 The following were promoted to stable in v0.11: `vectors_collected[]`, `reference_tokens`, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog`, `filename_patterns`.
 
@@ -233,6 +235,7 @@ Files in `scratch/` and any document with `_DRAFT` in the filename are not commi
 | `0.10` | 0.10.0 | Human-readable `summary` field (stable). `author_aggregate` corpus vector. `filename_patterns` per-file field (6 booleans). |
 | `0.11` | 0.11.0 | Provisional → stable promotions: `vectors_collected[]`, `reference_tokens`, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog`, `filename_patterns`. SECURITY.md added. No new fields. |
 | `1.0` | 1.0.0 | Schema freeze. Public contract binding. Backward compatibility policy in effect. No new fields — governance only. |
+| `1.1` | 1.1.0 | Corpus Intelligence (additive): `quality.duplicate_clusters` (+ `duplicate_cluster_count`, `redundant_file_count`) and `quality.specialist_stats`. Both provisional (§2.4). First additive release after the freeze — no existing field changed; `LOGIC_VERSION` unchanged. |
 
 ---
 

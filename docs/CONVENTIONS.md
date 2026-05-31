@@ -235,7 +235,7 @@ This section is for **us**. It is the running list of everything File Observer c
 
 ### 4.6 Quality block fields
 
-10 fields in `ScanQuality`: total_files, clean_files, degraded_files, error_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions, safety_flags, **chatlog_files** (v0.8)
+Core counters in `ScanQuality`: total_files, clean_files, degraded_files, error_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions, safety_flags, **chatlog_files** (v0.8). Plus `per_directory_summary[]` (v0.9, stable) and the v1.1 provisional additions: **duplicate_clusters** / duplicate_cluster_count / redundant_file_count and **specialist_stats** (per-tool attempted/succeeded/failed).
 
 ### 4.7 Error codes
 

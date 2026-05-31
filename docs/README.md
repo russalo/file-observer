@@ -59,11 +59,11 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.0.2` |
-| **Schema** | `1.0` |
+| **Version** | `1.1.0` |
+| **Schema** | `1.1` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 571 passed; ran clean (zero fatal errors) across 12 corpora / 28,756 files |
+| **Tests** | 580 passed; ran clean (zero fatal errors) across 12 corpora / 28,756 files |
 
 ---
 
@@ -109,6 +109,8 @@ Each vector carries an identity digest (SHA-256). Same digest = same rules + sam
 - **HMAC signatures** — optional signed manifests for audit chains
 - **Delta scanning** — diff two manifests from separate runs to see added/modified/removed files. Snapshot-to-snapshot, not live change events.
 - **Per-directory summary** — corpus shape visible at a glance
+- **Duplicate detection** — files grouped by identical content checksum (`quality.duplicate_clusters`); surfaces redundant copies for migration/dedup
+- **Per-specialist stats** — attempted/succeeded/failed per specialist tool, so extraction quality is visible, not implied
 
 ---
 
