@@ -59,11 +59,11 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.1.0` |
-| **Schema** | `1.1` |
+| **Version** | `1.2.0` |
+| **Schema** | `1.2` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 580 passed; ran clean (zero fatal errors) across 12 corpora / 28,756 files |
+| **Tests** | 595 passed; ran clean (zero fatal errors) across 12 corpora / 28,756 files |
 
 ---
 
@@ -95,7 +95,7 @@ Supported specialist formats: `.pdf`, `.png`, `.jpg`, `.msg`, `.eml`, `.xlsx`, `
 
 | Vector | What it finds |
 |---|---|
-| **chatlog** | Conversation patterns — turns, speakers, section markers. Works on `.txt`, `.md`, `.jsonl`. |
+| **chatlog** | Conversation patterns — turns, speakers (per-speaker counts/alternation), section markers. Detects prose transcripts and conversational JSON/JSONL across common schemas (role/from/speaker + text/value/content). Works on `.txt`, `.md`, `.jsonl`, `.json`. |
 | **reference_tokens** | @mentions, wiki links, code blocks, URLs, emails, file paths, ticket numbers |
 | **author_aggregate** | Cross-format author normalization. Spots template defaults vs real humans. |
 | **filename_patterns** | Date prefixes, version markers, numbered revisions, template names, UUIDs, copy suffixes |

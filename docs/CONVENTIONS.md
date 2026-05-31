@@ -45,7 +45,7 @@ The scanner has five distinct things that carry versions. They are independent â
 **When it bumps:** When detection rules, regex patterns, or counting logic change.
 **Format:** Single integer.
 **Current vectors:**
-- `chatlog` method_version: 3 (v0.10.1: JSONL role detection + v0.9.1 stop-list + H3 threshold)
+- `chatlog` method_version: 4 (v1.2: generalized conversational JSON/JSONL detection â€” role/content keys, arrays, nested trees, embedded dialogue, `.json` candidate; markdown FP co-signal; per-speaker structure. Prior: 3 = v0.10.1 JSONL role detection + v0.9.1 stop-list/H3 threshold)
 - `reference_tokens` method_version: 2 (v0.9.2: URL-stripped path counting)
 - `author_aggregate` method_version: 1 (v0.10.0: corpus-scoped)
 - `filename_patterns` method_version: 1 (v0.10.0: file-scoped)

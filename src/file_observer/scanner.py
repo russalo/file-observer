@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.1.0
-    Schema:     1.1
+    Version:    1.2.0
+    Schema:     1.2
     Python:     >= 3.12
-    Spec:       docs/v1.1.0_RFC_Specification.md (current)
+    Spec:       docs/v1.2.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -71,9 +71,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.1.0"
-LOGIC_VERSION = "1.0.0"
-SCHEMA_VERSION = "1.1"
+SCANNER_VERSION = "1.2.0"
+LOGIC_VERSION = "1.1.0"
+SCHEMA_VERSION = "1.2"
 
 
 # v0.8: register markdown extensions in stdlib mimetypes so that when libmagic
@@ -266,6 +266,9 @@ class ErrorRecord:
     code: str
     message: str
     stage: str
+    # v1.2: optional structured diagnostic (provisional). Default None so all
+    # existing ErrorRecord construction is unaffected.
+    detail: dict[str, Any] | None = None
 
 
 @dataclass
@@ -543,12 +546,14 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 3
+CHATLOG_METHOD_VERSION = 4  # v1.2: generalized conversational detection + per-speaker structure
 CHATLOG_RULES_DEFINITION = (
-    "detect:speaker_label_re(3+,stop_list),h3_header_re(5+),section_divider_re(3+),"
-    "jsonl_role_keys(3+);"
+    "detect:speaker_label_re(3+,stop_list,alternation),h3_header_re(5+),section_divider_re(3+),"
+    "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
+    "line/array/tree,embedded_speaker_labels);"
     "extract:turn_count,speaker_labels(freq>=3,stop_list),section_markers,"
-    "turn_char_stats,reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
+    "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,"
+    "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
     "stop_list:Allow,CAUTION,Disallow,Error,Example,Examples,FIXME,"
     "IMPORTANT,NOTE,Note,Result,TIP,TODO,Warning"
@@ -557,10 +562,30 @@ CHATLOG_STATIC_TUNING = {
     "detection_threshold": 3,
     "h3_detection_threshold": 5,
     "top_capitalized_tokens_n": 20,
-    "jsonl_role_keys": ["user", "assistant", "human"],
+    "json_role_field_keys": ["type", "role", "from", "speaker", "author"],
+    "json_content_field_keys": ["text", "value", "content", "message", "body"],
 }
-# v0.10.1: JSONL conversation role keys for chatlog detection
+# v0.10.1 / v1.2: conversational role VALUES (for the legacy type:user/assistant
+# fast path and embedded-label heuristics). Detection no longer requires these
+# specific values — see CHATLOG_ROLE_FIELD_KEYS for the generalized check.
 CHATLOG_JSONL_ROLE_KEYS = {"user", "assistant", "human"}
+# v1.2: generalized conversational-JSON keys. A "message-like" object has a
+# role-field key (names the speaker) AND a content-field key (holds the text).
+CHATLOG_ROLE_FIELD_KEYS = {"type", "role", "from", "speaker", "author"}
+CHATLOG_CONTENT_FIELD_KEYS = {"text", "value", "content", "message", "body"}
+# v1.2: regex fallback for truncated/large single-JSON samples (e.g. a multi-MB
+# ShareGPT file whose bounded sample won't json.loads). Matches a flat object
+# carrying both a role-field and a content-field key, in either order.
+CHATLOG_JSON_MESSAGE_RE = re.compile(
+    r'\{[^{}]*"(?:type|role|from|speaker|author)"\s*:\s*"[^"]{1,40}"[^{}]*'
+    r'"(?:text|value|content|message|body)"\s*:'
+    r'|\{[^{}]*"(?:text|value|content|message|body)"\s*:[^{}]*'
+    r'"(?:type|role|from|speaker|author)"\s*:\s*"[^"]{1,40}"'
+)
+# v1.2: date-stamped headers distinguish a journal/vault ('# 2026-04-10') from
+# a prose doc ('### Parameters'). Lets rules 2/3 keep detecting journals while
+# no longer over-firing on documentation markdown.
+CHATLOG_DATE_HEADER_RE = re.compile(r'(?m)^#{1,6}\s.*\b\d{4}-\d{2}-\d{2}\b')
 # v0.9.1: speaker labels matching these tokens are excluded from detection
 # and extraction. These are common documentation patterns (Note:, Example:, etc.)
 # that match the speaker label regex but are not conversation participants.
@@ -1481,7 +1506,7 @@ class Scanner:
                 # is the first content-detected (not extension-based) flag in
                 # the scanner. Always runs when we have decoded text, even if
                 # enable_specialists=False — detection is cheap.
-                if extension in {".txt", ".md", ".mdx", ".jsonl"}:
+                if extension in {".txt", ".md", ".mdx", ".jsonl", ".json"}:
                     is_chatlog = self._detect_chatlog_pattern(text)
                     provenance["is_chatlog"] = asdict(ProvenanceEntry(
                         layer="derived",
@@ -1517,6 +1542,8 @@ class Scanner:
                                     code=ERR_SPECIALIST_PROBE_FAILED,
                                     message=f"mime_type {mime_type} does not match expected formats for {CHATLOG_NAMESPACE} specialist — skipped",
                                     stage="specialist",
+                                    detail={"reason": "mime_guard_mismatch", "mime_type": mime_type,
+                                            "expected": sorted(chatlog_guard)},
                                 ))
                             else:
                                 chatlog_meta = self._extract_chatlog_metadata(text)
@@ -1525,6 +1552,8 @@ class Scanner:
                                         code=ERR_SPECIALIST_PROBE_FAILED,
                                         message=f"specialist returned null for {CHATLOG_TOOL}",
                                         stage="specialist",
+                                        detail={"reason": "empty or unparseable chatlog text",
+                                                "text_chars": len(text)},
                                     ))
                                 else:
                                     if specialist_metadata is None:
@@ -2457,13 +2486,16 @@ class Scanner:
     def _detect_chatlog_pattern(self, text: str) -> bool:
         """Content-based detection of chatlog / journal / vault structure.
 
-        Returns True if the decoded text matches any of the three rules:
+        Returns True if the decoded text matches any of the rules:
 
           1. Three or more lines matching the speaker label pattern
              (excluding stop-list tokens like Note:, Example:, etc.)
-          2. Five or more occurrences of ``### `` headers in the sample.
-             (v0.9.1: raised from 3 to reduce false positives on markdown docs)
-          3. Three or more lines that are pure section dividers.
+          2/3. (v1.2) Markdown structure — 5+ ``### `` headers OR 3+ section
+             dividers — but ONLY when accompanied by a conversational signal
+             (2+ speaker labels). Structure alone over-fired on prose docs
+             (README/specs); requiring a speaker signal kills that false
+             positive while preserving genuine transcripts/journals.
+          4. Conversational JSON/JSONL (generalized, v1.2).
 
         Detection runs even when ``enable_specialists=False`` because it's
         cheap (regex on the already-decoded baseline text).
@@ -2477,28 +2509,206 @@ class Scanner:
         ]
         if len(speaker_matches) >= 3:
             return True
-        # Rule 2: H3 headers (v0.9.1: threshold raised to 5)
-        if len(CHATLOG_H3_HEADER_RE.findall(text)) >= 5:
+        # Rules 2/3 (v1.2): markdown structure (H3 headers / section dividers)
+        # only counts as a chatlog/journal signal when accompanied by a
+        # conversational co-signal — 2+ speaker labels OR 2+ date-stamped
+        # headers (journal entries). Prose docs have neither, so they no
+        # longer false-positive; transcripts and dated journals still do.
+        structure_cosignal = (
+            len(speaker_matches) >= 2
+            or len(CHATLOG_DATE_HEADER_RE.findall(text)) >= 2
+        )
+        if structure_cosignal and len(CHATLOG_H3_HEADER_RE.findall(text)) >= 5:
             return True
-        # Rule 3: section dividers (threshold stays at 3)
-        if len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
+        if structure_cosignal and len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
             return True
-        # Rule 4 (v0.10.1): JSONL conversation format — count lines with
-        # role-bearing JSON objects ("type": "user"/"assistant"/"human")
-        jsonl_role_count = 0
+        # Rule 4 (v1.2): generalized conversational JSON/JSONL detection
+        # (line-delimited, arrays, nested trees, embedded speaker labels).
+        return self._detect_conversational_json(text)
+
+    @staticmethod
+    def _is_message_like(obj: Any) -> bool:
+        """A dict carrying a role-field key (names the speaker) AND a
+        content-field key (holds the utterance). Schema-general."""
+        if not isinstance(obj, dict):
+            return False
+        has_role = any(
+            k in obj and isinstance(obj[k], (str, int)) and str(obj[k]).strip()
+            for k in CHATLOG_ROLE_FIELD_KEYS
+        )
+        if not has_role:
+            return False
+        for k in CHATLOG_CONTENT_FIELD_KEYS:
+            if k not in obj:
+                continue
+            v = obj[k]
+            if isinstance(v, str) and v.strip():
+                return True
+            if isinstance(v, dict) and isinstance(v.get("content"), (str, list)):
+                return True  # e.g. Claude: message.content
+            if isinstance(v, list) and v:
+                return True  # content as a list of parts
+        return False
+
+    def _count_message_like(self, node: Any, budget: int = 5000) -> int:
+        """Count message-like dicts in a parsed JSON structure (arrays of
+        messages, nested reply trees). Bounded; early-exits at 3."""
+        count = 0
+        stack = [node]
+        seen = 0
+        while stack and seen < budget:
+            cur = stack.pop()
+            seen += 1
+            if isinstance(cur, dict):
+                if self._is_message_like(cur):
+                    count += 1
+                    if count >= 3:
+                        return count
+                stack.extend(cur.values())
+            elif isinstance(cur, list):
+                stack.extend(cur)
+        return count
+
+    @staticmethod
+    def _string_has_speaker_dialogue(s: Any) -> bool:
+        """Dialogue embedded in a JSON string value (e.g. hh-rlhf's
+        '\\n\\nHuman: ...\\n\\nAssistant: ...'): 3+ prose speaker labels."""
+        if not isinstance(s, str) or len(s) < 20:
+            return False
+        labels = [
+            m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(s)
+            if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
+        ]
+        return len(labels) >= 3
+
+    def _detect_conversational_json(self, text: str) -> bool:
+        """Generalized conversational JSON/JSONL detection (v1.2).
+
+        Handles: line-delimited messages (ConvoKit speaker/text, Claude
+        type+message.content), nested trees (oasst prompt.role+replies),
+        message arrays (ShareGPT from/value), dialogue embedded in a string
+        field (hh-rlhf), and truncated large single-JSON via a regex fallback.
+        """
+        msg_count = 0
+        any_parsed = False
+        # Strategy 1: line-delimited JSON (JSONL)
         for line in text.split("\n"):
             line = line.strip()
-            if not line or not line.startswith("{"):
+            if not line or line[0] not in "{[":
                 continue
             try:
                 obj = json.loads(line)
-                if isinstance(obj, dict) and obj.get("type") in CHATLOG_JSONL_ROLE_KEYS:
-                    jsonl_role_count += 1
-                    if jsonl_role_count >= 3:
-                        return True
             except (json.JSONDecodeError, ValueError):
                 continue
+            any_parsed = True
+            msg_count += self._count_message_like(obj)
+            if msg_count >= 3:
+                return True
+            if isinstance(obj, dict):
+                for v in obj.values():
+                    if self._string_has_speaker_dialogue(v):
+                        return True
+        # Strategy 2: single JSON document/array small enough to fit the sample
+        if not any_parsed:
+            stripped = text.strip()
+            if stripped[:1] in "{[":
+                try:
+                    if self._count_message_like(json.loads(stripped)) >= 3:
+                        return True
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        # Strategy 3: regex fallback for truncated/large single-JSON
+        if len(CHATLOG_JSON_MESSAGE_RE.findall(text)) >= 3:
+            return True
         return False
+
+    @staticmethod
+    def _message_role_content(obj: dict) -> tuple[str, str] | None:
+        """(speaker, content_text) for a message-like dict, else None."""
+        speaker = None
+        for k in CHATLOG_ROLE_FIELD_KEYS:
+            v = obj.get(k)
+            if isinstance(v, str) and v.strip():
+                speaker = v.strip(); break
+            if isinstance(v, int):
+                speaker = str(v); break
+        if speaker is None:
+            return None
+        for k in CHATLOG_CONTENT_FIELD_KEYS:
+            if k not in obj:
+                continue
+            v = obj[k]
+            if isinstance(v, str) and v.strip():
+                return (speaker, v)
+            if isinstance(v, dict):
+                c = v.get("content")
+                if isinstance(c, str) and c.strip():
+                    return (speaker, c)
+                if isinstance(c, list):
+                    parts = [it["text"] for it in c if isinstance(it, dict) and isinstance(it.get("text"), str)]
+                    if parts:
+                        return (speaker, "\n".join(parts))
+            if isinstance(v, list):
+                parts = [it["text"] for it in v if isinstance(it, dict) and isinstance(it.get("text"), str)]
+                if parts:
+                    return (speaker, "\n".join(parts))
+        return None
+
+    @staticmethod
+    def _parse_embedded_dialogue(s: str) -> list[tuple[str, str]]:
+        """Split a string with prose speaker labels into (speaker, text) pairs
+        (e.g. hh-rlhf's '\\n\\nHuman: ...\\n\\nAssistant: ...')."""
+        pairs: list[tuple[str, str]] = []
+        matches = [m for m in CHATLOG_SPEAKER_LABEL_RE.finditer(s)
+                   if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST]
+        for i, m in enumerate(matches):
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(s)
+            pairs.append((m.group(1), s[m.end():end].strip()))
+        return pairs
+
+    def _extract_json_conversation(self, text: str, cap: int = 2000) -> list[tuple[str, str]]:
+        """Ordered (speaker, content) pairs from conversational JSON/JSONL —
+        line-delimited messages, arrays, nested trees, and embedded dialogue."""
+        pairs: list[tuple[str, str]] = []
+        seen = [0]
+
+        def walk(node: Any) -> None:
+            stack = [node]
+            while stack and len(pairs) < cap and seen[0] < 20000:
+                cur = stack.pop(); seen[0] += 1
+                if isinstance(cur, dict):
+                    rc = self._message_role_content(cur)
+                    if rc:
+                        pairs.append(rc)
+                    else:
+                        for v in cur.values():
+                            if isinstance(v, str) and self._string_has_speaker_dialogue(v):
+                                pairs.extend(self._parse_embedded_dialogue(v))
+                    stack.extend(reversed(list(cur.values())))
+                elif isinstance(cur, list):
+                    stack.extend(reversed(cur))
+
+        parsed_any = False
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line or line[0] not in "{[":
+                continue
+            try:
+                obj = json.loads(line)
+            except (json.JSONDecodeError, ValueError):
+                continue
+            parsed_any = True
+            walk(obj)
+            if len(pairs) >= cap:
+                break
+        if not parsed_any:
+            s = text.strip()
+            if s[:1] in "{[":
+                try:
+                    walk(json.loads(s))
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        return pairs
 
     # Default top-N for capitalized tokens. Per spec §2.5 N=20.
     _CHATLOG_TOP_TOKENS_N = 20
@@ -2536,74 +2746,30 @@ class Scanner:
         if not text:
             return None
 
-        # v0.10.1: detect JSONL format by scanning for role-bearing lines
-        # (same check as detection rule 4 to ensure detection and extraction agree)
-        jsonl_mode = False
-        jsonl_roles: list[str] = []
-        jsonl_role_count = 0
-        for probe_line in text.split("\n"):
-            probe_line = probe_line.strip()
-            if not probe_line or not probe_line.startswith("{"):
-                continue
-            try:
-                obj = json.loads(probe_line)
-                if isinstance(obj, dict) and obj.get("type") in CHATLOG_JSONL_ROLE_KEYS:
-                    jsonl_role_count += 1
-                    if jsonl_role_count >= 3:
-                        jsonl_mode = True
-                        break
-            except (json.JSONDecodeError, ValueError):
-                continue
+        # v1.2: generalized conversational-JSON extraction (mirrors detection —
+        # line-delimited messages, arrays, nested trees, embedded dialogue).
+        json_pairs = self._extract_json_conversation(text)
+        jsonl_mode = len(json_pairs) >= 3
+        turn_lengths_seq: list[tuple[str, int]] = []
+        speaker_seq: list[str] = []
 
         if jsonl_mode:
-            # Extract message text from JSONL conversation lines
-            message_texts: list[str] = []
-            for line in text.split("\n"):
-                line = line.strip()
-                if not line or not line.startswith("{"):
-                    continue
-                try:
-                    obj = json.loads(line)
-                    if not isinstance(obj, dict):
-                        continue
-                    role = obj.get("type", "")
-                    if role in CHATLOG_JSONL_ROLE_KEYS:
-                        jsonl_roles.append(role.capitalize())
-                        # Extract message content — try common structures
-                        msg = obj.get("message", {})
-                        if isinstance(msg, dict):
-                            content = msg.get("content", "")
-                            if isinstance(content, str) and content:
-                                message_texts.append(content)
-                            elif isinstance(content, list):
-                                for item in content:
-                                    if isinstance(item, dict) and isinstance(item.get("text"), str):
-                                        message_texts.append(item["text"])
-                        elif isinstance(msg, str) and msg:
-                            message_texts.append(msg)
-                except (json.JSONDecodeError, ValueError):
-                    continue
-
-            # Build turn statistics from JSONL roles
+            jsonl_roles = [sp for sp, _ in json_pairs]
+            message_texts = [txt for _, txt in json_pairs]
+            speaker_seq = jsonl_roles
+            turn_lengths_seq = [(sp, len(txt)) for sp, txt in json_pairs]
             turn_count = len(jsonl_roles)
             label_counts = Counter(jsonl_roles)
             speaker_labels = sorted(
-                label for label, count in label_counts.items()
-                if count >= 3
+                label for label, count in label_counts.items() if count >= 3
             )
-            # Use concatenated message text for text-based extraction
             concat_text = "\n".join(message_texts) if message_texts else ""
-            # Turn char stats from message lengths
-            avg_turn_chars = 0
-            max_turn_chars = 0
-            min_turn_chars = 0
-            if len(message_texts) >= 2:
-                lengths = [len(t) for t in message_texts if len(t) > 0]
-                if lengths:
-                    avg_turn_chars = int(sum(lengths) / len(lengths))
-                    max_turn_chars = max(lengths)
-                    min_turn_chars = min(lengths)
-            # Section markers: none in JSONL
+            avg_turn_chars = max_turn_chars = min_turn_chars = 0
+            lengths = [len(t) for t in message_texts if t]
+            if lengths:
+                avg_turn_chars = int(sum(lengths) / len(lengths))
+                max_turn_chars = max(lengths)
+                min_turn_chars = min(lengths)
             section_marker_count = 0
             section_marker_styles: list[str] = []
         else:
@@ -2621,6 +2787,11 @@ class Scanner:
                 label for label, count in label_counts.items()
                 if count >= 3
             )
+            # v1.2: per-speaker sequence + attributed turn lengths (prose mode)
+            speaker_seq = [m.group(1) for m in raw_label_matches]
+            for i, mm in enumerate(raw_label_matches):
+                seg_end = raw_label_matches[i + 1].start() if i + 1 < len(raw_label_matches) else len(text)
+                turn_lengths_seq.append((mm.group(1), max(0, seg_end - mm.end())))
             # Char distance between consecutive speaker labels.
             avg_turn_chars = 0
             max_turn_chars = 0
@@ -2671,9 +2842,38 @@ class Scanner:
         lowercase_words = CHATLOG_LOWERCASE_WORD_RE.findall(concat_text.lower())
         vocabulary_size_estimate = len(set(lowercase_words))
 
+        # --- v1.2 (provisional): per-speaker turn structure ---
+        speaker_turn_counts = dict(sorted(Counter(speaker_seq).items()))
+        _per_speaker: dict[str, list[int]] = {}
+        for sp, ln in turn_lengths_seq:
+            _per_speaker.setdefault(sp, []).append(ln)
+        speaker_turn_chars = {
+            sp: {"avg": int(sum(ls) / len(ls)), "max": max(ls), "min": min(ls)}
+            for sp, ls in sorted(_per_speaker.items()) if ls
+        }
+        longest_run = cur_run = changes = 0
+        prev: str | None = None
+        for sp in speaker_seq:
+            if sp == prev:
+                cur_run += 1
+            else:
+                cur_run = 1
+                if prev is not None:
+                    changes += 1
+            longest_run = max(longest_run, cur_run)
+            prev = sp
+        change_ratio = round(changes / (len(speaker_seq) - 1), 3) if len(speaker_seq) > 1 else 0.0
+        alternation = {
+            "longest_single_speaker_run": longest_run,
+            "speaker_change_ratio": change_ratio,
+        }
+
         return {
             "turn_count": turn_count,
             "speaker_labels": speaker_labels,
+            "speaker_turn_counts": speaker_turn_counts,
+            "speaker_turn_chars": speaker_turn_chars,
+            "alternation": alternation,
             "section_marker_count": section_marker_count,
             "section_marker_styles": section_marker_styles,
             "avg_turn_chars": avg_turn_chars,

@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "1.1.0"
-        assert ctx.logic_version == "1.0.0"
+        assert ctx.scanner_version == "1.2.0"
+        assert ctx.logic_version == "1.1.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "1.1.0"
+        assert data["context"]["scanner_version"] == "1.2.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1313,8 +1313,17 @@ class TestDetectChatlogPattern:
     # ---- Rule 2: ### headers ----
 
     def test_five_h3_headers_triggers(self, scanner: Scanner) -> None:
-        text = "### One\nbody\n### Two\nbody\n### Three\nbody\n### Four\nbody\n### Five\nbody\n"
+        # v1.2: H3 headers count as a journal signal when accompanied by a
+        # co-signal (here, date-stamped entries). Bare prose headers no longer
+        # trigger — see test_generic_h3_headers_no_cosignal_does_not_trigger.
+        text = ("### 2026-01-01\nbody\n### 2026-01-02\nbody\n### 2026-01-03\n"
+                "body\n### 2026-01-04\nbody\n### 2026-01-05\nbody\n")
         assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_generic_h3_headers_no_cosignal_does_not_trigger(self, scanner: Scanner) -> None:
+        """v1.2 FP fix: 5+ bare H3 headers (prose doc) no longer trigger."""
+        text = "### One\nbody\n### Two\nbody\n### Three\nbody\n### Four\nbody\n### Five\nbody\n"
+        assert scanner._detect_chatlog_pattern(text) is False
 
     def test_four_h3_headers_does_not_trigger(self, scanner: Scanner) -> None:
         """v0.9.1: threshold raised from 3 to 5 — 4 headers no longer trigger."""
@@ -1333,8 +1342,14 @@ class TestDetectChatlogPattern:
     # ---- Rule 3: section dividers ----
 
     def test_three_dash_dividers_triggers(self, scanner: Scanner) -> None:
-        text = "section a\n---\nsection b\n---\nsection c\n---\nfooter\n"
+        # v1.2: dividers count when accompanied by a co-signal (dated entries).
+        text = "## 2026-01-01\n---\n## 2026-01-02\n---\n## 2026-01-03\n---\nfooter\n"
         assert scanner._detect_chatlog_pattern(text) is True
+
+    def test_generic_dividers_no_cosignal_does_not_trigger(self, scanner: Scanner) -> None:
+        """v1.2 FP fix: bare section dividers (no speaker/date) no longer trigger."""
+        text = "section a\n---\nsection b\n---\nsection c\n---\nfooter\n"
+        assert scanner._detect_chatlog_pattern(text) is False
 
     def test_three_equals_dividers_does_not_trigger_detection(self, scanner: Scanner) -> None:
         # Detection rule 3 per spec §2.3 is specifically "3+ `---` section
@@ -1535,8 +1550,9 @@ class TestIsChatlogIntegration:
 
     def test_chatlog_txt_file_detected(self, tmp_path: Path) -> None:
         # The .txt extension is also in the chatlog detection allow list.
+        # v1.2: dividers need a co-signal (dated journal entries here).
         content = (
-            "section\n---\nsection\n---\nsection\n---\nfooter\n"
+            "## 2026-01-01\n---\n## 2026-01-02\n---\n## 2026-01-03\n---\nfooter\n"
         )
         (tmp_path / "log.txt").write_text(content)
         manifest = Scanner(source_dir=tmp_path).scan()
@@ -1552,10 +1568,10 @@ class TestIsChatlogIntegration:
         assert rec.signal_provenance["is_chatlog"]["trigger"] == "content_pattern_none"
 
     def test_non_target_extension_not_detected(self, tmp_path: Path) -> None:
-        # .json files contain chatlog-pattern-matching content but aren't in
-        # the .txt/.md/.mdx allow list, so detection should NOT run for them.
+        # .log is not in the chatlog candidate-extension allow list
+        # (.txt/.md/.mdx/.jsonl/.json as of v1.2), so detection should NOT run.
         content = '{"User": "hi", "Assistant": "hello"}'
-        (tmp_path / "data.json").write_text(content)
+        (tmp_path / "data.log").write_text(content)
         manifest = Scanner(source_dir=tmp_path).scan()
         rec = manifest.files[0]
         assert rec.is_chatlog is False
@@ -1585,7 +1601,7 @@ class TestIsChatlogIntegration:
     def test_is_chatlog_serializes_to_json(self, tmp_path: Path) -> None:
         from file_observer.scanner import manifest_to_json
         import json as _json
-        content = "### A\n### B\n### C\n### D\n### E\n"
+        content = "### 2026-01-01\n### 2026-01-02\n### 2026-01-03\n### 2026-01-04\n### 2026-01-05\n"
         (tmp_path / "headers.md").write_text(content)
         manifest = Scanner(source_dir=tmp_path).scan()
         data = _json.loads(manifest_to_json(manifest))
@@ -1989,11 +2005,11 @@ class TestChatlogFixtures:
         assert "---" in chat["section_marker_styles"]
 
     def test_headers_fixture_h3_rule(self, tmp_path: Path) -> None:
+        # v1.2 FP fix: this fixture is prose-doc-like (bare ### headers, no
+        # speakers or dated entries) — exactly the markdown that over-fired
+        # before. It must NO LONGER be flagged as a chatlog.
         rec = self._scan_one_file("chatlog_headers.md", tmp_path)
-        assert rec.is_chatlog is True
-        chat = rec.specialist_metadata["chatlog"]
-        assert chat["section_marker_count"] >= 6  # 5 ### headers + 1 # header = 6
-        assert "### " in chat["section_marker_styles"]
+        assert rec.is_chatlog is False
 
 
 # ---------------------------------------------------------------------------
@@ -2023,8 +2039,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "1.1.0"
-        assert LOGIC_VERSION == "1.0.0"
+        assert SCANNER_VERSION == "1.2.0"
+        assert LOGIC_VERSION == "1.1.0"
 
 
 # ---------------------------------------------------------------------------
@@ -3451,15 +3467,18 @@ class TestJsonlChatlogDetection:
         rec = manifest.files[0]
         assert rec.specialist_metadata is not None
         chat = rec.specialist_metadata["chatlog"]
-        assert chat["turn_count"] == 6
+        # v1.2: generalized detection counts every role-field+content object,
+        # including the `system` turn (was user/assistant/human-only → 6).
+        assert chat["turn_count"] == 7
 
     def test_jsonl_extraction_speaker_labels(self, tmp_path: Path) -> None:
         (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
         config = ScannerConfig(enable_specialists=True)
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
         chat = manifest.files[0].specialist_metadata["chatlog"]
-        assert "User" in chat["speaker_labels"]
-        assert "Assistant" in chat["speaker_labels"]
+        # v1.2: speaker labels are faithful to source (no longer capitalized).
+        assert "user" in chat["speaker_labels"]
+        assert "assistant" in chat["speaker_labels"]
 
     def test_jsonl_extraction_vocabulary(self, tmp_path: Path) -> None:
         (tmp_path / "chat.jsonl").write_text(self.JSONL_CHAT)
@@ -3508,4 +3527,4 @@ class TestMarkdownReport:
         from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
-        assert "1.1.0" in md
+        assert "1.2.0" in md
