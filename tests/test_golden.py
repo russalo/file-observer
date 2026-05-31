@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scanner.scanner import Scanner, manifest_to_json
+from file_observer.scanner import Scanner, manifest_to_json
 
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from scanner.scanner import Scanner, ScannerConfig, manifest_to_json, manifest_to_jsonl, FileRecord, ScanManifest
+from file_observer.scanner import Scanner, ScannerConfig, manifest_to_json, manifest_to_jsonl, FileRecord, ScanManifest
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
@@ -340,7 +340,7 @@ class TestMimeAnalysisIntegration:
     def test_supported_extensions_have_extension_mime(self, manifest: ScanManifest) -> None:
         # .mdx has no standard MIME registration in Python's mimetypes module
         no_standard_mime = {".mdx", ".msg", ".vx", ".toml"}
-        from scanner.scanner import SUPPORTED_EXTENSIONS
+        from file_observer.scanner import SUPPORTED_EXTENSIONS
         for f in manifest.files:
             if f.extension in SUPPORTED_EXTENSIONS and f.extension not in no_standard_mime:
                 assert f.mime_analysis.extension_mime is not None, (

@@ -87,7 +87,7 @@ pip install -e ".[dev]"
 file-observer
 
 # Run directly
-python src/scanner/scanner.py
+python src/file_observer/scanner.py
 
 # Run all tests
 python -m pytest tests/
@@ -98,7 +98,7 @@ python -m pytest tests/test_foo.py::test_name -v
 
 ## Architecture
 
-Single-module implementation in `src/scanner/scanner.py`. No package structure beyond that.
+Single-module implementation in `src/file_observer/scanner.py`, imported as `file_observer` (v1.0.1 rename). A deprecated `scanner` package re-exports the public API with a `DeprecationWarning` for backward compatibility. No deeper package structure yet — the conceptual modules (specialists, vectors) live in the one file until a change makes splitting them worthwhile.
 
 ### v0.3 Design Pillars
 1. **Capability-locked determinism** — identical inputs + identical `ScanContext` → identical outputs. Variance across environments must be explained by context (dependency versions, logic version).
