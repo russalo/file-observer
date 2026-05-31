@@ -45,3 +45,6 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Explicit: Sigstore attestations on sdist + wheel (default, pinned for durability)
+          attestations: true

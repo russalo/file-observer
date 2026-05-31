@@ -2,7 +2,9 @@
 
 **Know what's in your files before you open them.**
 
-File Observer scans directories and tells you exactly what's inside — file types, metadata, conversation patterns, author fingerprints, structural signals — all in a deterministic JSON manifest. It reads everything. It changes nothing.
+*A one-shot, read-only observation pass — not a file watcher. Point it at a directory, get one deterministic JSON manifest of what's inside, before you ingest it.*
+
+File Observer makes a single read-only pass over a directory and tells you exactly what's inside — file types, metadata, conversation patterns, author fingerprints, structural signals — all in one deterministic JSON manifest. You run it on demand; it doesn't stay resident or watch for changes. It reads everything. It changes nothing.
 
 ```bash
 pip install file-observer
@@ -22,23 +24,51 @@ chatlog matched 22 files. reference_tokens ran on 806 files (2,164 URLs,
 Largest directories: tika-parsers (2,037), tika-pipes (459), tika-core (440).
 ```
 
-That's the human-readable summary. The full manifest has per-file metadata, provenance traces, vector digests, and a signed integrity envelope.
+That's the human-readable summary. The full manifest is structured JSON — here's a truncated file object so you can see the data contract before you install:
+
+```json
+{
+  "schema_version": "1.0",
+  "context": { "scanner_version": "1.0.2", "logic_version": "1.0.0", "...": "…" },
+  "files": [
+    {
+      "path": "docs/report.pdf",
+      "mime_type": "application/pdf",
+      "checksum_sha256": "9f86d081884c7d65…",
+      "is_binary": true,
+      "requires_specialist_tool": "pdf_extraction",
+      "safety_flags": ["has_javascript"],
+      "signal_provenance": [
+        { "field": "mime_type", "layer": "raw", "method": "content_sniff", "trigger": "libmagic" }
+      ],
+      "...": "…"
+    }
+  ],
+  "vectors_collected": [
+    { "vector_id": "chatlog", "method_version": 3, "identity_digest": "a3f1c2…", "...": "…" }
+  ],
+  "manifest_checksum": "7d2bafef…",
+  "manifest_signature": { "algorithm": "HMAC-SHA256", "signature": "…" }
+}
+```
+
+Every derived field carries a `signal_provenance` entry; every vector an `identity_digest`; the whole manifest a checksum and optional HMAC signature.
 
 | | |
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.0.0` |
+| **Version** | `1.0.2` |
 | **Schema** | `1.0` |
 | **Python** | `>= 3.12` |
-| **License** | [AGPL-3.0](../LICENSE) (commercial license available) |
-| **Tests** | 564 passed, validated against 12 corpora / 28,756 files |
+| **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
+| **Tests** | 571 passed; ran clean (zero fatal errors) across 12 corpora / 28,756 files |
 
 ---
 
 ## Why File Observer?
 
-**Your pipeline needs to know what it's processing before it processes it.** File Observer is the observation layer that sits at the front of any document pipeline — ingestion, classification, OCR, embedding, audit. It tells the pipeline what's coming without touching the files.
+**Your pipeline needs to know what it's processing before it processes it.** File Observer is the observation layer that sits at the front of any document pipeline — ingestion, classification, OCR, embedding, audit. It tells the pipeline what's coming without touching the files. *(Need to react to filesystem changes as they happen? That's a watcher like watchdog or watchfiles — a different tool.)*
 
 - **Deterministic.** Same files + same config = identical manifest, every time. Cross-environment variance is explained, never hidden.
 - **Auditable.** Every derived field has a provenance trace — which method, which trigger, which inputs. Nothing is a black box.
@@ -69,14 +99,14 @@ Supported specialist formats: `.pdf`, `.png`, `.jpg`, `.msg`, `.eml`, `.xlsx`, `
 | **author_aggregate** | Cross-format author normalization. Spots template defaults vs real humans. |
 | **filename_patterns** | Date prefixes, version markers, numbered revisions, template names, UUIDs, copy suffixes |
 
-Each vector carries an identity digest (SHA-256). Same digest = same rules + same tuning = same output. Always.
+Each vector carries an identity digest (SHA-256). Same digest = same rules + same tuning = same output. Always. *(These are observation vectors — named, fingerprinted observations — not embedding vectors for a vector database.)*
 
 ### Safety and integrity
 
 - **Safety flags** — detects JavaScript in PDFs, macros in DOCX, OLE objects in RTF, external entities in XML
 - **Manifest checksum** — SHA-256 over the canonical manifest
 - **HMAC signatures** — optional signed manifests for audit chains
-- **Delta scanning** — track added/modified/removed files across incremental scans
+- **Delta scanning** — diff two manifests from separate runs to see added/modified/removed files. Snapshot-to-snapshot, not live change events.
 - **Per-directory summary** — corpus shape visible at a glance
 
 ---
@@ -165,7 +195,7 @@ Run File Observer against an Obsidian vault, a Confluence export, or a shared dr
 Moving files between systems? File Observer gives you checksums, MIME analysis, format signatures, and polyglot detection for every file. Delta scanning tracks what changed between runs. Filename patterns catch copy suffixes, numbered revisions, and UUID-named files.
 
 ### Security triage
-Safety flags surface JavaScript in PDFs, macros in DOCX files, OLE objects in RTF, and external entities in XML — without opening or executing anything. Feed the flags into your security pipeline for automated quarantine decisions.
+Safety flags surface JavaScript in PDFs, macros in DOCX files, OLE objects in RTF, and external entities in XML — without opening or executing anything. Surface them to your security pipeline, where *your own policy* decides quarantine or triage. The flags are structural observations, not verdicts — expect false positives and negatives, and tune your own thresholds.
 
 ---
 
@@ -206,7 +236,7 @@ fo ./docs --specialists --extension-override .pdf:specialist_budget=524288
 
 ## Validated at scale
 
-File Observer has been tested against 12 real-world corpora totaling 28,756 files with **zero errors**:
+File Observer has run cleanly — **zero fatal errors** — across 12 real-world corpora totaling 28,756 files. (This measures robustness, not extraction accuracy; precision/recall benchmarks are planned.)
 
 | Corpus | Files | What it tested |
 |---|---|---|
@@ -276,12 +306,12 @@ manifest_to_markdown(manifest)  # Human-readable report
 
 ## Contributing
 
-We welcome contributions. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full guide.
+We welcome contributions. See [CONTRIBUTING.md](https://github.com/russalo/file-observer/blob/main/CONTRIBUTING.md) for the full guide.
 
 **Quick version:**
 1. Fork and clone
 2. `pip install -e ".[dev]"` and run tests
-3. Sign the [CLA](../CLA.md) on your first PR
+3. Sign the [CLA](https://github.com/russalo/file-observer/blob/main/CLA.md) on your first PR
 4. One concern per PR, tests required, determinism preserved
 
 ---
@@ -290,7 +320,7 @@ We welcome contributions. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full
 
 File Observer is dual-licensed:
 
-- **Open source** under [AGPL-3.0](../LICENSE) — use freely, contribute back
+- **Open source** under [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) — use freely, contribute back
 - **Commercial license** available for cases where AGPL terms don't fit
 
 ### Which one applies to you
@@ -311,7 +341,7 @@ In short: AGPL obligations are triggered by **distribution** and by **network us
 
 Contact **russalo@russalo.com** for commercial terms.
 
-> This is a plain-language summary, not legal advice or a substitute for the [license text](../LICENSE). Where this summary and the license differ, the license governs.
+> This is a plain-language summary, not legal advice or a substitute for the [license text](https://github.com/russalo/file-observer/blob/main/LICENSE). Where this summary and the license differ, the license governs.
 
 ---
 

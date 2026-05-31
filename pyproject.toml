@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.0.1"
-description = "Know what's in your files before you open them. Deterministic file observation engine with cryptographic vector identity."
+version = "1.0.2"
+description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "docs/README.md"
 requires-python = ">=3.12"
 license = {text = "AGPL-3.0-or-later"}
