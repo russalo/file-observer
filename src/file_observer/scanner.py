@@ -2629,9 +2629,12 @@ class Scanner:
                         return True
                 except (json.JSONDecodeError, ValueError):
                     pass
-        # Strategy 3: regex fallback for truncated/large single-JSON
-        if len(CHATLOG_JSON_MESSAGE_RE.findall(text)) >= 3:
-            return True
+            # Strategy 3: regex fallback ONLY when nothing parsed (a truncated
+            # large single-JSON). When lines parsed, strategy 1's accurate
+            # object count governs — otherwise the regex would also match inner
+            # content blocks (e.g. Claude's rich-content) and over-count.
+            if len(CHATLOG_JSON_MESSAGE_RE.findall(text)) >= 3:
+                return True
         return False
 
     @staticmethod
