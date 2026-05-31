@@ -7,7 +7,7 @@ import pytest
 
 import struct
 from dataclasses import asdict
-from scanner.scanner import Scanner, ScannerConfig, ErrorRecord
+from file_observer.scanner import Scanner, ScannerConfig, ErrorRecord
 
 
 @pytest.fixture
@@ -425,18 +425,18 @@ class TestDetectBinary:
 
 class TestDetectUnicodeBom:
     def test_no_bom_returns_none(self) -> None:
-        from scanner.scanner import _detect_unicode_bom
+        from file_observer.scanner import _detect_unicode_bom
         assert _detect_unicode_bom(b"hello") is None
         assert _detect_unicode_bom(b"") is None
 
     def test_utf8_bom_not_unicode_bom(self) -> None:
         # UTF-8 BOM (ef bb bf) is intentionally NOT in the table — UTF-8 has no
         # NUL-byte problem, so it never trips detect_binary the wrong way.
-        from scanner.scanner import _detect_unicode_bom
+        from file_observer.scanner import _detect_unicode_bom
         assert _detect_unicode_bom(b"\xef\xbb\xbfhello") is None
 
     def test_each_unicode_bom(self) -> None:
-        from scanner.scanner import _detect_unicode_bom
+        from file_observer.scanner import _detect_unicode_bom
         assert _detect_unicode_bom(b"\xff\xfe") == "utf-16-le"
         assert _detect_unicode_bom(b"\xfe\xff") == "utf-16-be"
         assert _detect_unicode_bom(b"\xff\xfe\x00\x00") == "utf-32-le"
@@ -811,7 +811,7 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "1.0.0"
+        assert ctx.scanner_version == "1.0.1"
         assert ctx.logic_version == "1.0.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
@@ -846,11 +846,11 @@ class TestScanContext:
     def test_context_in_json_output(self, tmp_path: Path) -> None:
         import json as json_mod
         (tmp_path / "a.txt").write_text("hello")
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "1.0.0"
+        assert data["context"]["scanner_version"] == "1.0.1"
 
 
 # ---------------------------------------------------------------------------
@@ -931,7 +931,7 @@ class TestSignalProvenance:
 
     def test_provenance_in_json_output(self, tmp_path: Path) -> None:
         import json as json_mod
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
@@ -1095,11 +1095,11 @@ class TestMsgMetadata:
         assert result is None
 
     def test_msg_specialist_tool_registered(self) -> None:
-        from scanner.scanner import SPECIALIST_TOOLS
+        from file_observer.scanner import SPECIALIST_TOOLS
         assert SPECIALIST_TOOLS.get(".msg") == "email_envelope"
 
     def test_png_specialist_tool_registered(self) -> None:
-        from scanner.scanner import SPECIALIST_TOOLS
+        from file_observer.scanner import SPECIALIST_TOOLS
         assert SPECIALIST_TOOLS.get(".png") == "image_structure"
 
 
@@ -1510,7 +1510,7 @@ class TestIsChatlogIntegration:
     runs even when enable_specialists is False."""
 
     def test_is_chatlog_default_false_on_filerecord(self) -> None:
-        from scanner.scanner import FileRecord
+        from file_observer.scanner import FileRecord
         # Verify the field exists with the default value False.
         from dataclasses import fields
         names = {f.name for f in fields(FileRecord)}
@@ -1583,7 +1583,7 @@ class TestIsChatlogIntegration:
         assert rec.is_chatlog is True
 
     def test_is_chatlog_serializes_to_json(self, tmp_path: Path) -> None:
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         import json as _json
         content = "### A\n### B\n### C\n### D\n### E\n"
         (tmp_path / "headers.md").write_text(content)
@@ -1875,7 +1875,7 @@ class TestChatlogSpecialistIntegration:
         assert rec.specialist_metadata is None
 
     def test_chatlog_serializes_to_json_manifest(self, tmp_path: Path) -> None:
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         import json as _json
         (tmp_path / "chat.md").write_text(self.CHATLOG_TEXT)
         config = ScannerConfig(enable_specialists=True)
@@ -1906,7 +1906,7 @@ class TestScanQualityChatlogFiles:
     whole scan."""
 
     def test_chatlog_files_counter_field_exists(self) -> None:
-        from scanner.scanner import ScanQuality
+        from file_observer.scanner import ScanQuality
         from dataclasses import fields
         names = {f.name for f in fields(ScanQuality)}
         assert "chatlog_files" in names
@@ -1938,7 +1938,7 @@ class TestScanQualityChatlogFiles:
         assert manifest.quality.chatlog_files == 1
 
     def test_chatlog_files_counter_in_json_serialization(self, tmp_path: Path) -> None:
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         import json as _json
         chat = "User: a\nUser: b\nUser: c\nAssistant: a\nAssistant: b\nAssistant: c\n"
         (tmp_path / "chat.md").write_text(chat)
@@ -2002,7 +2002,7 @@ class TestChatlogFixtures:
 
 class TestSemanticToolNames:
     def test_all_tool_values_semantic(self) -> None:
-        from scanner.scanner import SPECIALIST_TOOLS
+        from file_observer.scanner import SPECIALIST_TOOLS
         for ext, tool in SPECIALIST_TOOLS.items():
             # No implementation-leak names (no _scanner, _parser, _header, _envelope suffixes)
             assert "_scanner" not in tool, f"{ext}: {tool}"
@@ -2010,7 +2010,7 @@ class TestSemanticToolNames:
             assert "_header" not in tool, f"{ext}: {tool}"
 
     def test_tool_name_mapping(self) -> None:
-        from scanner.scanner import SPECIALIST_TOOLS
+        from file_observer.scanner import SPECIALIST_TOOLS
         assert SPECIALIST_TOOLS[".pdf"] == "pdf_extraction"
         assert SPECIALIST_TOOLS[".png"] == "image_structure"
         assert SPECIALIST_TOOLS[".jpg"] == "image_structure"
@@ -2022,8 +2022,8 @@ class TestSemanticToolNames:
         assert SPECIALIST_TOOLS[".xlsx"] == "spreadsheet_structure"
 
     def test_version_is_current(self) -> None:
-        from scanner.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "1.0.0"
+        from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
+        assert SCANNER_VERSION == "1.0.1"
         assert LOGIC_VERSION == "1.0.0"
 
 
@@ -2142,7 +2142,7 @@ class TestEmlMetadata:
 
 class TestXlsxMetadata:
     def test_xlsx_specialist_tool(self) -> None:
-        from scanner.scanner import SPECIALIST_TOOLS
+        from file_observer.scanner import SPECIALIST_TOOLS
         assert SPECIALIST_TOOLS[".xlsx"] == "spreadsheet_structure"
 
     def test_xlsx_invalid_file(self, tmp_path: Path) -> None:
@@ -2339,7 +2339,7 @@ class TestDocMetadata:
                     assert f.specialist_tool == "document_extraction"
 
     def test_doc_specialist_tool(self) -> None:
-        from scanner.scanner import SPECIALIST_TOOLS
+        from file_observer.scanner import SPECIALIST_TOOLS
         assert SPECIALIST_TOOLS[".doc"] == "document_extraction"
 
 
@@ -2419,14 +2419,14 @@ class TestDipSwitches:
         assert eff["specialist_budget"] == 524288
 
     def test_deep_extract_profile(self, tmp_path: Path) -> None:
-        from scanner.scanner import SCAN_PROFILES
+        from file_observer.scanner import SCAN_PROFILES
         profile = SCAN_PROFILES["deep_extract"]
         assert profile["baseline_max_bytes"] == 1048576
         assert profile["specialist_budget"] == 524288
         assert profile["enable_specialists"] is True
 
     def test_fast_sort_profile(self) -> None:
-        from scanner.scanner import SCAN_PROFILES
+        from file_observer.scanner import SCAN_PROFILES
         profile = SCAN_PROFILES["fast_sort"]
         assert profile["baseline_max_bytes"] == 8192
         assert profile["enable_specialists"] is False
@@ -2567,7 +2567,7 @@ class TestIntegrityEnvelope:
         assert s1 != s2
 
     def test_previous_manifest_checksum_in_delta(self, tmp_path: Path) -> None:
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         src = tmp_path / "src"
         src.mkdir()
         (src / "a.txt").write_text("hello")
@@ -2586,7 +2586,7 @@ class TestIntegrityEnvelope:
 
     def test_signature_in_json_output(self, tmp_path: Path) -> None:
         import json as json_mod
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         (tmp_path / "a.txt").write_text("hello")
         config = ScannerConfig(signing_key="secret", signing_key_id="k1")
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
@@ -2600,7 +2600,7 @@ class TestIntegrityEnvelope:
 
 class TestXlsSpecialist:
     def test_xls_in_supported_extensions(self) -> None:
-        from scanner.scanner import SUPPORTED_EXTENSIONS, SPECIALIST_TOOLS, SPECIALIST_NAMESPACE
+        from file_observer.scanner import SUPPORTED_EXTENSIONS, SPECIALIST_TOOLS, SPECIALIST_NAMESPACE
         assert ".xls" in SUPPORTED_EXTENSIONS
         assert SPECIALIST_TOOLS[".xls"] == "spreadsheet_structure"
         assert SPECIALIST_NAMESPACE[".xls"] == "spreadsheet"
@@ -2759,45 +2759,45 @@ class TestVectorIdentityDigest:
     """Test the identity digest computation per spec §2.4."""
 
     def test_deterministic(self) -> None:
-        from scanner.scanner import compute_vector_identity_digest
+        from file_observer.scanner import compute_vector_identity_digest
         d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
         d2 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
         assert d1 == d2
         assert len(d1) == 64  # SHA-256 hex
 
     def test_different_vector_id(self) -> None:
-        from scanner.scanner import compute_vector_identity_digest
+        from file_observer.scanner import compute_vector_identity_digest
         d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
         d2 = compute_vector_identity_digest("reference_tokens", 1, "abc", "def")
         assert d1 != d2
 
     def test_different_method_version(self) -> None:
-        from scanner.scanner import compute_vector_identity_digest
+        from file_observer.scanner import compute_vector_identity_digest
         d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
         d2 = compute_vector_identity_digest("chatlog", 2, "abc", "def")
         assert d1 != d2
 
     def test_different_rules_hash(self) -> None:
-        from scanner.scanner import compute_vector_identity_digest
+        from file_observer.scanner import compute_vector_identity_digest
         d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
         d2 = compute_vector_identity_digest("chatlog", 1, "xyz", "def")
         assert d1 != d2
 
     def test_different_tuning_hash(self) -> None:
-        from scanner.scanner import compute_vector_identity_digest
+        from file_observer.scanner import compute_vector_identity_digest
         d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
         d2 = compute_vector_identity_digest("chatlog", 1, "abc", "ghi")
         assert d1 != d2
 
     def test_null_future_fields(self) -> None:
-        from scanner.scanner import compute_vector_identity_digest
+        from file_observer.scanner import compute_vector_identity_digest
         d1 = compute_vector_identity_digest("chatlog", 1, "abc", "def", None, None)
         d2 = compute_vector_identity_digest("chatlog", 1, "abc", "def")
         assert d1 == d2  # None defaults to "null" in preimage
 
     def test_preimage_is_pipe_delimited(self) -> None:
         from hashlib import sha256
-        from scanner.scanner import compute_vector_identity_digest
+        from file_observer.scanner import compute_vector_identity_digest
         expected_preimage = "chatlog|1|abc|def|null|null"
         expected = sha256(expected_preimage.encode("utf-8")).hexdigest()
         actual = compute_vector_identity_digest("chatlog", 1, "abc", "def")
@@ -2806,31 +2806,31 @@ class TestVectorIdentityDigest:
 
 class TestRulesAndTuningHash:
     def test_rules_hash_deterministic(self) -> None:
-        from scanner.scanner import compute_rules_hash
+        from file_observer.scanner import compute_rules_hash
         h1 = compute_rules_hash("some rule definition")
         h2 = compute_rules_hash("some rule definition")
         assert h1 == h2
 
     def test_rules_hash_changes_with_content(self) -> None:
-        from scanner.scanner import compute_rules_hash
+        from file_observer.scanner import compute_rules_hash
         h1 = compute_rules_hash("rule v1")
         h2 = compute_rules_hash("rule v2")
         assert h1 != h2
 
     def test_tuning_hash_deterministic(self) -> None:
-        from scanner.scanner import compute_tuning_hash
+        from file_observer.scanner import compute_tuning_hash
         h1 = compute_tuning_hash({"threshold": 3, "top_n": 20})
         h2 = compute_tuning_hash({"threshold": 3, "top_n": 20})
         assert h1 == h2
 
     def test_tuning_hash_key_order_independent(self) -> None:
-        from scanner.scanner import compute_tuning_hash
+        from file_observer.scanner import compute_tuning_hash
         h1 = compute_tuning_hash({"top_n": 20, "threshold": 3})
         h2 = compute_tuning_hash({"threshold": 3, "top_n": 20})
         assert h1 == h2
 
     def test_tuning_hash_changes_with_values(self) -> None:
-        from scanner.scanner import compute_tuning_hash
+        from file_observer.scanner import compute_tuning_hash
         h1 = compute_tuning_hash({"threshold": 3})
         h2 = compute_tuning_hash({"threshold": 4})
         assert h1 != h2
@@ -2838,12 +2838,12 @@ class TestRulesAndTuningHash:
 
 class TestVectorRegistry:
     def test_empty_registry(self) -> None:
-        from scanner.scanner import VectorRegistry
+        from file_observer.scanner import VectorRegistry
         reg = VectorRegistry()
         assert reg.to_list() == []
 
     def test_register_and_retrieve(self) -> None:
-        from scanner.scanner import VectorRegistry, VectorRecord
+        from file_observer.scanner import VectorRegistry, VectorRecord
         reg = VectorRegistry()
         rec = VectorRecord(
             vector_id="chatlog", method_version=1, scope="file",
@@ -2858,7 +2858,7 @@ class TestVectorRegistry:
         assert result[0]["vector_id"] == "chatlog"
 
     def test_sorted_alphabetically(self) -> None:
-        from scanner.scanner import VectorRegistry, VectorRecord
+        from file_observer.scanner import VectorRegistry, VectorRecord
         reg = VectorRegistry()
         for vid in ["reference_tokens", "chatlog"]:
             reg.register(VectorRecord(
@@ -2882,7 +2882,7 @@ class TestManifestVectorsCollected:
 
     def test_vectors_collected_in_json_output(self, tmp_path: Path) -> None:
         import json
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json.loads(manifest_to_json(manifest))
@@ -2890,7 +2890,7 @@ class TestManifestVectorsCollected:
 
     def test_vectors_collected_in_jsonl_output(self, tmp_path: Path) -> None:
         import json
-        from scanner.scanner import manifest_to_jsonl
+        from file_observer.scanner import manifest_to_jsonl
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         lines = manifest_to_jsonl(manifest).strip().split("\n")
@@ -3220,7 +3220,7 @@ class TestPerDirectorySummary:
 
     def test_per_directory_in_json_output(self, tmp_path: Path) -> None:
         import json
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         (tmp_path / "sub").mkdir()
         (tmp_path / "sub" / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
@@ -3256,7 +3256,7 @@ class TestScanSummary:
 
     def test_summary_in_json_output(self, tmp_path: Path) -> None:
         import json
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json.loads(manifest_to_json(manifest))
@@ -3265,7 +3265,7 @@ class TestScanSummary:
 
     def test_summary_in_jsonl_output(self, tmp_path: Path) -> None:
         import json
-        from scanner.scanner import manifest_to_jsonl
+        from file_observer.scanner import manifest_to_jsonl
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         header = json.loads(manifest_to_jsonl(manifest).split("\n")[0])
@@ -3491,13 +3491,13 @@ class TestJsonlChatlogDetection:
 
 class TestMarkdownReport:
     def test_report_is_string(self, tmp_path: Path) -> None:
-        from scanner.scanner import manifest_to_markdown
+        from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
         assert isinstance(md, str) and len(md) > 100
 
     def test_report_has_sections(self, tmp_path: Path) -> None:
-        from scanner.scanner import manifest_to_markdown
+        from file_observer.scanner import manifest_to_markdown
         (tmp_path / "sub").mkdir()
         (tmp_path / "sub" / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
@@ -3505,7 +3505,7 @@ class TestMarkdownReport:
             assert section in md
 
     def test_report_contains_scanner_version(self, tmp_path: Path) -> None:
-        from scanner.scanner import manifest_to_markdown
+        from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
-        assert "1.0.0" in md
+        assert "1.0.1" in md

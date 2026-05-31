@@ -121,7 +121,7 @@ fo ./project --previous-manifest ./last.json --signing-key-file ./key
 
 ```python
 from pathlib import Path
-from scanner import Scanner, ScannerConfig, manifest_to_json
+from file_observer import Scanner, ScannerConfig, manifest_to_json
 
 config = ScannerConfig(enable_specialists=True)
 manifest = Scanner(source_dir=Path("./documents"), config=config).scan()

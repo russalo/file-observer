@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.0.0"
+version = "1.0.1"
 description = "Know what's in your files before you open them. Deterministic file observation engine with cryptographic vector identity."
 readme = "docs/README.md"
 requires-python = ">=3.12"
@@ -49,8 +49,8 @@ Documentation = "https://github.com/russalo/file-observer/blob/main/docs/README.
 Changelog = "https://github.com/russalo/file-observer/blob/main/docs/HISTORY.md"
 
 [project.scripts]
-file-observer = "scanner.scanner:main"
-fo = "scanner.scanner:main"
+file-observer = "file_observer.scanner:main"
+fo = "file_observer.scanner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

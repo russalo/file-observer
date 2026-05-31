@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from scanner.scanner import (
+from file_observer.scanner import (
     Scanner,
     ScannerConfig,
     FileRecord,
@@ -988,7 +988,7 @@ class TestNewSupportedExtensions:
 
 class TestRescanCandidates:
     def _save_prev(self, manifest, tmp_path: Path) -> Path:
-        from scanner.scanner import manifest_to_json
+        from file_observer.scanner import manifest_to_json
         out_dir = tmp_path / "_out"
         out_dir.mkdir(exist_ok=True)
         prev = out_dir / "prev.json"
