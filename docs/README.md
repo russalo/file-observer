@@ -36,11 +36,12 @@ That's the human-readable summary. The full manifest is structured JSON — here
       "mime_type": "application/pdf",
       "checksum_sha256": "9f86d081884c7d65…",
       "is_binary": true,
-      "requires_specialist_tool": "pdf_extraction",
+      "requires_specialist_tool": true,
+      "specialist_tool": "pdf_extraction",
       "safety_flags": ["has_javascript"],
-      "signal_provenance": [
-        { "field": "mime_type", "layer": "raw", "method": "content_sniff", "trigger": "libmagic" }
-      ],
+      "signal_provenance": {
+        "requires_specialist_tool": { "layer": "derived", "method": "specialist_tools_registry", "trigger": "extension_match" }
+      },
       "...": "…"
     }
   ],
@@ -48,7 +49,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
     { "vector_id": "chatlog", "method_version": 3, "identity_digest": "a3f1c2…", "...": "…" }
   ],
   "manifest_checksum": "7d2bafef…",
-  "manifest_signature": { "algorithm": "HMAC-SHA256", "signature": "…" }
+  "manifest_signature": { "algorithm": "hmac-sha256", "key_id": "default", "value": "…" }
 }
 ```
 
