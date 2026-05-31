@@ -8,7 +8,9 @@ File Observer — observation layer only. Recursively discovers files, extracts 
 
 ## Spec
 
-- `docs/v1.0.0_RFC_Specification.md` — **current release spec**. Schema freeze. Public contract binding. Backward compatibility policy.
+- `docs/v1.2.0_RFC_Specification.md` — **current release spec**. Chatlog generalized & hardened detection (conversational JSON/JSONL across role/content schemas, `.json` candidate, markdown FP co-signal) + per-speaker structure (provisional). LOGIC 1.1.0, chatlog method_version 4.
+- `docs/v1.1.0_RFC_Specification.md` — prior. Corpus Intelligence: `quality.duplicate_clusters` + `quality.specialist_stats` (both provisional).
+- `docs/v1.0.0_RFC_Specification.md` — prior. Schema freeze. Public contract binding. Backward compatibility policy.
 - `docs/archive/0.x/v0.11.0_RFC_Specification.md` — prior release. Provisional → stable promotions, SECURITY.md.
 - `docs/archive/0.x/v0.10.0_RFC_Specification.md` — prior release. Human-readable scan summary, author_aggregate corpus vector, filename_patterns vector.
 - `docs/archive/0.x/v0.9.0_RFC_Specification.md` — prior release. Vector abstraction (identity digest, rules_hash, static_tuning_hash), `vectors_collected[]` manifest block, chatlog vector (refactored from v0.8), reference_tokens vector (7 subcategories), email body chatlog cross-cut, per-directory aggregation, Dublin Core adoption. All v0.9 additions provisional.
@@ -66,13 +68,16 @@ Python 3.12. No framework. stdlib + python-magic + chardet. Optional: PyYAML (fr
 
 ## Version roadmap
 
-- **v1.0.0 (current on `main`):** Schema freeze. Public contract binding. Backward compatibility policy. No new features — governance declaration on a proven-stable codebase. SCHEMA_VERSION 0.11 → 1.0.
+- **v1.2.0 (current target; PR open):** Chatlog generalized & hardened detection — recognizes conversational JSON/JSONL across role/content schemas (ConvoKit/ShareGPT/oasst/hh-rlhf), `.json` candidate; markdown false positives cut ~96% (H3/divider rules need a speaker/date co-signal); `ErrorRecord.detail` added; per-speaker structure (`speaker_turn_counts`/`speaker_turn_chars`/`alternation`, provisional). SCHEMA 1.1 → 1.2; LOGIC 1.0.0 → 1.1.0; chatlog method_version 3 → 4.
+- **v1.1.0:** Corpus Intelligence (first additive minor after the freeze): `quality.duplicate_clusters` (+ counts) and `quality.specialist_stats`, both provisional, pure observation. SCHEMA 1.0 → 1.1; LOGIC unchanged.
+- **v1.0.x:** v1.0.1 — import package renamed `scanner` → `file_observer` (deprecated `scanner` shim), LIMITATIONS.md, license clarity. v1.0.2 — README/PyPI positioning + honesty hardening (no scan-behavior change). Both patches; SCHEMA/LOGIC unchanged.
+- **v1.0.0:** Schema freeze. Public contract binding. Backward compatibility policy. No new features — governance declaration on a proven-stable codebase. SCHEMA_VERSION 0.11 → 1.0.
 - **v0.11.0:** Field stability promotions — vectors_collected, reference_tokens, per_directory_summary, email.body_chatlog, filename_patterns all promoted from provisional to stable. SECURITY.md added. No new features. SCHEMA_VERSION 0.10 → 0.11.
 - **v0.10.x:** v0.10.1 adds JSONL chatlog detection (`.jsonl` files with `"type": "user"/"assistant"` role objects). v0.10.0: Human-readable scan summary, `author_aggregate` corpus vector (cross-specialist author normalization + template-default detection), `filename_patterns` vector (6 boolean subcategories on every file). Four vectors in `vectors_collected[]`. SCHEMA_VERSION 0.9 → 0.10 (additive).
 - **v0.9.x:** Vector abstraction — the scanner becomes a corpus observer. `Vector` dataclass with identity digest (SHA-256). New `vectors_collected[]` manifest block. Two exemplar vectors: `chatlog` (refactored from v0.8) and `reference_tokens` (7 subcategories: at_mentions, wiki_links, code_fence_blocks, url_count, email_mentions, path_references, numeric_id_patterns). Per-file `reference_tokens` field on text files. Email body chatlog cross-cut. Per-directory aggregation in `quality.per_directory_summary[]`. Dublin Core adopted in standards tracking. All v0.9 additions provisional. SCHEMA_VERSION 0.8 → 0.9 (additive).
 - **v0.8.0:** chatlog content-based specialist. First content-detected (not extension-driven) dispatch in the scanner: `is_chatlog` flag runs even with specialists disabled; `_extract_chatlog_metadata` produces 11 drift-visible fields when enabled; new `chatlog` namespace + MIME guard; `quality.chatlog_files` counter. SCHEMA_VERSION 0.7 → 0.8 (additive).
 - **v0.7.x:** XLS specialist + safety_flags + ScanQuality block (v0.7.0); UTF-16/UTF-32 BOM detection + OLE2 specialists pass file path instead of 8KB sample (v0.7.1, fixes silent breakage of msg/doc/xls extraction); MSG date extraction via MAPI properties stream + MSG `from` prefers display name over Exchange legacyDN (v0.7.2). Both patches found from real-world corpus scanning.
-- **v1.1+ (future):** Customer dictionaries, new specialist formats, dynamic auto-config. Additive only — v1.0 contract holds.
+- **v1.3+ (future):** Word-twisting/authority study consuming v1.2 per-speaker structure (data-gated on the tagged RPG corpus); `--watch` mode; pure-Python MIME fallback; customer dictionaries; promotion of v1.1/v1.2 provisional fields to stable. Additive only — v1.0 contract holds.
 
 ## Commands
 
@@ -108,7 +113,7 @@ Single-module implementation in `src/file_observer/scanner.py`, imported as `fil
 
 ### Capability tiers (all in Scanner class)
 1. **Universal** — runs for every file: identity, filesystem metadata, checksum, path-derived fields, routing flags (`is_binary`, `requires_vision`, `requires_specialist_tool`), MIME analysis, structural file signatures (`file_signature`, `format_signatures`, `is_polyglot`).
-2. **Baseline** — runs for text-like files: encoding detection (with v0.7.1 UTF-16/UTF-32 BOM short-circuit), content preview, tag extraction, frontmatter parsing, asset matching. Runs `is_chatlog` content-based detection on `.txt`/`.md`/`.mdx`/`.jsonl` files. Runs `reference_tokens` extraction (7 subcategories) on all text-eligible files. Runs `filename_patterns` detection (6 subcategories) on every file. Detection runs even when `enable_specialists=False`.
+2. **Baseline** — runs for text-like files: encoding detection (with v0.7.1 UTF-16/UTF-32 BOM short-circuit), content preview, tag extraction, frontmatter parsing, asset matching. Runs `is_chatlog` content-based detection on `.txt`/`.md`/`.mdx`/`.jsonl`/`.json` files (v1.2: generalized conversational JSON/JSONL across role/content schemas; markdown structure rules require a speaker/date co-signal to avoid prose-doc false positives). Runs `reference_tokens` extraction (7 subcategories) on all text-eligible files. Runs `filename_patterns` detection (6 subcategories) on every file. Detection runs even when `enable_specialists=False`.
 3. **Structural** — runs for text-like files: title, headings, CSV headers, document keys (JSON/YAML/XML/TOML), technology hints, filename_date.
 4. **Specialist** — gated behind `ScannerConfig.enable_specialists` (default: False). Format-specific extraction with namespaced metadata. v0.6 added MIME guard (skips extraction when content MIME doesn't match expected formats) and configurable depth (`specialist_budget`, `extension_overrides`, named profiles via `SCAN_PROFILES`). v0.7 added `safety_flags` (has_javascript, has_macros, has_ole_objects, has_external_references) and the `ScanQuality` block (clean/degraded/error/mismatch/polyglot/safety counts).
 
@@ -141,7 +146,7 @@ Single-module implementation in `src/file_observer/scanner.py`, imported as `fil
 | `.doc` | `document_extraction` | title, author (OLE2 SummaryInformation via olefile). v0.7.1: takes file path. |
 | `.rtf` | `document_extraction` | title, author ({\info} group regex on sample) |
 | `.jsonl` _(v0.10.1)_ | `chatlog_signals` | JSONL conversation detection via role-bearing JSON objects (`"type": "user"/"assistant"`). Message text extracted and processed through chatlog pipeline. |
-| _(content-detected)_ | `chatlog_signals` | turn_count, speaker_labels, section_marker_count/styles, turn char stats, reference_tokens, top_capitalized_tokens, vocabulary_size_estimate. Activates by content pattern on `.txt`/`.md`/`.mdx`/`.jsonl`. |
+| _(content-detected)_ | `chatlog_signals` | turn_count, speaker_labels, speaker_turn_counts/speaker_turn_chars/alternation (v1.2, provisional), section_marker_count/styles, turn char stats, reference_tokens, top_capitalized_tokens, vocabulary_size_estimate. Activates by content pattern on `.txt`/`.md`/`.mdx`/`.jsonl`/`.json` (v1.2: generalized conversational schemas). |
 
 ## Known decisions
 
@@ -167,13 +172,16 @@ Single-module implementation in `src/file_observer/scanner.py`, imported as `fil
 - v0.6 added `SCAN_PROFILES` (e.g. `fast_sort`) — named bundles of `extension_overrides` for common extraction depth tradeoffs
 - v0.6 added `previous_manifest_checksum` and `manifest_signature` (HMAC-SHA256 with optional `signing_key`) for chain-of-custody integrity
 - v0.7 added `safety_flags` (has_javascript / has_macros / has_ole_objects / has_external_references) and the `ScanQuality` block
-- **`is_chatlog` is content-detected, not extension-driven** — activates for `.txt`/`.md`/`.mdx` (speaker labels with stop-list, 5+ H3 headers, 3+ dividers) and `.jsonl` (3+ role-bearing JSON objects). Detection runs even when `enable_specialists=False`.
+- **`is_chatlog` is content-detected, not extension-driven** — activates for `.txt`/`.md`/`.mdx`/`.jsonl`/`.json`. Prose: speaker labels (stop-list filtered); H3 (5+) / dividers (3+) **require a co-signal** — 2+ speaker labels or 2+ date-stamped headers (v1.2, kills prose-doc false positives). JSON/JSONL (v1.2 generalized): 3+ "message-like" objects (a role key `type`/`role`/`from`/`speaker`/`author` + a content key `text`/`value`/`content`/`message`/`body`) — line-delimited, arrays, nested trees, or dialogue embedded in a JSON string; regex fallback for truncated large single-JSON. Detection runs even when `enable_specialists=False`.
 - **v0.9 Vector abstraction** — vectors are named, uniquely-identified observation units with SHA-256 identity digests. Four vectors: chatlog, reference_tokens, author_aggregate, filename_patterns.
 - **v0.10 Scan summary** — deterministic Markdown paragraph on every manifest + standalone `.md` report file.
 - **v0.11 Field promotions** — vectors_collected, reference_tokens, per_directory_summary, email.body_chatlog, filename_patterns promoted from provisional to stable.
+- **v1.0.1 package rename** — canonical import is `file_observer`; legacy `scanner` is a deprecated re-export shim (`DeprecationWarning`). The import path is NOT under the public contract (the manifest is), so the rename + packaging/positioning changes shipped as patches.
+- **v1.1 Corpus Intelligence** — `quality.duplicate_clusters` (group by identical `checksum_sha256`, count ≥ 2) + `quality.specialist_stats` (per-tool attempted/succeeded/failed). Provisional; pure observation; no routing change.
+- **v1.2 Chatlog generalized + hardened** — detection recognizes conversational JSON/JSONL across role/content schemas (`.json` candidate); markdown structure rules require a speaker/date co-signal (cut ~96% of prose-doc false positives); `ErrorRecord.detail` added; per-speaker structure (provisional). Detection change → LOGIC 1.1.0, chatlog method_version 4. Word-twisting/authority study deferred (data-gated on tagged RPG corpus).
 
 ## Test fixtures
 
 `tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). Chatlog fixtures in `tests/fixtures/edge_cases/`.
 
-Test suite: 565 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py` (as of v1.0).
+Test suite: 595 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py`, `test_packaging.py`, `test_v1_1.py`, `test_v1_2.py` (as of v1.2).
