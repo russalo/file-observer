@@ -291,9 +291,27 @@ We welcome contributions. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full
 File Observer is dual-licensed:
 
 - **Open source** under [AGPL-3.0](../LICENSE-AGPL) — use freely, contribute back
-- **Commercial license** available for SaaS, proprietary embedding, and distribution without source disclosure
+- **Commercial license** available for cases where AGPL terms don't fit
 
-Internal use under AGPL requires no commercial license. Contact russalo@russalo.com for commercial terms.
+### Which one applies to you
+
+**The AGPL is fine — no commercial license needed — for:**
+
+- Internal use: running File Observer inside your own organization, including on private servers, with no obligation to publish anything.
+- Personal projects, research, and evaluation.
+- Open-source projects that are themselves AGPL-compatible.
+
+**You likely want a commercial license if you:**
+
+- **Embed** File Observer in a proprietary product you distribute without releasing that product's source under the AGPL.
+- **Offer it over a network as a service** (SaaS). The AGPL's network clause (§13) means that if users interact with a modified version over a network, you must offer them its complete corresponding source. A commercial license removes that obligation.
+- **Distribute** File Observer (or a derivative) to third parties without the AGPL's source-disclosure requirements.
+
+In short: AGPL obligations are triggered by **distribution** and by **network use of modified versions**, not by private internal use. If you're unsure whether your use triggers them, that's exactly what a commercial license resolves.
+
+Contact **russalo@russalo.com** for commercial terms.
+
+> This is a plain-language summary, not legal advice or a substitute for the [license text](../LICENSE-AGPL). Where this summary and the license differ, the license governs.
 
 ---
 
