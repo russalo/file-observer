@@ -143,9 +143,16 @@ Four vectors ship at v1.0 with the method versions fixed by the spec.
 
 ---
 
-## 11. Migration Guide
+## 11. Migration Notes (v0.11 → v1.0)
 
-Not applicable. v1.0 introduces no breaking changes — it freezes the v0.11 schema and elevates PUBLIC_CONTRACT.md from intent to obligation. Consumers on schema 0.11 require no changes; the manifest shape is byte-compatible. (Per §3.3 a migration guide is required only ahead of a MAJOR bump.)
+No migration *guide* is required in the §3.3 sense: v1.0 removes, renames, and retypes nothing. The manifest **structure** — every top-level key, FileRecord field, specialist namespace, and field type — is identical to v0.11.
+
+One value-level change is consumer-visible and intentional: the top-level `schema_version` advances from `"0.11"` to `"1.0"` (and `context.scanner_version` / `context.logic_version` advance accordingly). This is the signal that the stability contract is now binding — not a structural change. Implications:
+
+- Consumers that follow PUBLIC_CONTRACT.md guidance — **branch on the MAJOR component** and **ignore unknown fields** — accept the entire `1.x` line and need no changes.
+- Consumers that pin or allowlist an exact `schema_version` value (e.g. accept only `"0.11"`) MUST add `"1.0"` (or switch to MAJOR-component branching). This is the documented, expected handling of a schema-version bump.
+
+Manifests are therefore **structurally compatible** with v0.11 but **not byte-identical** — the `schema_version` and other version strings differ by design.
 
 ---
 
