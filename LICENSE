@@ -26,10 +26,10 @@ This software is dual-licensed:
    For use cases where the AGPL-3.0 terms are not suitable —
    including but not limited to:
 
-   - Embedding scanner in proprietary software without source disclosure
-   - Offering scanner as part of a commercial SaaS or cloud service
+   - Embedding File Observer in proprietary software without source disclosure
+   - Offering File Observer as part of a commercial SaaS or cloud service
      without releasing your service code under AGPL
-   - Distributing scanner in proprietary products
+   - Distributing File Observer in proprietary products
    - Obtaining support, warranty, or indemnification
 
    A separate commercial license is available from Russalo LLC.
@@ -38,18 +38,18 @@ This software is dual-licensed:
 
 WHICH LICENSE APPLIES TO YOU?
 
-- If you are using scanner internally (not offering it as a service
+- If you are using File Observer internally (not offering it as a service
   to others), the AGPL allows this without restriction. You do not
   need a commercial license for internal use.
 
-- If you are using scanner in an open source project licensed under
+- If you are using File Observer in an open source project licensed under
   a compatible copyleft license, the AGPL applies.
 
-- If you are offering scanner (or a modified version) as a network
+- If you are offering File Observer (or a modified version) as a network
   service to third parties and do not wish to release your service
   code under the AGPL, you need a commercial license.
 
-- If you are embedding scanner in proprietary software for
+- If you are embedding File Observer in proprietary software for
   distribution, you need a commercial license.
 
 If you are unsure which license applies, contact russalo@russalo.com.
