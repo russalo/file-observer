@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.0.1
+    Version:    1.0.2
     Schema:     1.0
     Python:     >= 3.12
     Spec:       docs/v1.0.0_RFC_Specification.md (current)
@@ -71,7 +71,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.0.1"
+SCANNER_VERSION = "1.0.2"
 LOGIC_VERSION = "1.0.0"
 SCHEMA_VERSION = "1.0"
 
