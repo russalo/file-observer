@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.0.2
-    Schema:     1.0
+    Version:    1.1.0
+    Schema:     1.1
     Python:     >= 3.12
-    Spec:       docs/v1.0.0_RFC_Specification.md (current)
+    Spec:       docs/v1.1.0_RFC_Specification.md (current)
     Repository: pkp.russalo.com/scanner/
 
 Design pillars:
@@ -71,9 +71,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.0.2"
+SCANNER_VERSION = "1.1.0"
 LOGIC_VERSION = "1.0.0"
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
 
 
 # v0.8: register markdown extensions in stdlib mimetypes so that when libmagic
@@ -453,6 +453,16 @@ class ScanQuality:
     chatlog_files: int = 0
     # v0.9: per-directory aggregation — one entry per top-level subdirectory
     per_directory_summary: list[dict[str, Any]] = field(default_factory=list)
+    # v1.1 (provisional): duplicate detection — files grouped by identical
+    # checksum_sha256 (count >= 2). Each cluster: {checksum_sha256, size_bytes,
+    # count, paths}. Sorted by count desc then checksum asc; paths sorted asc.
+    duplicate_clusters: list[dict[str, Any]] = field(default_factory=list)
+    duplicate_cluster_count: int = 0
+    redundant_file_count: int = 0  # sum(count - 1) — copies a dedup pass could remove
+    # v1.1 (provisional): per-specialist quality — {tool: {attempted, succeeded,
+    # failed}}, keyed by semantic tool name, sorted keys. Empty when specialists
+    # are disabled. The aggregate specialist_failures (above) is retained.
+    specialist_stats: dict[str, dict[str, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -1059,6 +1069,9 @@ class Scanner:
             extras.append(f"{q.safety_flags} safety flags")
         if q.polyglots_detected:
             extras.append(f"{q.polyglots_detected} polyglots")
+        if q.duplicate_cluster_count:
+            extras.append(f"{q.duplicate_cluster_count} duplicate clusters "
+                          f"({q.redundant_file_count} redundant copies)")
         extra_str = ". " + ", ".join(extras) + "." if extras else "."
 
         lines.append(
@@ -1208,6 +1221,43 @@ class Scanner:
                 "unsupported_extensions": sum(1 for r in group if any(e.code == ERR_UNSUPPORTED_EXTENSION for e in r.errors)),
             })
 
+        # v1.1: duplicate clustering — group files by identical content checksum.
+        # Reuses checksum_sha256 (also used by delta). count >= 2 only.
+        checksum_groups: dict[str, list[FileRecord]] = {}
+        for r in records:
+            checksum_groups.setdefault(r.checksum_sha256, []).append(r)
+        duplicate_clusters: list[dict[str, Any]] = []
+        for checksum, group in checksum_groups.items():
+            if len(group) < 2:
+                continue
+            duplicate_clusters.append({
+                "checksum_sha256": checksum,
+                "size_bytes": group[0].size_bytes,
+                "count": len(group),
+                "paths": sorted(r.path for r in group),
+            })
+        # Deterministic order: count desc, then checksum asc (checksum is a
+        # unique per-cluster tiebreaker, so the order is total).
+        duplicate_clusters.sort(key=lambda c: (-c["count"], c["checksum_sha256"]))
+        duplicate_cluster_count = len(duplicate_clusters)
+        redundant_file_count = sum(c["count"] - 1 for c in duplicate_clusters)
+
+        # v1.1: per-specialist stats — {tool: {attempted, succeeded, failed}}.
+        # Only meaningful when specialists ran; empty object otherwise.
+        specialist_stats: dict[str, dict[str, int]] = {}
+        if self.config.enable_specialists:
+            for r in records:
+                if not r.requires_specialist_tool or not r.specialist_tool:
+                    continue
+                bucket = specialist_stats.setdefault(
+                    r.specialist_tool, {"attempted": 0, "succeeded": 0, "failed": 0})
+                bucket["attempted"] += 1
+                if any(e.code == ERR_SPECIALIST_PROBE_FAILED for e in r.errors):
+                    bucket["failed"] += 1
+                else:
+                    bucket["succeeded"] += 1
+            specialist_stats = {k: specialist_stats[k] for k in sorted(specialist_stats)}
+
         return ScanQuality(
             total_files=total,
             clean_files=clean,
@@ -1220,6 +1270,10 @@ class Scanner:
             safety_flags=safety,
             chatlog_files=chatlog_count,
             per_directory_summary=per_dir_summary,
+            duplicate_clusters=duplicate_clusters,
+            duplicate_cluster_count=duplicate_cluster_count,
+            redundant_file_count=redundant_file_count,
+            specialist_stats=specialist_stats,
         )
 
     def _compute_routing_summary(self, records: list[FileRecord]) -> RoutingSummary:
@@ -3105,7 +3159,17 @@ def manifest_to_markdown(manifest: ScanManifest) -> str:
     lines.append(f"| Polyglots | {q.polyglots_detected:,} |")
     lines.append(f"| Safety flags | {q.safety_flags:,} |")
     lines.append(f"| Chatlog files | {q.chatlog_files:,} |")
+    lines.append(f"| Duplicate clusters | {q.duplicate_cluster_count:,} ({q.redundant_file_count:,} redundant) |")
     lines.append("")
+    if q.specialist_stats:
+        lines.append("### Specialist stats")
+        lines.append("")
+        lines.append("| Tool | Attempted | Succeeded | Failed |")
+        lines.append("|---|---|---|---|")
+        for tool in sorted(q.specialist_stats):
+            s = q.specialist_stats[tool]
+            lines.append(f"| {tool} | {s['attempted']:,} | {s['succeeded']:,} | {s['failed']:,} |")
+        lines.append("")
 
     # Vectors
     if manifest.vectors_collected:
