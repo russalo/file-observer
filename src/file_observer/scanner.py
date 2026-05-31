@@ -571,8 +571,13 @@ CHATLOG_STATIC_TUNING = {
 CHATLOG_JSONL_ROLE_KEYS = {"user", "assistant", "human"}
 # v1.2: generalized conversational-JSON keys. A "message-like" object has a
 # role-field key (names the speaker) AND a content-field key (holds the text).
-CHATLOG_ROLE_FIELD_KEYS = {"type", "role", "from", "speaker", "author"}
-CHATLOG_CONTENT_FIELD_KEYS = {"text", "value", "content", "message", "body"}
+# Ordered tuples (not sets): first-match selection must be deterministic —
+# set iteration order is hash-randomized across processes, which would make
+# speaker selection (and the manifest checksum) non-reproducible.
+CHATLOG_ROLE_FIELD_KEYS = ("type", "role", "from", "speaker", "author")
+CHATLOG_CONTENT_FIELD_KEYS = ("text", "value", "content", "message", "body")
+CHATLOG_ROLE_FIELD_KEYSET = frozenset(CHATLOG_ROLE_FIELD_KEYS)
+CHATLOG_CONTENT_FIELD_KEYSET = frozenset(CHATLOG_CONTENT_FIELD_KEYS)
 # v1.2: regex fallback for truncated/large single-JSON samples (e.g. a multi-MB
 # ShareGPT file whose bounded sample won't json.loads). Matches a flat object
 # carrying both a role-field and a content-field key, in either order.
@@ -2564,7 +2569,14 @@ class Scanner:
                     count += 1
                     if count >= 3:
                         return count
-                stack.extend(cur.values())
+                    # Don't recurse into this message's own role/content —
+                    # Claude rich-content blocks would double-count. Continue
+                    # only into other fields (e.g. nested `replies`).
+                    stack.extend(v for k, v in cur.items()
+                                 if k not in CHATLOG_ROLE_FIELD_KEYSET
+                                 and k not in CHATLOG_CONTENT_FIELD_KEYSET)
+                else:
+                    stack.extend(cur.values())
             elif isinstance(cur, list):
                 stack.extend(cur)
         return count
@@ -2680,11 +2692,16 @@ class Scanner:
                     rc = self._message_role_content(cur)
                     if rc:
                         pairs.append(rc)
+                        # recurse only into non-role/content fields (e.g. replies),
+                        # not this message's own content sub-structure
+                        stack.extend(reversed([v for k, v in cur.items()
+                            if k not in CHATLOG_ROLE_FIELD_KEYSET
+                            and k not in CHATLOG_CONTENT_FIELD_KEYSET]))
                     else:
                         for v in cur.values():
                             if isinstance(v, str) and self._string_has_speaker_dialogue(v):
                                 pairs.extend(self._parse_embedded_dialogue(v))
-                    stack.extend(reversed(list(cur.values())))
+                        stack.extend(reversed(list(cur.values())))
                 elif isinstance(cur, list):
                     stack.extend(reversed(cur))
 

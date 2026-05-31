@@ -107,3 +107,22 @@ class TestErrorDetail:
     def test_detail_defaults_none(self):
         e = ErrorRecord(code="x", message="m", stage="specialist")
         assert e.detail is None
+
+
+class TestDeterminismAndCounting:
+    def test_multi_role_key_picks_priority_deterministically(self, tmp_path):
+        # A message with several role keys must select by fixed priority
+        # (type > role > from > speaker > author), not hash-randomized set
+        # order — guards the determinism contract (RFC §2).
+        c = "\n".join(json.dumps({"type": "USER", "role": "x", "content": f"m{i}"})
+                      for i in range(3))
+        chat = _scan_text(tmp_path, "m.jsonl", c).specialist_metadata["chatlog"]
+        assert chat["speaker_turn_counts"] == {"USER": 3}
+
+    def test_rich_content_blocks_not_double_counted(self, tmp_path):
+        # One message whose content is a list of text blocks must count as a
+        # single message, not 3 — the blocks are not separate turns.
+        one = json.dumps({"type": "user", "message": {"content": [
+            {"type": "text", "text": "a"}, {"type": "text", "text": "b"},
+            {"type": "text", "text": "c"}]}})
+        assert _scan_text(tmp_path, "one.jsonl", one).is_chatlog is False
