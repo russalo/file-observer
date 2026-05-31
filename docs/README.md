@@ -290,7 +290,7 @@ We welcome contributions. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the full
 
 File Observer is dual-licensed:
 
-- **Open source** under [AGPL-3.0](../LICENSE-AGPL) — use freely, contribute back
+- **Open source** under [AGPL-3.0](../LICENSE) — use freely, contribute back
 - **Commercial license** available for cases where AGPL terms don't fit
 
 ### Which one applies to you
@@ -311,7 +311,7 @@ In short: AGPL obligations are triggered by **distribution** and by **network us
 
 Contact **russalo@russalo.com** for commercial terms.
 
-> This is a plain-language summary, not legal advice or a substitute for the [license text](../LICENSE-AGPL). Where this summary and the license differ, the license governs.
+> This is a plain-language summary, not legal advice or a substitute for the [license text](../LICENSE). Where this summary and the license differ, the license governs.
 
 ---
 
