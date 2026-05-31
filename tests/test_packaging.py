@@ -21,6 +21,30 @@ def test_canonical_top_level_api():
     assert "Scanner" in file_observer.__all__
 
 
+def test_documented_serializers_are_exported():
+    """README documents jsonl/markdown serializers as public API (PR #21 review)."""
+    from file_observer import manifest_to_jsonl, manifest_to_markdown  # noqa: F401
+    import file_observer
+
+    assert "manifest_to_jsonl" in file_observer.__all__
+    assert "manifest_to_markdown" in file_observer.__all__
+
+
+@pytest.mark.parametrize("module", ["file_observer.scanner", "scanner.scanner"])
+def test_module_cli_entrypoint(module):
+    """`python -m <module>` runs the CLI (guards the legacy shim regression)."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", module, "--help"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "usage:" in result.stdout
+
+
 def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed are NOT renamed in 1.0.1."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION

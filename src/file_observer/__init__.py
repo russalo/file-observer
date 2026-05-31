@@ -11,6 +11,8 @@ from .scanner import (
     FileRecord,
     StructuralRecord,
     manifest_to_json,
+    manifest_to_jsonl,
+    manifest_to_markdown,
 )
 from .scanner import SCANNER_VERSION as __version__
 
@@ -21,5 +23,7 @@ __all__ = [
     "FileRecord",
     "StructuralRecord",
     "manifest_to_json",
+    "manifest_to_jsonl",
+    "manifest_to_markdown",
     "__version__",
 ]

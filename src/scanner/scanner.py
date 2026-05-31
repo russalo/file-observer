@@ -7,3 +7,8 @@ renamed in v1.0.1; import from ``file_observer`` instead. See
 
 from file_observer.scanner import *  # noqa: F401,F403
 from file_observer.scanner import main  # noqa: F401  (console-script / explicit import target)
+
+
+if __name__ == "__main__":
+    # Preserve `python -m scanner.scanner` for legacy callers.
+    main()
