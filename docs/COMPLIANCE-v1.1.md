@@ -25,7 +25,7 @@ v1.1 adds **duplicate clustering** and **per-specialist stats** — both pure ob
 | # | Requirement | Implementation | Status |
 |---|---|---|---|
 | 1 | `quality.duplicate_clusters` field exists | New `ScanQuality` field (provisional default) | **PASS** |
-| 2 | One entry per checksum shared by ≥2 files; singletons excluded | `_compute_quality`: `if len(group) < 2: continue` | **PASS** |
+| 2 | One entry per checksum shared by ≥2 files; singletons excluded | `_compute_quality`: skips empty `checksum_sha256` (stat-failure records — guard added in `ffcb958` after PR #25 review), then `if len(group) < 2: continue` | **PASS** |
 | 3 | Cluster shape `{checksum_sha256, size_bytes, count, paths}` | Emitted as specified; verified by `test_cluster_shape_and_paths_sorted` | **PASS** |
 | 4 | `paths` are scan-relative paths of every file in the cluster | `sorted(r.path for r in group)` | **PASS** |
 | 5 | Deterministic: clusters sorted count desc then checksum asc; paths asc | `sort(key=lambda c: (-c["count"], c["checksum_sha256"]))`; paths pre-sorted. `test_deterministic_across_runs` | **PASS** |
