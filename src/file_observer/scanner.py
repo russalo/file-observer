@@ -578,6 +578,16 @@ CHATLOG_ROLE_FIELD_KEYS = ("type", "role", "from", "speaker", "author")
 CHATLOG_CONTENT_FIELD_KEYS = ("text", "value", "content", "message", "body")
 CHATLOG_ROLE_FIELD_KEYSET = frozenset(CHATLOG_ROLE_FIELD_KEYS)
 CHATLOG_CONTENT_FIELD_KEYSET = frozenset(CHATLOG_CONTENT_FIELD_KEYS)
+# v1.2.1: `type` is ambiguous — it names a speaker only in some schemas
+# (Claude: type:user/assistant) and is otherwise a wrapper (type:"message"), a
+# log level (type:"info"/"error"), or a content-block kind (type:"text"). Accept
+# `type` as the speaker ONLY when its value is a conversational role; the other
+# role keys (role/from/speaker/author) accept any value. This kills log /
+# rich-content / envelope false positives without a denylist.
+CHATLOG_CONVERSATIONAL_TYPE_VALUES = frozenset({
+    "user", "assistant", "human", "system", "model", "bot", "gpt", "ai",
+    "prompter", "tool", "function",
+})
 # v1.2: regex fallback for truncated/large single-JSON samples (e.g. a multi-MB
 # ShareGPT file whose bounded sample won't json.loads). Matches a flat object
 # carrying both a role-field and a content-field key, in either order.
@@ -2568,21 +2578,64 @@ class Scanner:
         # large single-JSON it couldn't read (e.g. a multi-MB ShareGPT file).
         # Gated on `not speakers` so it can't override the parser on readable
         # input (otherwise inner content blocks would re-inflate the count).
-        if not speakers and len(CHATLOG_JSON_MESSAGE_RE.findall(text)) >= 3:
-            if len(set(CHATLOG_JSON_ROLE_VALUE_RE.findall(text))) >= 2:
+        # Regex fallback ONLY for a truncated/unparseable single-JSON (the
+        # parser read nothing AND the sample doesn't parse). A parseable-but-
+        # non-conversational doc (e.g. a structured log whose `type` values were
+        # correctly rejected as non-speakers) must NOT be rescued here.
+        if not speakers and not self._sample_parses_as_json(text):
+            matches = CHATLOG_JSON_MESSAGE_RE.findall(text)
+            if len(matches) >= 3:
+                # role values from the message-like matches only, 2+ distinct
+                roles = [m.group(1) for m in
+                         (CHATLOG_JSON_ROLE_VALUE_RE.search(s) for s in matches) if m]
+                if len(set(roles)) >= 2:
+                    return True
+        return False
+
+    @staticmethod
+    def _sample_parses_as_json(text: str) -> bool:
+        """True if the sample contains at least one parseable JSON value.
+        Gates the regex fallback so it fires only on truly-unparseable
+        (truncated) input, not on readable non-conversational JSON."""
+        for ln in text.split("\n"):
+            ln = ln.strip()
+            if ln and ln[0] in "{[":
+                try:
+                    json.loads(ln)
+                    return True
+                except (json.JSONDecodeError, ValueError):
+                    pass
+        s = text.strip()
+        if s[:1] in "{[":
+            try:
+                json.loads(s)
                 return True
+            except (json.JSONDecodeError, ValueError):
+                pass
         return False
 
     @staticmethod
     def _message_role_content(obj: dict) -> tuple[str, str] | None:
-        """(speaker, content_text) for a message-like dict, else None."""
+        """(speaker, content_text) for a message-like dict, else None.
+
+        v1.2.1: `type` counts as the speaker only when its value is a
+        conversational role (Claude's type:user/assistant); a non-conversational
+        `type` (a wrapper like "message", a log level "info", a content block
+        "text") is skipped so the next role key (role/from/speaker/author) wins.
+        """
         speaker = None
         for k in CHATLOG_ROLE_FIELD_KEYS:
             v = obj.get(k)
             if isinstance(v, str) and v.strip():
-                speaker = v.strip(); break
-            if isinstance(v, int):
-                speaker = str(v); break
+                val = v.strip()
+            elif isinstance(v, int):
+                val = str(v)
+            else:
+                continue
+            if k == "type" and val.lower() not in CHATLOG_CONVERSATIONAL_TYPE_VALUES:
+                continue  # `type` is a speaker only for conversational values
+            speaker = val
+            break
         if speaker is None:
             return None
         for k in CHATLOG_CONTENT_FIELD_KEYS:

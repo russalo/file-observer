@@ -10,7 +10,6 @@ import json
 import os
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from file_observer.scanner import Scanner, ScannerConfig, manifest_to_json
@@ -47,6 +46,14 @@ class TestFalsePositiveCorpus:
                       for i in range(6))
         assert _is_chatlog(tmp_path, "events.jsonl", c) is False
 
+    def test_mixed_level_log_not_flagged(self, tmp_path):
+        # type=info/error/warn are LOG LEVELS, not speakers — must not pass the
+        # distinct-speaker gate just because the level varies (PR #28 review).
+        levels = ["info", "error", "warn", "info", "error", "debug"]
+        c = "\n".join(json.dumps({"timestamp": f"t{i}", "type": lv, "message": f"event {i}"})
+                      for i, lv in enumerate(levels))
+        assert _is_chatlog(tmp_path, "app.jsonl", c) is False
+
     def test_config_json_not_flagged(self, tmp_path):
         c = json.dumps({"name": "pkg", "version": "1.0",
                         "scripts": {"build": "tsc", "test": "pytest"}})
@@ -70,15 +77,23 @@ class TestStillDetectsRealConversations:
         c = "### Scene 1\nAlice: hi\n### Scene 2\nBob: hello\n### Scene 3\nmore\n### S4\n### S5\n"
         assert _is_chatlog(tmp_path, "t.md", c) is True
 
+    def test_type_message_envelope_with_role(self, tmp_path):
+        # {type:"message", role:user/assistant} — `type` is a constant wrapper;
+        # the real speaker is `role`. Must detect (PR #28 review regression).
+        c = ('{"type": "message", "role": "user", "content": "hi"}\n'
+             '{"type": "message", "role": "assistant", "content": "hello"}\n'
+             '{"type": "message", "role": "user", "content": "bye"}\n')
+        assert _is_chatlog(tmp_path, "chat.jsonl", c) is True
+
 
 class TestDeterminism:
     """Flagship property: same bytes -> same manifest, across hash seeds."""
 
-    def test_manifest_checksum_stable_across_hash_seeds(self):
-        d = tempfile.mkdtemp()
+    def test_manifest_checksum_stable_across_hash_seeds(self, tmp_path):
+        d = str(tmp_path)
         # multi-role-key objects — the case the set-iteration bug broke
         Path(d, "c.jsonl").write_text(
-            '{"type": "x", "role": "user", "content": "a"}\n'
+            '{"role": "user", "content": "a"}\n'
             '{"role": "assistant", "content": "b"}\n'
             '{"speaker": "u", "text": "c"}\n')
         code = (
