@@ -90,3 +90,18 @@
 **PASS — 20 requirements verified, 0 failures, 0 deviations.**
 
 v1.2 turns the chatlog vector from one-schema-only into robust coverage across the real conversational ecosystem, cuts the markdown false-positive rate ~96%, and lays the per-speaker structural foundation for Project Sentinel — additively, with the contract intact. The word-twisting/authority study (consuming the new per-speaker structure) is deferred to future analysis against the manually-tagged RPG corpus.
+
+---
+
+## 9. Correction (added 2026-06-01, post-release)
+
+**This report's verdict was overconfident.** The §3 "~96% FP reduction / PASS" was measured only against the corpora the feature was *built for* — it did not include common negatives. An adversarial self-review after release found **two false positives that shipped in v1.2.0**:
+
+1. `CHANGELOG.md` and other dated prose journals — the §3 date-header co-signal *relocated* the prose-doc FP to dated docs rather than eliminating it.
+2. Structured JSONL logs (`{type, message}` per line) — the generalized "message-like" rule was too broad.
+
+Both are fixed in **v1.2.1**: markdown structure rules require a speaker co-signal (date co-signal dropped); JSON detection requires ≥2 distinct speakers. A false-positive corpus + determinism property test were added (`tests/test_v1_2_1.py`).
+
+**The first v1.2.1 cut was itself incomplete** (caught by the PR #28 reviewers, not by me — see [[feedback_falsify_dont_confirm]]). The ≥2-distinct-speaker rule alone still mis-handled three cases: (a) mixed-level structured logs (`type: info/error/warn`) passed the distinct gate because the *levels* varied; (b) the `{type: "message", role: …}` envelope regressed (constant `type` won priority, collapsing distinct count to 1); (c) a leaked `tempfile.mkdtemp()` in the determinism test. The robust fix is a **conversational-type gate** — `type` counts as a speaker only when its value is in `CHATLOG_CONVERSATIONAL_TYPE_VALUES` (user/assistant/human/system/model/…); otherwise the next role key (role/from/speaker/author) wins. Combined with a **parse-gate** on the regex fallback (it fires only on genuinely-unparseable/truncated JSON, never on readable non-conversational JSON like a structured log), this kills all four cases while preserving every real corpus. Verified working-tree vs HEAD: the only count change was one Claude *state/event log* (`type: last-prompt/permission-mode`, single `user` speaker) correctly dropping out — no real conversation regressed. Test count 595→608.
+
+**Process lesson:** compliance verified conformance to the spec *I authored*, which never required "don't false-positive on changelogs." Self-graded compliance + confirmation-shaped validation gave false confidence. Detection changes now require an adversarial FP corpus written *before* "validated" — and even that corpus was incomplete until external reviewers stress-tested the edges. Falsify-first, and welcome the unfamiliar reviewer.
