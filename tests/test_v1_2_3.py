@@ -26,6 +26,14 @@ def test_faq_question_answer_not_flagged(tmp_path):
     assert _is_chatlog(tmp_path, "FAQ.md", c) is False
 
 
+def test_faq_allcaps_not_flagged(tmp_path):
+    # case-sensitive stop-list + the label regex matches all-caps → ALL-CAPS FAQ
+    # style needs explicit coverage (PR #30 review: flash/codex/copilot flagged it).
+    c = ("QUESTION: How do I install?\nANSWER: Use pip.\n"
+         "QUESTION: Where are the docs?\nANSWER: In docs/.\n")
+    assert _is_chatlog(tmp_path, "FAQ.md", c) is False
+
+
 def test_anonymized_ab_dialogue_still_detected(tmp_path):
     # `A:`/`B:` anonymized speakers are a LEGIT conversation — must stay detected
     # (guards against over-stop-listing single letters while fixing FAQ).

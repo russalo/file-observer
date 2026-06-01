@@ -184,4 +184,4 @@ Single-module implementation in `src/file_observer/scanner.py`, imported as `fil
 
 `tests/fixtures/` contains sample files across formats (.md, .pdf, .txt, .csv, .html, .yaml, .xlsx, .png, .docx, .rtf, .json, .mdx, .jpg). Chatlog fixtures in `tests/fixtures/edge_cases/`.
 
-Test suite: 621 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py`, `test_packaging.py`, `test_v1_1.py`, `test_v1_2.py`, `test_v1_2_1.py`, `test_v1_2_2.py`, `test_v1_2_3.py` (as of v1.2.3).
+Test suite: 622 tests across `test_unit.py`, `test_integration.py`, `test_golden.py`, `test_edge_cases.py`, `test_packaging.py`, `test_v1_1.py`, `test_v1_2.py`, `test_v1_2_1.py`, `test_v1_2_2.py`, `test_v1_2_3.py` (as of v1.2.3).

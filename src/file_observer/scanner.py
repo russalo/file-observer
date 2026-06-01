@@ -556,10 +556,10 @@ CHATLOG_RULES_DEFINITION = (
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
-    "stop_list:Allow,Answer,Arguments,Authorization,Bcc,CAUTION,Cc,Command,Commands,"
+    "stop_list:ANSWER,Allow,Answer,Arguments,Authorization,Bcc,CAUTION,Cc,Command,Commands,"
     "Copyright,Date,Description,Disallow,Distribution,Documentation,Error,Example,"
     "Examples,FIXME,Format,From,IMPORTANT,License,Lines,Message,NOTE,Newsgroups,"
-    "Note,Options,Organization,Parameters,Password,Path,Question,References,Result,Returns,"
+    "Note,Options,Organization,Parameters,Password,Path,QUESTION,Question,References,Result,Returns,"
     "Sender,Subject,Summary,Synopsis,TIP,TODO,To,Usage,Version,Warning"
 )
 CHATLOG_STATIC_TUNING = {
@@ -628,7 +628,9 @@ CHATLOG_SPEAKER_STOP_LIST: set[str] = {
     # (stopgap for the most common recurring-Key:value FP; the real fix is a
     # non-count signal — see scratch/review/v1_2_2_fp_findings.md). Deliberately
     # NOT adding single letters `Q`/`A`: `A:`/`B:` is legitimate anonymized dialogue.
-    "Question", "Answer",
+    # Membership is case-sensitive and the label regex matches all-caps, so the
+    # common ALL-CAPS FAQ style needs its own entries (PR #30 review).
+    "Question", "Answer", "QUESTION", "ANSWER",
 }
 
 # v0.9: Reference tokens vector identity constants.
