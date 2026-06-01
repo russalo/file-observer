@@ -71,8 +71,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.2.1"
-LOGIC_VERSION = "1.1.1"
+SCANNER_VERSION = "1.2.2"
+LOGIC_VERSION = "1.1.2"
 SCHEMA_VERSION = "1.2"
 
 
@@ -546,17 +546,21 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 5  # v1.2.1: require >=2 distinct speakers; drop date co-signal (FP fixes)
+CHATLOG_METHOD_VERSION = 6  # v1.2.2: prose Rule 1 requires a recurring speaker; expanded stop-list (FP fixes)
 CHATLOG_RULES_DEFINITION = (
-    "detect:speaker_label_re(3+,stop_list),h3_header_re(5+)|section_divider_re(3+)[require speaker_cosignal>=2],"
+    "detect:speaker_label_re(distinct>=2,total>=3,recurring>=1,stop_list),"
+    "h3_header_re(5+)|section_divider_re(3+)[require speaker_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
     "line/array/tree,embedded_speaker_labels,require msgs>=3 AND distinct_speakers>=2);"
     "extract:turn_count,speaker_labels(freq>=3,stop_list),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
-    "stop_list:Allow,CAUTION,Disallow,Error,Example,Examples,FIXME,"
-    "IMPORTANT,NOTE,Note,Result,TIP,TODO,Warning"
+    "stop_list:Allow,Arguments,Authorization,Bcc,CAUTION,Cc,Command,Commands,"
+    "Copyright,Date,Description,Disallow,Distribution,Documentation,Error,Example,"
+    "Examples,FIXME,Format,From,IMPORTANT,License,Lines,Message,NOTE,Newsgroups,"
+    "Note,Options,Organization,Parameters,Password,Path,References,Result,Returns,"
+    "Sender,Subject,Summary,Synopsis,TIP,TODO,To,Usage,Version,Warning"
 )
 CHATLOG_STATIC_TUNING = {
     "detection_threshold": 3,
@@ -608,8 +612,18 @@ CHATLOG_JSON_ROLE_VALUE_RE = re.compile(
 # and extraction. These are common documentation patterns (Note:, Example:, etc.)
 # that match the speaker label regex but are not conversation participants.
 CHATLOG_SPEAKER_STOP_LIST: set[str] = {
+    # documentation / admonition labels (v0.9.1)
     "Note", "NOTE", "Example", "Examples", "Result", "Warning", "Error",
     "Disallow", "Allow", "TODO", "FIXME", "TIP", "IMPORTANT", "CAUTION",
+    # v1.2.2: structural/header labels that recur but are never speakers,
+    # surfaced by the corpus sweep — email/usenet headers, man-page sections,
+    # legal notices, form fields. `User` is intentionally NOT here (it is a
+    # legitimate speaker in many transcripts); `Password` and the rest never are.
+    "From", "To", "Cc", "Bcc", "Date", "Subject", "Sender", "References",
+    "Message", "Newsgroups", "Organization", "Lines", "Distribution", "Path",
+    "Version", "Usage", "Options", "Command", "Commands", "Format", "Synopsis",
+    "Description", "Arguments", "Parameters", "Returns", "Summary",
+    "Authorization", "Documentation", "License", "Copyright", "Password",
 }
 
 # v0.9: Reference tokens vector identity constants.
@@ -2520,12 +2534,21 @@ class Scanner:
         """
         if not text:
             return False
-        # Rule 1: speaker labels, excluding stop-list matches
+        # Rule 1: prose speaker labels (stop-list filtered). A conversation has
+        # speakers who RECUR and alternate; a header/label block (email headers,
+        # man-page sections, UTF-8 demos, language lists) has many one-shot
+        # labels. v1.2.2: require >=2 distinct speakers, >=3 total turns, AND at
+        # least one speaker who takes multiple turns (real back-and-forth). This
+        # ports the v1.2.1 distinct-speaker hardening (added then only to the
+        # JSON path) to prose, and adds recurrence — the discriminator the corpus
+        # sweep showed separates transcripts (recurring) from header blocks (one-shot).
         speaker_matches = [
             m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
             if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
         ]
-        if len(speaker_matches) >= 3:
+        speaker_counts = Counter(speaker_matches)
+        if (len(speaker_counts) >= 2 and sum(speaker_counts.values()) >= 3
+                and any(c >= 2 for c in speaker_counts.values())):
             return True
         # Rules 2/3 (v1.2): markdown structure (H3 headers / section dividers)
         # only counts as a chatlog/journal signal when accompanied by a
@@ -2536,7 +2559,7 @@ class Scanner:
         # SPEAKER co-signal (2+ labels). Dropped the v1.2 date-header co-signal —
         # it merely relocated the false positive to dated docs (changelogs,
         # release notes, dated journals are structurally indistinguishable).
-        structure_cosignal = len(speaker_matches) >= 2
+        structure_cosignal = len(speaker_counts) >= 2
         if structure_cosignal and len(CHATLOG_H3_HEADER_RE.findall(text)) >= 5:
             return True
         if structure_cosignal and len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
