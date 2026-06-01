@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.2.0
+    Version:    1.2.1
     Schema:     1.2
     Python:     >= 3.12
     Spec:       docs/v1.2.0_RFC_Specification.md (current)
@@ -71,8 +71,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.2.0"
-LOGIC_VERSION = "1.1.0"
+SCANNER_VERSION = "1.2.1"
+LOGIC_VERSION = "1.1.1"
 SCHEMA_VERSION = "1.2"
 
 
@@ -546,11 +546,11 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 4  # v1.2: generalized conversational detection + per-speaker structure
+CHATLOG_METHOD_VERSION = 5  # v1.2.1: require >=2 distinct speakers; drop date co-signal (FP fixes)
 CHATLOG_RULES_DEFINITION = (
-    "detect:speaker_label_re(3+,stop_list,alternation),h3_header_re(5+),section_divider_re(3+),"
+    "detect:speaker_label_re(3+,stop_list),h3_header_re(5+)|section_divider_re(3+)[require speaker_cosignal>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
-    "line/array/tree,embedded_speaker_labels);"
+    "line/array/tree,embedded_speaker_labels,require msgs>=3 AND distinct_speakers>=2);"
     "extract:turn_count,speaker_labels(freq>=3,stop_list),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
@@ -587,10 +587,13 @@ CHATLOG_JSON_MESSAGE_RE = re.compile(
     r'|\{[^{}]*"(?:text|value|content|message|body)"\s*:[^{}]*'
     r'"(?:type|role|from|speaker|author)"\s*:\s*"[^"]{1,40}"'
 )
-# v1.2: date-stamped headers distinguish a journal/vault ('# 2026-04-10') from
-# a prose doc ('### Parameters'). Lets rules 2/3 keep detecting journals while
-# no longer over-firing on documentation markdown.
-CHATLOG_DATE_HEADER_RE = re.compile(r'(?m)^#{1,6}\s.*\b\d{4}-\d{2}-\d{2}\b')
+# v1.2.1: capture the role-field VALUE so detection can require >=2 DISTINCT
+# speakers. A conversation alternates (user/assistant, u0/u1, human/gpt); a
+# structured log is all "type":"info" (1 distinct) and a changelog has none.
+# This single requirement fixes the v1.2.0 false positives on logs, single-role
+# JSONL, and Claude rich-content blocks (all <2 distinct roles).
+CHATLOG_JSON_ROLE_VALUE_RE = re.compile(
+    r'"(?:type|role|from|speaker|author)"\s*:\s*"([^"]{1,40})"')
 # v0.9.1: speaker labels matching these tokens are excluded from detection
 # and extraction. These are common documentation patterns (Note:, Example:, etc.)
 # that match the speaker label regex but are not conversation participants.
@@ -2519,10 +2522,11 @@ class Scanner:
         # conversational co-signal — 2+ speaker labels OR 2+ date-stamped
         # headers (journal entries). Prose docs have neither, so they no
         # longer false-positive; transcripts and dated journals still do.
-        structure_cosignal = (
-            len(speaker_matches) >= 2
-            or len(CHATLOG_DATE_HEADER_RE.findall(text)) >= 2
-        )
+        # v1.2.1: markdown structure (H3 headers / dividers) counts only with a
+        # SPEAKER co-signal (2+ labels). Dropped the v1.2 date-header co-signal —
+        # it merely relocated the false positive to dated docs (changelogs,
+        # release notes, dated journals are structurally indistinguishable).
+        structure_cosignal = len(speaker_matches) >= 2
         if structure_cosignal and len(CHATLOG_H3_HEADER_RE.findall(text)) >= 5:
             return True
         if structure_cosignal and len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
@@ -2530,56 +2534,6 @@ class Scanner:
         # Rule 4 (v1.2): generalized conversational JSON/JSONL detection
         # (line-delimited, arrays, nested trees, embedded speaker labels).
         return self._detect_conversational_json(text)
-
-    @staticmethod
-    def _is_message_like(obj: Any) -> bool:
-        """A dict carrying a role-field key (names the speaker) AND a
-        content-field key (holds the utterance). Schema-general."""
-        if not isinstance(obj, dict):
-            return False
-        has_role = any(
-            k in obj and isinstance(obj[k], (str, int)) and str(obj[k]).strip()
-            for k in CHATLOG_ROLE_FIELD_KEYS
-        )
-        if not has_role:
-            return False
-        for k in CHATLOG_CONTENT_FIELD_KEYS:
-            if k not in obj:
-                continue
-            v = obj[k]
-            if isinstance(v, str) and v.strip():
-                return True
-            if isinstance(v, dict) and isinstance(v.get("content"), (str, list)):
-                return True  # e.g. Claude: message.content
-            if isinstance(v, list) and v:
-                return True  # content as a list of parts
-        return False
-
-    def _count_message_like(self, node: Any, budget: int = 5000) -> int:
-        """Count message-like dicts in a parsed JSON structure (arrays of
-        messages, nested reply trees). Bounded; early-exits at 3."""
-        count = 0
-        stack = [node]
-        seen = 0
-        while stack and seen < budget:
-            cur = stack.pop()
-            seen += 1
-            if isinstance(cur, dict):
-                if self._is_message_like(cur):
-                    count += 1
-                    if count >= 3:
-                        return count
-                    # Don't recurse into this message's own role/content —
-                    # Claude rich-content blocks would double-count. Continue
-                    # only into other fields (e.g. nested `replies`).
-                    stack.extend(v for k, v in cur.items()
-                                 if k not in CHATLOG_ROLE_FIELD_KEYSET
-                                 and k not in CHATLOG_CONTENT_FIELD_KEYSET)
-                else:
-                    stack.extend(cur.values())
-            elif isinstance(cur, list):
-                stack.extend(cur)
-        return count
 
     @staticmethod
     def _string_has_speaker_dialogue(s: Any) -> bool:
@@ -2594,46 +2548,28 @@ class Scanner:
         return len(labels) >= 3
 
     def _detect_conversational_json(self, text: str) -> bool:
-        """Generalized conversational JSON/JSONL detection (v1.2).
+        """Generalized conversational JSON/JSONL detection (v1.2; tightened v1.2.1).
 
-        Handles: line-delimited messages (ConvoKit speaker/text, Claude
-        type+message.content), nested trees (oasst prompt.role+replies),
-        message arrays (ShareGPT from/value), dialogue embedded in a string
-        field (hh-rlhf), and truncated large single-JSON via a regex fallback.
+        Handles line-delimited messages (ConvoKit speaker/text, Claude
+        type+message.content), nested trees (oasst prompt.role+replies), message
+        arrays (ShareGPT from/value), dialogue embedded in a string field
+        (hh-rlhf), and truncated large single-JSON via a regex fallback.
+
+        A conversation requires **3+ messages with 2+ DISTINCT speakers**. The
+        distinct-speaker rule (v1.2.1) is what separates a real conversation
+        from a structured log (`type:"info"` repeated), a single-role stream, or
+        Claude rich-content blocks — all of which carry <2 distinct roles and
+        previously false-positived.
         """
-        msg_count = 0
-        any_parsed = False
-        # Strategy 1: line-delimited JSON (JSONL)
-        for line in text.split("\n"):
-            line = line.strip()
-            if not line or line[0] not in "{[":
-                continue
-            try:
-                obj = json.loads(line)
-            except (json.JSONDecodeError, ValueError):
-                continue
-            any_parsed = True
-            msg_count += self._count_message_like(obj)
-            if msg_count >= 3:
-                return True
-            if isinstance(obj, dict):
-                for v in obj.values():
-                    if self._string_has_speaker_dialogue(v):
-                        return True
-        # Strategy 2: single JSON document/array small enough to fit the sample
-        if not any_parsed:
-            stripped = text.strip()
-            if stripped[:1] in "{[":
-                try:
-                    if self._count_message_like(json.loads(stripped)) >= 3:
-                        return True
-                except (json.JSONDecodeError, ValueError):
-                    pass
-            # Strategy 3: regex fallback ONLY when nothing parsed (a truncated
-            # large single-JSON). When lines parsed, strategy 1's accurate
-            # object count governs — otherwise the regex would also match inner
-            # content blocks (e.g. Claude's rich-content) and over-count.
-            if len(CHATLOG_JSON_MESSAGE_RE.findall(text)) >= 3:
+        speakers = [sp for sp, _ in self._extract_json_conversation(text)]
+        if len(speakers) >= 3 and len(set(speakers)) >= 2:
+            return True
+        # Regex fallback ONLY when the parser extracted nothing — a truncated/
+        # large single-JSON it couldn't read (e.g. a multi-MB ShareGPT file).
+        # Gated on `not speakers` so it can't override the parser on readable
+        # input (otherwise inner content blocks would re-inflate the count).
+        if not speakers and len(CHATLOG_JSON_MESSAGE_RE.findall(text)) >= 3:
+            if len(set(CHATLOG_JSON_ROLE_VALUE_RE.findall(text))) >= 2:
                 return True
         return False
 

@@ -90,3 +90,16 @@
 **PASS — 20 requirements verified, 0 failures, 0 deviations.**
 
 v1.2 turns the chatlog vector from one-schema-only into robust coverage across the real conversational ecosystem, cuts the markdown false-positive rate ~96%, and lays the per-speaker structural foundation for Project Sentinel — additively, with the contract intact. The word-twisting/authority study (consuming the new per-speaker structure) is deferred to future analysis against the manually-tagged RPG corpus.
+
+---
+
+## 9. Correction (added 2026-06-01, post-release)
+
+**This report's verdict was overconfident.** The §3 "~96% FP reduction / PASS" was measured only against the corpora the feature was *built for* — it did not include common negatives. An adversarial self-review after release found **two false positives that shipped in v1.2.0**:
+
+1. `CHANGELOG.md` and other dated prose journals — the §3 date-header co-signal *relocated* the prose-doc FP to dated docs rather than eliminating it.
+2. Structured JSONL logs (`{type, message}` per line) — the generalized "message-like" rule was too broad.
+
+Both are fixed in **v1.2.1**: markdown structure rules require a speaker co-signal (date co-signal dropped); JSON detection requires ≥2 distinct speakers. A false-positive corpus + determinism property test were added (`tests/test_v1_2_1.py`).
+
+**Process lesson:** compliance verified conformance to the spec *I authored*, which never required "don't false-positive on changelogs." Self-graded compliance + confirmation-shaped validation gave false confidence. Detection changes now require an adversarial FP corpus written *before* "validated."

@@ -111,13 +111,16 @@ class TestErrorDetail:
 
 class TestDeterminismAndCounting:
     def test_multi_role_key_picks_priority_deterministically(self, tmp_path):
-        # A message with several role keys must select by fixed priority
-        # (type > role > from > speaker > author), not hash-randomized set
-        # order — guards the determinism contract (RFC §2).
-        c = "\n".join(json.dumps({"type": "USER", "role": "x", "content": f"m{i}"})
-                      for i in range(3))
+        # Messages with several role keys must select the speaker by fixed
+        # priority (type > role > from > speaker > author), not hash-randomized
+        # set order — guards the determinism contract (RFC §2). Uses 2 distinct
+        # speakers so it's a real conversation (v1.2.1 needs >=2 distinct).
+        c = ('{"type": "USER", "role": "x", "content": "a"}\n'
+             '{"type": "ASSISTANT", "role": "y", "content": "b"}\n'
+             '{"type": "USER", "role": "z", "content": "c"}\n')
         chat = _scan_text(tmp_path, "m.jsonl", c).specialist_metadata["chatlog"]
-        assert chat["speaker_turn_counts"] == {"USER": 3}
+        # speaker comes from `type` (priority), not `role`'s x/y/z
+        assert chat["speaker_turn_counts"] == {"ASSISTANT": 1, "USER": 2}
 
     def test_rich_content_blocks_not_double_counted(self, tmp_path):
         # One message whose content is a list of text blocks must count as a

@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "1.2.0"
-        assert ctx.logic_version == "1.1.0"
+        assert ctx.scanner_version == "1.2.1"
+        assert ctx.logic_version == "1.1.1"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "1.2.0"
+        assert data["context"]["scanner_version"] == "1.2.1"
 
 
 # ---------------------------------------------------------------------------
@@ -1313,11 +1313,10 @@ class TestDetectChatlogPattern:
     # ---- Rule 2: ### headers ----
 
     def test_five_h3_headers_triggers(self, scanner: Scanner) -> None:
-        # v1.2: H3 headers count as a journal signal when accompanied by a
-        # co-signal (here, date-stamped entries). Bare prose headers no longer
-        # trigger — see test_generic_h3_headers_no_cosignal_does_not_trigger.
-        text = ("### 2026-01-01\nbody\n### 2026-01-02\nbody\n### 2026-01-03\n"
-                "body\n### 2026-01-04\nbody\n### 2026-01-05\nbody\n")
+        # v1.2.1: H3 headers count only with a SPEAKER co-signal (2+ labels).
+        # The v1.2 date-header co-signal was dropped (it FP'd on changelogs).
+        text = ("### One\nAlice: hi\n### Two\nBob: yo\n### Three\nbody\n"
+                "### Four\nbody\n### Five\nbody\n")
         assert scanner._detect_chatlog_pattern(text) is True
 
     def test_generic_h3_headers_no_cosignal_does_not_trigger(self, scanner: Scanner) -> None:
@@ -1342,8 +1341,8 @@ class TestDetectChatlogPattern:
     # ---- Rule 3: section dividers ----
 
     def test_three_dash_dividers_triggers(self, scanner: Scanner) -> None:
-        # v1.2: dividers count when accompanied by a co-signal (dated entries).
-        text = "## 2026-01-01\n---\n## 2026-01-02\n---\n## 2026-01-03\n---\nfooter\n"
+        # v1.2.1: dividers count only with a SPEAKER co-signal (2+ labels).
+        text = "Alice: hi\n---\nBob: yo\n---\nmore prose\n---\nfooter\n"
         assert scanner._detect_chatlog_pattern(text) is True
 
     def test_generic_dividers_no_cosignal_does_not_trigger(self, scanner: Scanner) -> None:
@@ -1385,6 +1384,10 @@ class TestDetectChatlogPattern:
         assert scanner._detect_chatlog_pattern(text) is True
 
     def test_realistic_journal_with_dividers(self, scanner: Scanner) -> None:
+        # v1.2.1: a dated prose journal with NO speakers is structurally
+        # indistinguishable from a changelog — it must NOT be flagged. (The
+        # journal/vault use case now requires a speaker signal or conversational
+        # JSON.) This guards the changelog/dated-doc false positive.
         text = (
             "# 2026-04-10\n"
             "Worked on the scanner. Patched the OLE2 bug.\n"
@@ -1396,7 +1399,7 @@ class TestDetectChatlogPattern:
             "Schema reshape day.\n"
             "---\n"
         )
-        assert scanner._detect_chatlog_pattern(text) is True
+        assert scanner._detect_chatlog_pattern(text) is False
 
     # ---- regression guards for PR #9 review comments ----
 
@@ -1550,9 +1553,9 @@ class TestIsChatlogIntegration:
 
     def test_chatlog_txt_file_detected(self, tmp_path: Path) -> None:
         # The .txt extension is also in the chatlog detection allow list.
-        # v1.2: dividers need a co-signal (dated journal entries here).
+        # v1.2.1: dividers need a SPEAKER co-signal.
         content = (
-            "## 2026-01-01\n---\n## 2026-01-02\n---\n## 2026-01-03\n---\nfooter\n"
+            "Alice: hi\n---\nBob: yo\n---\nmore prose\n---\nfooter\n"
         )
         (tmp_path / "log.txt").write_text(content)
         manifest = Scanner(source_dir=tmp_path).scan()
@@ -1601,7 +1604,7 @@ class TestIsChatlogIntegration:
     def test_is_chatlog_serializes_to_json(self, tmp_path: Path) -> None:
         from file_observer.scanner import manifest_to_json
         import json as _json
-        content = "### 2026-01-01\n### 2026-01-02\n### 2026-01-03\n### 2026-01-04\n### 2026-01-05\n"
+        content = "### One\nAlice: hi\n### Two\nBob: yo\n### Three\n### Four\n### Five\n"
         (tmp_path / "headers.md").write_text(content)
         manifest = Scanner(source_dir=tmp_path).scan()
         data = _json.loads(manifest_to_json(manifest))
@@ -1997,12 +2000,12 @@ class TestChatlogFixtures:
         assert chat["turn_count"] >= 6
 
     def test_journal_fixture_section_dividers(self, tmp_path: Path) -> None:
+        # v1.2.1: chatlog_journal.md is dated prose with dividers but NO
+        # speakers — structurally a changelog. It must NOT be flagged now
+        # (journal/vault detection requires a speaker signal or conversational
+        # JSON). Guards the dated-doc false positive.
         rec = self._scan_one_file("chatlog_journal.md", tmp_path)
-        assert rec.is_chatlog is True
-        chat = rec.specialist_metadata["chatlog"]
-        # Has both --- dividers AND # headers
-        assert chat["section_marker_count"] >= 3
-        assert "---" in chat["section_marker_styles"]
+        assert rec.is_chatlog is False
 
     def test_headers_fixture_h3_rule(self, tmp_path: Path) -> None:
         # v1.2 FP fix: this fixture is prose-doc-like (bare ### headers, no
@@ -2039,8 +2042,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "1.2.0"
-        assert LOGIC_VERSION == "1.1.0"
+        assert SCANNER_VERSION == "1.2.1"
+        assert LOGIC_VERSION == "1.1.1"
 
 
 # ---------------------------------------------------------------------------
@@ -3527,4 +3530,4 @@ class TestMarkdownReport:
         from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
-        assert "1.2.0" in md
+        assert "1.2.1" in md
