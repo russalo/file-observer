@@ -68,17 +68,23 @@ that every machine produces byte-identical results regardless of environment.
 
 ## PDF metadata is read from the head + a bounded tail (v1.5)
 
-The PDF specialist reads the file head plus a bounded 128 KB tail (where the page
-tree, `/Info` dict, and font markers live) — not the whole file. `page_count`,
-`producer`/`title`, and `text_detected` are populated for the large class of PDFs
-whose page tree / xref / Info are **uncompressed**. For **PDF 1.5+ object-stream**
-PDFs, which compress those structures into streams, `page_count` is **null** (an
-honest "not observed" — never a wrong/under-counted value; the page tree
-compresses all-or-nothing) and `text_detected` may be `false` even for a text
-PDF. `requires_vision` is likewise refined but conservative: it flags a PDF only
-when text/font markers are absent AND image markers are present. Reliable
-extraction for object-stream PDFs would require a full PDF parser, deliberately
-out of scope (stdlib only).
+The PDF specialist reads the **whole file** (capped at 64 MB) for `page_count`
+and `/Info` (producer/title), and a head+tail window for the font/image markers
+(`text_detected`, `requires_vision`). It does **not** decompress streams.
+`page_count` is anchored to the `/Type /Pages` page tree (so bookmark/`/Outlines`
+counts aren't mistaken for pages), and `producer`/`title` honor balanced and
+escaped parens. These are reliable for PDFs whose page tree / Info are
+**uncompressed** (the common case). Residuals:
+- **PDF 1.5+ object-stream** PDFs compress the page tree / Info / `/Font` refs
+  into streams → `page_count` is **null** (an honest "not observed" — never a
+  wrong value), `producer`/`title` may be null, and `text_detected` may be
+  `false` even for a text PDF.
+- PDFs **larger than 64 MB** fall back to the head+tail window (the root page
+  tree could be in the unread middle → null).
+- Encrypted PDFs: `/Info` strings are encrypted, so they're reported as null.
+`requires_vision` is conservative: it flags a PDF only when text/font markers are
+absent AND image markers are present. Reliable extraction for object-stream PDFs
+would require a full PDF parser, deliberately out of scope (stdlib only).
 
 ## MIME detection is a signal, not a correction
 

@@ -188,6 +188,29 @@ class TestReviewFixes:
         p, head = _write(tmp_path, "flat.pdf", data)
         assert _sc()._extract_pdf_metadata(p, head, 131072)["page_count"] == 100
 
+    def test_nested_dict_in_pages_object(self, tmp_path):
+        # Gemini/Codex: a nested /Resources<<…>> in the /Pages object made the
+        # first `>>` close the wrong dict; page-count search must span to `endobj`.
+        data = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Resources<</Font<</F1 4 0 R>>>>"
+                b"/Kids[3 0 R]/Count 88>>endobj\n/Font\nBT\n%%EOF")
+        p, head = _write(tmp_path, "nested.pdf", data)
+        assert _sc()._extract_pdf_metadata(p, head, 131072)["page_count"] == 88
+
+    def test_balanced_parens_title(self, tmp_path):
+        # Codex: balanced UNESCAPED inner parens in a literal string.
+        data = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Count 3>>endobj\n/Font\nBT\n"
+                b"6 0 obj<</Title(Report (v2) Final)>>endobj\n%%EOF")
+        p, head = _write(tmp_path, "bal.pdf", data)
+        assert _sc()._extract_pdf_metadata(p, head, 131072)["title"] == "Report (v2) Final"
+
+    def test_odd_length_hex_string(self, tmp_path):
+        # Gemini: ISO 32000 §7.3.4.3 — odd-length hex pads a trailing 0.
+        data = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Count 1>>endobj\n/Font\nBT\n"
+                b"6 0 obj<</Producer<41646F62655>>endobj\n%%EOF")  # 'Adobe' + odd nibble
+        p, head = _write(tmp_path, "oddhex.pdf", data)
+        prod = _sc()._extract_pdf_metadata(p, head, 131072)["producer"]
+        assert prod is not None and prod.startswith("Adobe")
+
     def test_jbig2_scan_is_vision(self, tmp_path):
         data = (b"%PDF-1.5\n2 0 obj<</Type/Pages/Count 1>>endobj\n"
                 b"4 0 obj<</Subtype/Image/Filter/JBIG2Decode>>stream\n\x00\nendstream endobj\n%%EOF")

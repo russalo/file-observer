@@ -26,12 +26,13 @@
 
 | Req | Implementation | Status |
 |---|---|---|
-| `_extract_pdf_metadata` reads head + bounded tail | `_pdf_scan_region(path,sample,budget)` | PASS |
-| `page_count` = max `/Count` over region (root page tree) | `_extract_pdf_metadata` | PASS |
-| `/Info` fields via literal `(...)` AND hex `<...>` (FEFF/UTF-16BE aware) | `_extract_pdf_string` | PASS |
-| Provisional `text_detected` (`/Font`/`BT` in region) | `_extract_pdf_metadata` | PASS |
+| Markers (text/image) over a fixed head+tail window (`PDF_MARKER_BUDGET`) | `_pdf_scan_region` | PASS |
+| `page_count`/`/Info` over the WHOLE file (capped 64 MB), head+tail fallback | `_pdf_full_or_region` | PASS |
+| `page_count` = max `/Count` anchored to `/Type /Pages` (enclosing object, to `endobj`) | `_pdf_page_count` | PASS |
+| `/Info` literal `(…)` depth-aware (balanced+escaped parens) AND hex `<…>` (FEFF/UTF-16BE; odd-len pads 0); gated on `/Encrypt` | `_extract_pdf_string`, `_pdf_literal_string` | PASS |
+| Provisional `text_detected` (`/Font`/`BT` in marker window) | `_extract_pdf_metadata` | PASS |
 | `requires_vision`: text → false; no-text+image → true; no markers → false (conservative) | `detect_requires_vision(path,...)` | PASS |
-| Bounded-observation deviation declared (head + 128 KB tail) | docstring | PASS |
+| Bounded-observation deviation declared (markers 128 KB head+tail; metadata whole-file ≤64 MB) | docstrings | PASS |
 | `sample_text_marker_density` retained, documented head-only | `_extract_pdf_metadata` | PASS |
 | LOGIC 1.4.0 / SCHEMA 1.4 | version constants | PASS |
 | No field removed/renamed/retyped | additive only | PASS |
@@ -103,8 +104,30 @@ Post-fix: 709 passed, 1 skipped; corpus re-scan `requires_vision` 12,
 
 Post-Gemini: 710 passed, 1 skipped.
 
-**PR bots (Codex/Gemini/Copilot):** _pending on the PR; CONFIRMED findings fixed
-before merge._
+**PR bots — Codex, Gemini Code Assist, Copilot (PR #35, 2026-06-02):**
+
+9. **(Gemini HIGH + Codex P2, confirmed) Nested dict hid `/Count`.** The
+   page-count search stopped at the first `>>`, which a nested `/Resources<<…>>`
+   in the `/Pages` object closed early → `page_count=None`. Fixed: span to
+   `endobj`. Guard: `test_nested_dict_in_pages_object`.
+10. **(Codex P2, confirmed) Balanced unescaped parens in `/Info` strings**
+    (`Title (Report (v2) Final)`) truncated. Fixed: a depth-aware literal-string
+    parser (`_pdf_literal_string`) handling balance + escapes. Guard:
+    `test_balanced_parens_title`.
+11. **(Gemini, confirmed) Odd-length hex string** → null. Fixed: pad a trailing
+    0 per ISO 32000 §7.3.4.3. Guard: `test_odd_length_hex_string`.
+12. **(Copilot ×6) DOC/CODE DRIFT from the rework** — the high-value catch again:
+    RFC §2/§3, LIMITATIONS, this Requirements table, and HISTORY still described
+    the *first* (head+tail-only, un-anchored `max(/Count)`, `pdf_text_in_tail`
+    trigger) design, not the reworked whole-file/anchored one. All corrected.
+    The unused `budget` param is now documented (caller-uniform; PDF read sizes
+    use the dedicated constants by design).
+- CI: a new `tests.yml` workflow runs the suite on every push/PR (it first caught
+  a test depending on an untracked local fixture — fixed with a whitelisted
+  `sample_*` dated fixture).
+
+Final: **713 passed, 1 skipped**; CI green; `corpora_infra` re-scan unchanged
+(requires_vision 12, page_count populated, no over-counts).
 
 ## 5. Backward Compatibility
 

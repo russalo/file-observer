@@ -2137,13 +2137,15 @@ class Scanner:
         counts; max over the anchored set is the total."""
         counts: list[int] = []
         for m in re.finditer(rb"/Type\s*/Pages\b", full):
-            # Search the ENCLOSING dict, not a fixed byte window: scan FORWARD from
-            # /Type/Pages to the dict close `>>` (capped) — a flat page tree's
-            # /Kids array can push /Count many hundreds of bytes after /Type, so a
-            # small fixed window missed it (review 2026-06-02). Fall back to a
-            # short backward window only when /Count precedes /Type in the dict.
-            close = full.find(b">>", m.end())
-            fwd_end = close + 2 if 0 <= close <= m.end() + 65536 else m.end() + 65536
+            # Scan the enclosing OBJECT (forward to `endobj`, capped), not a fixed
+            # byte window or the first `>>`: a flat page tree's /Kids array pushes
+            # /Count far past /Type, and a NESTED dict (e.g. /Resources<<…>>) makes
+            # the first `>>` close the wrong dict — both broke a fixed/`>>` window
+            # (review 2026-06-02). `endobj` bounds the object unambiguously, and a
+            # /Pages object's only /Count is the page count. Short backward fallback
+            # for the rare /Count-before-/Type ordering.
+            close = full.find(b"endobj", m.end())
+            fwd_end = close if 0 <= close <= m.end() + 65536 else m.end() + 65536
             cm = re.search(rb"/Count\s+(\d+)", full[m.start():fwd_end])
             if cm is None:
                 cm = re.search(rb"/Count\s+(\d+)", full[max(0, m.start() - 512):m.start()])
@@ -2153,6 +2155,12 @@ class Scanner:
 
     def _extract_pdf_metadata(self, path: Path, sample: bytes,
                               budget: int = 131072) -> dict[str, Any]:
+        # `budget` is accepted for caller uniformity (the dispatcher passes the
+        # specialist budget to every extractor) but is intentionally NOT used to
+        # size the PDF reads: the marker window is fixed at PDF_MARKER_BUDGET (so
+        # this tier and detect_requires_vision agree regardless of profile) and
+        # page_count/Info read the whole file (PDF_FULL_READ_CAP).
+        del budget
         # Markers (text/image) use a FIXED head+tail window — identical to the one
         # detect_requires_vision uses — so text_detected and requires_vision can
         # never contradict each other regardless of specialist_budget.
@@ -2197,23 +2205,50 @@ class Scanner:
             (count_bt + count_et) / len(sample) if len(sample) > 0 else None)
         return meta
 
+    @staticmethod
+    def _pdf_literal_string(data: bytes, open_paren: int) -> bytes | None:
+        """Read a PDF literal string starting at the `(` at `open_paren`, honoring
+        backslash escapes AND balanced nested parens (ISO 32000 §7.3.4.2). A regex
+        can't do balanced parens; an unescaped inner `(`/`)` in a /Title used to
+        truncate the value (review 2026-06-02). Returns unescaped content, or None
+        if unterminated. Bounded by a 64 KB scan so a stray unbalanced `(` can't
+        run away."""
+        depth, i, out = 0, open_paren, bytearray()
+        limit = min(len(data), open_paren + 65536)
+        while i < limit:
+            c = data[i]
+            if c == 0x5C:                       # backslash → next byte literal
+                out += data[i + 1:i + 2]
+                i += 2
+                continue
+            if c == 0x28:                       # (
+                depth += 1
+                if depth > 1:
+                    out.append(c)
+            elif c == 0x29:                     # )
+                depth -= 1
+                if depth == 0:
+                    return bytes(out)
+                out.append(c)
+            else:
+                out.append(c)
+            i += 1
+        return None                              # unterminated / runaway
+
     def _extract_pdf_string(self, data: bytes, key: bytes) -> str | None:
-        # literal string: /Key (text). Honor PDF backslash escapes (incl. \( \) )
-        # and balanced inner content; `\\.` consumes an escaped byte, `[^()]` a
-        # plain one, so an escaped `\)` no longer truncates the value.
-        # `[^()\\]` excludes backslash so `\` is consumed ONLY by `\\.` — no
-        # alternation ambiguity, no catastrophic backtracking on `\\\\…` input.
-        match = re.search(re.escape(key) + rb"\s*\(((?:\\.|[^()\\])*)\)", data, re.S)
-        if match:
-            unescaped = re.sub(rb"\\([()\\])", rb"\1", match.group(1))
-            return unescaped.decode("latin-1", errors="replace")
+        # literal string: /Key (…) — depth-aware (balanced + escaped parens).
+        km = re.search(re.escape(key) + rb"\s*\(", data)
+        if km:
+            val = self._pdf_literal_string(data, km.end() - 1)  # at the '('
+            if val is not None:
+                return val.decode("latin-1", errors="replace")
         # hex string: /Key <48656C6C6F>. PDF hex strings are often UTF-16BE (with a
         # FEFF BOM); plain ASCII hex also occurs. Decode accordingly.
         match = re.search(re.escape(key) + rb"\s*<([0-9A-Fa-f\s]+)>", data)
         if match:
             hexstr = re.sub(rb"\s", b"", match.group(1))
             if len(hexstr) % 2:
-                return None
+                hexstr += b"0"  # ISO 32000 §7.3.4.3: odd-length hex pads a trailing 0
             try:
                 raw = bytes.fromhex(hexstr.decode("ascii"))
             except ValueError:
