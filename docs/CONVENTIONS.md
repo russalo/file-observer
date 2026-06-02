@@ -223,7 +223,7 @@ This section is for **us**. It is the running list of everything File Observer c
 
 ### 4.4 Magic signatures
 
-11 patterns in `MAGIC_SIGNATURES`: PNG, JPEG, PDF, ZIP, OLE2, RTF, GIF (87a), GIF (89a), RIFF, HTML doctype, XML declaration
+`MAGIC_SIGNATURES` (v1.3: generalized to multi-constraint `(constraints, mime)`, every label a valid MIME type): PNG, JPEG, PDF, GIF (87a/89a); RIFF sub-types WebP/WAV/AVI (offset-8 marker; no generic `riff_container`); archives gzip/bzip2/xz/7z/zstd/RAR/ZIP; images/data TIFF (LE/BE)/BMP/SQLite/Parquet; OLE2/RTF/ELF/PE(`MZ`)/PostScript; media MP4 (`ftyp`@4)/Matroska/MP3 (`ID3`)/FLAC/OGG. Used by `file_signature`/`format_signatures`/`is_polyglot` AND (v1.3) as `detect_mime`'s pure-Python content fallback when libmagic is unavailable.
 
 ### 4.5 Safety flags
 
