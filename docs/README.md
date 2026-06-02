@@ -127,7 +127,7 @@ pip install "file-observer[security]"  # Hardened XML parsing
 pip install "file-observer[dev]"       # Full dev environment
 ```
 
-**Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for ~20 common formats, then extension-based inference. Install it for the widest coverage:
+**Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for common binary formats (archives, images, data, media), then extension-based inference. Install it for the widest coverage:
 ```bash
 sudo apt install libmagic1    # Debian/Ubuntu
 brew install libmagic         # macOS

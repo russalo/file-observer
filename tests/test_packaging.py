@@ -2,7 +2,7 @@
 
 The package was renamed ``scanner`` -> ``file_observer`` in v1.0.1. The canonical
 import path must work; the legacy ``scanner`` path must keep working but emit a
-DeprecationWarning. The manifest schema is unaffected (SCHEMA_VERSION stays 1.0).
+DeprecationWarning. The rename does not touch the manifest schema.
 """
 
 import importlib
@@ -23,7 +23,7 @@ def test_version_surfaces_stay_in_sync():
     import file_observer.scanner as s
 
     root = Path(__file__).resolve().parent.parent
-    pyproj = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    pyproj = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     assert pyproj == SCANNER_VERSION, f"pyproject {pyproj} != SCANNER_VERSION {SCANNER_VERSION}"
 
     m = re.search(r"Version:\s*([0-9]+\.[0-9]+\.[0-9]+)", s.__doc__ or "")

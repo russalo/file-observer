@@ -42,12 +42,12 @@ When a specialist cannot extract a field within bounds, the field is null and
 
 ## Optional dependencies degrade gracefully, not silently
 
-Core operation needs only `chardet`. `python-magic`/`libmagic` sharpens content-based
-MIME detection but is **optional as of v1.3** — without it, a built-in pure-Python
-content sniff covers ~20 common formats before falling back to extension inference.
-Optional packages widen coverage:
+The declared dependencies are `python-magic` and `chardet`. `python-magic` binds the
+**libmagic** system library — and *libmagic itself is optional as of v1.3*: when it's
+absent (Windows, minimal containers), the built-in pure-Python content sniff covers a
+range of common binary formats before falling back to extension inference. Optional
+*extras* widen coverage further:
 
-- **python-magic** (`libmagic`) — content-based MIME for the full format range (pure-Python sniff covers common formats when absent)
 - **PyYAML** — frontmatter parsing
 - **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`)
 - **defusedxml** — hardened XML parsing (stdlib fallback is used if absent, with
