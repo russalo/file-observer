@@ -1,4 +1,4 @@
-"""v1.2.4 — two clean wins from the in-house multi-agent recall review (PR #?).
+"""v1.2.4 — two clean wins from the in-house multi-agent recall review (PR #31).
 
 The Claude multi-agent /code-review pass found two real issues the cross-model
 (Gemini) reviews missed, both verified live:
