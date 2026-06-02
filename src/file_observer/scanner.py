@@ -624,7 +624,15 @@ CHATLOG_RULES_DEFINITION = (
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
     "fp_lexicon_ci:added,answer,caution,changed,deprecated,error,example,examples,faq,"
-    "fixme,fixed,important,note,q,question,removed,result,security,tip,todo,warning"
+    "fixme,fixed,important,note,q,question,removed,result,security,tip,todo,warning;"
+    # nonspeaker_ci = CHATLOG_SPEAKER_STOP_LIST_CF — labels filtered from detection
+    # AND extraction. Enumerated so the rules_hash reflects the actual stop-list
+    # (a change to it changes detection/extraction output, so it must change the hash).
+    "nonspeaker_ci:allow,answer,arguments,authorization,bcc,caution,cc,command,commands,"
+    "copyright,date,description,disallow,distribution,documentation,error,example,examples,"
+    "fixme,format,from,important,license,lines,message,newsgroups,note,options,organization,"
+    "parameters,password,path,question,references,result,returns,sender,subject,summary,"
+    "synopsis,tip,to,todo,usage,version,warning"
 )
 # NOTE: these literals MUST equal the live CHATLOG_* threshold constants defined
 # below (they feed static_tuning_hash, the constants gate detection). A guard
@@ -2758,11 +2766,16 @@ class Scanner:
         if self._prose_dialogue(text):
             return True
         # Rules 2/3 (v1.2): markdown structure counts only with a conversational
-        # co-signal — 2+ distinct non-stop-list labels. Stop-list filtering is
-        # essential here: doc-section labels (Usage:/Note:/Authorization:) carry
-        # sentence content, so a content-shape co-signal would false-positive on
-        # docs with H3 headers (falsified on real corpora, 2026-06-02).
-        speaker_labels = {lbl for lbl, _ in self._label_content_pairs(text, drop_nonspeaker=True)}
+        # co-signal — 2+ distinct non-stop-list labels. This is a STRUCTURE rule,
+        # not a content-shape rule, so the co-signal uses the label-only regex
+        # (CHATLOG_SPEAKER_LABEL_RE, matches a label regardless of same-line
+        # content) — NOT _label_content_pairs, whose `[ \t]+content` requirement
+        # would miss labels written on their own line (`Alice:\n<utterance>`,
+        # screenplay/script style) and lose the co-signal v1.3.0 had (review
+        # 2026-06-02: both the in-house and Gemini passes flagged this FN).
+        # Stop-list filtering still excludes doc-section labels (Usage:/Note:).
+        speaker_labels = {m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
+                          if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF}
         structure_cosignal = len(speaker_labels) >= 2
         if structure_cosignal and len(CHATLOG_H3_HEADER_RE.findall(text)) >= 5:
             return True

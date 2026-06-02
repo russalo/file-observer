@@ -253,6 +253,18 @@ class TestReviewRegressionGuards:
         assert s.CHATLOG_VERSION_HEADER_RE.findall("## 2.1\n## 2.2\n") == []
         assert len(s.CHATLOG_VERSION_HEADER_RE.findall("## [1.2.0]\n## v2.0\n## 1.2.3\n")) == 3
 
+    def test_label_on_own_line_keeps_structure_cosignal(self):
+        # Gemini + in-house: the markdown structure co-signal (Rule 2/3) must count
+        # speaker labels even when the label is on its own line (`Alice:\nutterance`,
+        # screenplay style) — it's a STRUCTURE rule, not a content-shape rule. The
+        # content-requiring regex would lose the co-signal v1.3.0 had (FN regression).
+        c = ("### Scene 1\nAlice:\nI think we should head north into the mountains.\n"
+             "### Scene 2\nBob:\nThat sounds dangerous but I am willing to try it.\n"
+             "### Scene 3\nAlice:\nGood, then let us prepare our gear tonight.\n"
+             "### Scene 4\nBob:\nAgreed, I will gather the supplies we need.\n"
+             "### Scene 5\nAlice:\nPerfect, we leave at first light tomorrow.\n")
+        assert _detect(c) is True
+
 
 class TestStaticTuningGuard:
     def test_static_tuning_matches_constants(self):

@@ -19,9 +19,9 @@
   SCHEMA 1.2→**1.3** (additive `content_shape`); chatlog method_version 8→**9**.
 - **Overall:** COMPLETE. Built falsify-first; all §10 corpus cases pass (27/27
   reference + parity), full suite green (684 passed, 1 skipped).
-- **The headline honest finding (§3):** on **3,032 real doc+chat files** the change
-  fixes 1 real doc FP and adds 0 new FPs vs v1.2.4 — it changes behavior mostly on
-  adversarial inputs (the real-world benefit is small; the value is robustness).
+- **The headline honest finding (§3):** on **3,032 real doc+chat files the change
+  is a 0-diff wash vs v1.2.4** — it changes behavior only on adversarial inputs
+  (the real-world benefit is small; the value is adversarial-FP robustness).
 
 ## 2. Requirements (§2–§7)
 
@@ -106,11 +106,26 @@ metadata table whose values contain articles (theoretical — 0 occurrences in t
 3,032-file real-data diff); detection/extraction use two label regexes (divergence
 only for the rare label-on-own-line format).
 
-Post-fix real-data diff: **fixes 1 real doc FP, 0 new FPs** (3,032 files). Suite:
-690 passed, 1 skipped.
+**Gemini cross-model pass (gemini-2.5-pro, read-only, 2026-06-02) — converged
+with the in-house pass on the structure co-signal, plus one clarity nit:**
 
-**Gemini cross-model + PR bots:** _pending — to run on the PR; CONFIRMED findings
-fixed before merge._
+4. **(HIGH, confirmed) Markdown structure co-signal lost label-on-own-line
+   transcripts.** After fix #1, the Rule 2/3 co-signal used the content-requiring
+   regex, so screenplay-style `Alice:\n<utterance>` no longer supplied the
+   co-signal v1.3.0 had → FN for label-on-own-line markdown transcripts.
+   **Fixed:** the co-signal uses the label-only `CHATLOG_SPEAKER_LABEL_RE`
+   (stop-list filtered) — it's a structure rule, not a content-shape rule.
+   Guard: `test_label_on_own_line_keeps_structure_cosignal`.
+5. **(LOW, confirmed) `CHATLOG_RULES_DEFINITION` referenced `nonspeaker_lexicon_ci`
+   without enumerating it.** The non-speaker stop-list affects detection filtering
+   and extraction but wasn't in the hashed definition. **Fixed:** added a
+   `nonspeaker_ci:` enumeration so the rules_hash reflects the actual stop-list.
+
+Final real-data diff (post all fixes): **0 detection diff vs v1.2.4** across 3,032
+files. Suite: 691 passed, 1 skipped.
+
+**PR bots (Gemini/Codex/Copilot):** _pending — trigger on the PR; CONFIRMED
+findings fixed before merge._
 
 ## 6. Backward Compatibility
 
