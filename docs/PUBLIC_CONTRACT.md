@@ -240,6 +240,8 @@ Files in `scratch/` and any document with `_DRAFT` in the filename are not commi
 | `1.1` | 1.1.0 | Corpus Intelligence (additive): `quality.duplicate_clusters` (+ `duplicate_cluster_count`, `redundant_file_count`) and `quality.specialist_stats`. Both provisional (§2.4). First additive release after the freeze — no existing field changed; `LOGIC_VERSION` unchanged. |
 | `1.2` | 1.2.0 | Chatlog generalized & hardened: detection recognizes conversational JSON/JSONL beyond `type:user/assistant` (ConvoKit/ShareGPT/oasst/hh-rlhf schemas; `.json` candidate); markdown false positives cut ~96% (structure now needs a speaker/date co-signal); per-speaker structure added (`speaker_turn_counts`/`speaker_turn_chars`/`alternation`, provisional); `errors[].detail` added. Detection behavior changed → `LOGIC_VERSION` 1.0.0→1.1.0, chatlog `method_version` 3→4. Additive schema. |
 
+**Scanner versions under schema `1.2` (no schema change):** 1.2.1–1.2.4 — chatlog false-positive hardening (`LOGIC` → 1.1.4, chatlog `method_version` → 8). **1.3.0** — pure-Python content-based MIME fallback when libmagic is unavailable: new `signal_provenance.trigger` value `magic_signature_fallback` (a new *value* of an existing free-string field, not a new field/type), `MAGIC_SIGNATURES` expanded to ~24 formats incl. RIFF→WebP/WAV/AVI, enriching `file_signature`/`format_signatures`/`is_polyglot`. `LOGIC` → 1.2.0. Schema unchanged; all additive.
+
 ---
 
 ## 4. Migration Notes
