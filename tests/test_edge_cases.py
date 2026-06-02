@@ -664,7 +664,7 @@ class TestSpecialistMetadata:
         assert rec.specialist_metadata is None
 
     def test_pdf_metadata_extracted_when_enabled(self, tmp_path: Path) -> None:
-        pdf_content = b"%PDF-1.4 /Font /Text BT\n/Count 3 /Title (Test Doc) /Author (Alice)"
+        pdf_content = b"%PDF-1.4 /Font /Text BT\n/Type /Pages /Count 3 /Title (Test Doc) /Author (Alice)"
         (tmp_path / "doc.pdf").write_bytes(pdf_content)
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=tmp_path, config=config)
@@ -708,7 +708,7 @@ class TestSpecialistMetadata:
         assert rec.specialist_metadata["pdf"]["creation_date"] == "D:20260101120000"
 
     def test_specialist_metadata_deterministic(self, tmp_path: Path) -> None:
-        pdf_content = b"%PDF-1.4 /Font /Count 5 /Title (Report) /Author (Bob)"
+        pdf_content = b"%PDF-1.4 /Font /Type /Pages /Count 5 /Title (Report) /Author (Bob)"
         (tmp_path / "doc.pdf").write_bytes(pdf_content)
         config = ScannerConfig(enable_specialists=True)
         s1 = Scanner(source_dir=tmp_path, config=config)

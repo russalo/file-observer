@@ -1,5 +1,10 @@
 # File Observer
 
+[![PyPI](https://img.shields.io/pypi/v/file-observer)](https://pypi.org/project/file-observer/)
+![Python](https://img.shields.io/pypi/pyversions/file-observer)
+[![tests](https://github.com/russalo/file-observer/actions/workflows/tests.yml/badge.svg)](https://github.com/russalo/file-observer/actions/workflows/tests.yml)
+[![License: AGPL-3.0 + commercial](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20commercial-blue)](../LICENSE)
+
 **Know what's in your files before you open them.**
 
 *A one-shot, read-only observation pass — not a file watcher. Point it at a directory, get one deterministic JSON manifest of what's inside, before you ingest it.*
@@ -28,8 +33,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.3",
-  "context": { "scanner_version": "1.4.0", "logic_version": "1.3.0", "...": "…" },
+  "schema_version": "1.4",
+  "context": { "scanner_version": "1.5.0", "logic_version": "1.4.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -59,8 +64,8 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.4.0` |
-| **Schema** | `1.3` |
+| **Version** | `1.5.0` |
+| **Schema** | `1.4` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
 | **Tests** | 661 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
@@ -260,7 +265,7 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [HISTORY.md](HISTORY.md) | Every version from v0.1 to the current release, with specs and compliance reports |
 | [PUBLIC_CONTRACT.md](PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [CONVENTIONS.md](CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.4.0 RFC Specification](v1.4.0_RFC_Specification.md) | Current release spec — content-shape chatlog detection gate. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.5.0 RFC Specification](v1.5.0_RFC_Specification.md) | Current release spec — PDF specialist head+tail read + requires_vision fix. v1.0.0 RFC remains the binding schema-freeze contract. |
 
 ---
 

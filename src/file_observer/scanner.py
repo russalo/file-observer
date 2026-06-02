@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.4.0
-    Schema:     1.3
+    Version:    1.5.0
+    Schema:     1.4
     Python:     >= 3.12
-    Spec:       docs/v1.4.0_RFC_Specification.md (current)
+    Spec:       docs/v1.5.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -71,9 +71,17 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.4.0"
-LOGIC_VERSION = "1.3.0"
-SCHEMA_VERSION = "1.3"
+SCANNER_VERSION = "1.5.0"
+LOGIC_VERSION = "1.4.0"
+SCHEMA_VERSION = "1.4"
+
+# v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
+# text/image markers (text_detected AND requires_vision — kept identical across
+# both tiers so they can't contradict each other). FULL_READ_CAP bounds the
+# whole-file read used for page_count + /Info, so the root page tree and trailer
+# Info are found wherever they sit (not just within a tail window).
+PDF_MARKER_BUDGET = 131072
+PDF_FULL_READ_CAP = 67108864  # 64 MB; larger PDFs fall back to head+tail
 
 
 # v0.8: register markdown extensions in stdlib mimetypes so that when libmagic
@@ -1639,7 +1647,7 @@ class Scanner:
             detail=f"{extension} -> {specialist_tool}" if specialist_tool else None,
         ))
         requires_vision, vision_prov = self.detect_requires_vision(
-            sample, mime_type, extension, is_binary
+            path, sample, mime_type, extension, is_binary
         )
         provenance["requires_vision"] = asdict(vision_prov)
 
@@ -2059,7 +2067,7 @@ class Scanner:
         self, path: Path, extension: str, sample: bytes, budget: int = 131072
     ) -> dict[str, Any] | None:
         if extension == ".pdf":
-            return self._extract_pdf_metadata(sample)
+            return self._extract_pdf_metadata(path, sample, budget)
         if extension == ".png":
             return self._extract_png_metadata(sample)
         if extension in {".jpg", ".jpeg"}:
@@ -2083,58 +2091,173 @@ class Scanner:
             return self._extract_rtf_metadata(sample)
         return None
 
-    def _extract_pdf_metadata(self, sample: bytes) -> dict[str, Any]:
+    @staticmethod
+    def _pdf_scan_region(path: Path, sample: bytes, budget: int) -> bytes:
+        """Head sample + a bounded tail (the last ``budget`` bytes) — the regions
+        where a PDF's page tree (`/Count`), `/Info` dict, and font/image markers
+        live (v1.5). A PDF's xref/trailer/Info are at the file END, not the head,
+        so the v1.4 head-only read returned null for nearly all real PDFs. The
+        whole file is already read for the checksum, so the tail read is cheap.
+        Bounded-observation deviation (head + `budget` tail), declared like the
+        XLSX/DOCX 128 KB budget. The unread middle of very large PDFs is the
+        accepted limit. Returns sample unchanged on any read error."""
+        try:
+            size = path.stat().st_size
+            if size <= len(sample):
+                return sample
+            with open(path, "rb") as f:
+                f.seek(max(len(sample), size - budget))  # no overlap with head
+                tail = f.read(budget)
+            return sample + b"\n" + tail
+        except OSError:
+            return sample
+
+    @staticmethod
+    def _pdf_full_or_region(path: Path, sample: bytes) -> bytes:
+        """Whole file (≤ PDF_FULL_READ_CAP) for page_count + /Info — so the root
+        page tree and trailer Info are found wherever they sit, eliminating the
+        unread-middle undercount/null of a tail-only window. Falls back to
+        head+tail for very large files. (Specialist tier is opt-in and the file
+        is already read for the checksum.)"""
+        try:
+            if path.stat().st_size <= PDF_FULL_READ_CAP:
+                with open(path, "rb") as f:
+                    return f.read()
+        except OSError:
+            return sample
+        return Scanner._pdf_scan_region(path, sample, PDF_MARKER_BUDGET)
+
+    @staticmethod
+    def _pdf_page_count(full: bytes) -> int | None:
+        """Page count = the largest `/Count` belonging to a `/Type /Pages` dict.
+        `/Count` is NOT unique to the page tree (`/Outlines`, annotations, AcroForms
+        use it too), so it MUST be anchored to `/Type /Pages` — otherwise a
+        bookmark count wins (a 10-page PDF with 240 bookmarks reported 240). The
+        root `/Pages` carries the largest page count; interior nodes carry partial
+        counts; max over the anchored set is the total."""
+        counts: list[int] = []
+        for m in re.finditer(rb"/Type\s*/Pages\b", full):
+            # Scan the enclosing OBJECT (forward to `endobj`, capped), not a fixed
+            # byte window or the first `>>`: a flat page tree's /Kids array pushes
+            # /Count far past /Type, and a NESTED dict (e.g. /Resources<<…>>) makes
+            # the first `>>` close the wrong dict — both broke a fixed/`>>` window
+            # (review 2026-06-02). `endobj` bounds the object unambiguously, and a
+            # /Pages object's only /Count is the page count. Short backward fallback
+            # for the rare /Count-before-/Type ordering.
+            close = full.find(b"endobj", m.end())
+            fwd_end = close if 0 <= close <= m.end() + 65536 else m.end() + 65536
+            cm = re.search(rb"/Count\s+(\d+)", full[m.start():fwd_end])
+            if cm is None:
+                cm = re.search(rb"/Count\s+(\d+)", full[max(0, m.start() - 512):m.start()])
+            if cm:
+                counts.append(int(cm.group(1)))
+        return max(counts) if counts else None
+
+    def _extract_pdf_metadata(self, path: Path, sample: bytes,
+                              budget: int = 131072) -> dict[str, Any]:
+        # `budget` is accepted for caller uniformity (the dispatcher passes the
+        # specialist budget to every extractor) but is intentionally NOT used to
+        # size the PDF reads: the marker window is fixed at PDF_MARKER_BUDGET (so
+        # this tier and detect_requires_vision agree regardless of profile) and
+        # page_count/Info read the whole file (PDF_FULL_READ_CAP).
+        del budget
+        # Markers (text/image) use a FIXED head+tail window — identical to the one
+        # detect_requires_vision uses — so text_detected and requires_vision can
+        # never contradict each other regardless of specialist_budget.
+        region = self._pdf_scan_region(path, sample, PDF_MARKER_BUDGET)
+        # page_count + /Info read the whole file (capped) — the root page tree and
+        # trailer Info can sit in the middle of a large non-linearized PDF.
+        full = self._pdf_full_or_region(path, sample)
         meta: dict[str, Any] = {}
-        # Detect text stream markers
-        has_text_streams = (
-            b"/Text" in sample
-            or b"BT\n" in sample
-            or b"BT\r\n" in sample
-            or b"BT\r" in sample
-            or b"/Font" in sample
+        meta["has_text_streams"] = (
+            b"/Text" in region or b"/Font" in region
+            or b"BT\n" in region or b"BT\r\n" in region or b"BT\r" in region
         )
-        meta["has_text_streams"] = has_text_streams
-        # Extract page count from /Count in the sample (catalog/pages object)
-        count_match = re.search(rb"/Count\s+(\d+)", sample)
-        meta["page_count"] = int(count_match.group(1)) if count_match else None
-        # Extract document info fields from the sample
+        meta["page_count"] = self._pdf_page_count(full)
+        meta["encrypted"] = b"/Encrypt" in full
+        # /Info strings: literal (...) AND hex <...>. Gated on `encrypted` — a
+        # standard-security PDF encrypts its /Info strings, so extracting them
+        # yields ciphertext garbage; emit null instead.
         for field_name, pdf_key in [
-            ("title", b"/Title"),
-            ("author", b"/Author"),
-            ("producer", b"/Producer"),
-            ("creator", b"/Creator"),
+            ("title", b"/Title"), ("author", b"/Author"),
+            ("producer", b"/Producer"), ("creator", b"/Creator"),
         ]:
-            meta[field_name] = self._extract_pdf_string(sample, pdf_key)
-        # Creation date
-        create_match = re.search(rb"/CreationDate\s*\(([^)]*)\)", sample)
-        meta["creation_date"] = create_match.group(1).decode("latin-1", errors="replace") if create_match else None
-        # v0.3: encrypted
-        meta["encrypted"] = b"/Encrypt" in sample
-        # v0.3: pdf_version from %PDF-X.Y header
-        ver_match = re.match(rb"%PDF-(\d+\.\d+)", sample)
+            meta[field_name] = None if meta["encrypted"] else self._extract_pdf_string(full, pdf_key)
+        if meta["encrypted"]:
+            meta["creation_date"] = None
+        else:
+            create_match = re.search(rb"/CreationDate\s*\(([^)]*)\)", full)
+            meta["creation_date"] = (create_match.group(1).decode("latin-1", errors="replace")
+                                     if create_match else None)
+        # pdf_version: search the head (tolerate a leading BOM / whitespace before %PDF-).
+        ver_match = re.search(rb"%PDF-(\d+\.\d+)", sample[:1024])
         meta["pdf_version"] = ver_match.group(1).decode("ascii") if ver_match else None
-        # v0.3: sample_text_marker_density
+        # v1.5 (provisional): born-digital-vs-image signal over the marker region
+        # (same window as requires_vision). Object-stream PDFs that compress their
+        # /Font refs remain a documented residual.
+        meta["text_detected"] = (b"/Font" in region
+                                 or bool(re.search(rb"\bBT\b", region)))
+        # Retained for continuity but head-only and ~0.0 for all real PDFs (text
+        # ops live in compressed streams) — NOT the vision signal (see text_detected).
         count_bt = len(re.findall(rb"\bBT\b", sample))
         count_et = len(re.findall(rb"\bET\b", sample))
-        if len(sample) > 0:
-            meta["sample_text_marker_density"] = (count_bt + count_et) / len(sample)
-        else:
-            meta["sample_text_marker_density"] = None
+        meta["sample_text_marker_density"] = (
+            (count_bt + count_et) / len(sample) if len(sample) > 0 else None)
         return meta
 
-    def _extract_pdf_string(self, sample: bytes, key: bytes) -> str | None:
-        pattern = re.escape(key) + rb"\s*\(([^)]*)\)"
-        match = re.search(pattern, sample)
+    @staticmethod
+    def _pdf_literal_string(data: bytes, open_paren: int) -> bytes | None:
+        """Read a PDF literal string starting at the `(` at `open_paren`, honoring
+        backslash escapes AND balanced nested parens (ISO 32000 §7.3.4.2). A regex
+        can't do balanced parens; an unescaped inner `(`/`)` in a /Title used to
+        truncate the value (review 2026-06-02). Returns unescaped content, or None
+        if unterminated. Bounded by a 64 KB scan so a stray unbalanced `(` can't
+        run away."""
+        depth, i, out = 0, open_paren, bytearray()
+        limit = min(len(data), open_paren + 65536)
+        while i < limit:
+            c = data[i]
+            if c == 0x5C:                       # backslash → next byte literal
+                out += data[i + 1:i + 2]
+                i += 2
+                continue
+            if c == 0x28:                       # (
+                depth += 1
+                if depth > 1:
+                    out.append(c)
+            elif c == 0x29:                     # )
+                depth -= 1
+                if depth == 0:
+                    return bytes(out)
+                out.append(c)
+            else:
+                out.append(c)
+            i += 1
+        return None                              # unterminated / runaway
+
+    def _extract_pdf_string(self, data: bytes, key: bytes) -> str | None:
+        # literal string: /Key (…) — depth-aware (balanced + escaped parens).
+        km = re.search(re.escape(key) + rb"\s*\(", data)
+        if km:
+            val = self._pdf_literal_string(data, km.end() - 1)  # at the '('
+            if val is not None:
+                return val.decode("latin-1", errors="replace")
+        # hex string: /Key <48656C6C6F>. PDF hex strings are often UTF-16BE (with a
+        # FEFF BOM); plain ASCII hex also occurs. Decode accordingly.
+        match = re.search(re.escape(key) + rb"\s*<([0-9A-Fa-f\s]+)>", data)
         if match:
-            return match.group(1).decode("latin-1", errors="replace")
-        pattern_hex = re.escape(key) + rb"\s*<([^>]*)>"
-        match = re.search(pattern_hex, sample)
-        if match:
+            hexstr = re.sub(rb"\s", b"", match.group(1))
+            if len(hexstr) % 2:
+                hexstr += b"0"  # ISO 32000 §7.3.4.3: odd-length hex pads a trailing 0
             try:
-                hex_str = match.group(1).decode("ascii")
-                return bytes.fromhex(hex_str).decode("utf-16-be", errors="replace")
-            except (ValueError, UnicodeDecodeError):
+                raw = bytes.fromhex(hexstr.decode("ascii"))
+            except ValueError:
                 return None
+            if raw[:2] == b"\xfe\xff":
+                return raw[2:].decode("utf-16-be", errors="replace")
+            if b"\x00" in raw:
+                return raw.decode("utf-16-be", errors="replace")
+            return raw.decode("latin-1", errors="replace")
         return None
 
     def _extract_png_metadata(self, sample: bytes) -> dict[str, Any] | None:
@@ -3209,7 +3332,7 @@ class Scanner:
         }
 
     def detect_requires_vision(
-        self, sample: bytes, mime_type: str, extension: str, is_binary: bool
+        self, path: Path, sample: bytes, mime_type: str, extension: str, is_binary: bool
     ) -> tuple[bool, ProvenanceEntry]:
         if mime_type.startswith("image/"):
             return True, ProvenanceEntry(
@@ -3217,21 +3340,31 @@ class Scanner:
                 trigger="image_mime", inputs=["mime_type"],
             )
         if extension == ".pdf" and is_binary:
-            has_text_markers = (
-                b"/Text" in sample
-                or b"BT\n" in sample
-                or b"BT\r\n" in sample
-                or b"BT\r" in sample
-                or b"/Font" in sample
-            )
-            if not has_text_markers:
+            # v1.5: decide over head + bounded tail, not the 8 KB head alone. The
+            # head-only check mis-flagged born-digital PDFs whose content streams
+            # are compressed (no plaintext BT/Font in the head) as needing vision.
+            region = self._pdf_scan_region(path, sample, PDF_MARKER_BUDGET)
+            has_text = (b"/Font" in region or b"/Text" in region
+                        or bool(re.search(rb"\bBT\b", region)))
+            if has_text:
+                return False, ProvenanceEntry(
+                    layer="derived", method="detect_requires_vision",
+                    trigger="pdf_text_detected", inputs=["mime_type", "is_binary"],
+                )
+            has_image = any(t in region for t in
+                            (b"/Image", b"/XObject", b"/DCTDecode", b"/CCITTFax",
+                             b"/JPXDecode", b"/JBIG2Decode"))
+            if has_image:
                 return True, ProvenanceEntry(
                     layer="derived", method="detect_requires_vision",
-                    trigger="pdf_no_text_markers", inputs=["mime_type", "is_binary"],
+                    trigger="pdf_image_only", inputs=["mime_type", "is_binary"],
                 )
+            # No text AND no image markers (e.g. an object-stream PDF that compresses
+            # both): conservatively NOT vision — err away from a false "needs OCR" on
+            # a PDF that is most likely compressed-but-textual. Documented residual.
             return False, ProvenanceEntry(
                 layer="derived", method="detect_requires_vision",
-                trigger="pdf_has_text_markers", inputs=["mime_type", "is_binary"],
+                trigger="pdf_no_markers", inputs=["mime_type", "is_binary"],
             )
         return False, ProvenanceEntry(
             layer="derived", method="detect_requires_vision",
