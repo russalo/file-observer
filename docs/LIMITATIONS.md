@@ -66,6 +66,20 @@ explained by the `context`: dependency versions, Python version, platform, and
 `logic_version`. Determinism is a contract *within* a context, not a promise
 that every machine produces byte-identical results regardless of environment.
 
+## PDF metadata is read from the head + a bounded tail (v1.5)
+
+The PDF specialist reads the file head plus a bounded 128 KB tail (where the page
+tree, `/Info` dict, and font markers live) — not the whole file. `page_count`,
+`producer`/`title`, and `text_detected` are populated for the large class of PDFs
+whose page tree / xref / Info are **uncompressed**. For **PDF 1.5+ object-stream**
+PDFs, which compress those structures into streams, `page_count` is **null** (an
+honest "not observed" — never a wrong/under-counted value; the page tree
+compresses all-or-nothing) and `text_detected` may be `false` even for a text
+PDF. `requires_vision` is likewise refined but conservative: it flags a PDF only
+when text/font markers are absent AND image markers are present. Reliable
+extraction for object-stream PDFs would require a full PDF parser, deliberately
+out of scope (stdlib only).
+
 ## MIME detection is a signal, not a correction
 
 MIME type is detected by a cascade (v1.3): content via libmagic → a built-in
