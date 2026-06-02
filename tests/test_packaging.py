@@ -6,9 +6,29 @@ DeprecationWarning. The manifest schema is unaffected (SCHEMA_VERSION stays 1.0)
 """
 
 import importlib
+import re
+import tomllib
 import warnings
+from pathlib import Path
 
 import pytest
+
+
+def test_version_surfaces_stay_in_sync():
+    """Every place the version is written must equal SCANNER_VERSION — guards the
+    drift that let pyproject / the module docstring lag the constant. (file_observer
+    .__version__ is derived, so it's safe by construction; pyproject and the
+    docstring are hand-maintained duplicates that need this check.)"""
+    from file_observer.scanner import SCANNER_VERSION
+    import file_observer.scanner as s
+
+    root = Path(__file__).resolve().parent.parent
+    pyproj = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
+    assert pyproj == SCANNER_VERSION, f"pyproject {pyproj} != SCANNER_VERSION {SCANNER_VERSION}"
+
+    m = re.search(r"Version:\s*([0-9]+\.[0-9]+\.[0-9]+)", s.__doc__ or "")
+    assert m, "scanner.py module docstring has no `Version:` line"
+    assert m.group(1) == SCANNER_VERSION, f"docstring {m.group(1)} != SCANNER_VERSION {SCANNER_VERSION}"
 
 
 def test_canonical_top_level_api():

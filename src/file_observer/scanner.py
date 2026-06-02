@@ -5,11 +5,11 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.2.1
+    Version:    1.3.0
     Schema:     1.2
     Python:     >= 3.12
-    Spec:       docs/v1.2.0_RFC_Specification.md (current)
-    Repository: pkp.russalo.com/scanner/
+    Spec:       docs/v1.3.0_RFC_Specification.md (current)
+    Repository: https://github.com/russalo/file-observer
 
 Design pillars:
     - Capability-locked determinism (ScanContext)
@@ -517,8 +517,9 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
     (((None, b"%PDF-"),), "application/pdf"),
     (((0, b"GIF87a"),), "image/gif"),
     (((0, b"GIF89a"),), "image/gif"),
-    # RIFF container — sub-types (marker at offset 8) MUST precede a bare RIFF;
-    # no generic RIFF fallback, so a WAV matches exactly one signature.
+    # RIFF container — sub-types (marker at offset 8) MUST precede the generic
+    # RIFF entry below; scan_signatures suppresses the generic when a sub-type
+    # matched, so a WAV emits exactly one signature (no false polyglot).
     (((0, b"RIFF"), (8, b"WEBP")), "image/webp"),
     (((0, b"RIFF"), (8, b"WAVE")), "audio/wav"),
     (((0, b"RIFF"), (8, b"AVI ")), "video/x-msvideo"),

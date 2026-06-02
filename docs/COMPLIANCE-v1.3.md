@@ -12,7 +12,7 @@
 - **Feature:** pure-Python content-based MIME fallback (no libmagic) + RIFF disambiguation. `detect_mime` gains a magic-signature tier between libmagic and the extension fallback; `MAGIC_SIGNATURES` generalized to a multi-constraint matcher and expanded to ~24 formats.
 - **Versions:** SCANNER 1.2.4→1.3.0; **LOGIC 1.1.4→1.2.0** (new MIME-detection routing); SCHEMA **unchanged 1.2** (no new manifest fields; `magic_signature_fallback` is a new *value* of the existing `signal_provenance.trigger` free-string field).
 - **Overall:** COMPLETE. All §8 acceptance criteria met. Reviewed by the in-house multi-agent `/code-review` (20 agents) AND a Gemini-2.5-pro cross-model pass — both weighted to polyglot/`format_signatures` stability.
-- **Tests:** 661 passed, 1 skipped (+33 in `tests/test_v1_3.py`).
+- **Tests:** 661 passed, 1 skipped (+34 in `tests/test_v1_3.py`).
 - **Determinism / polyglot:** verified stable (see §3).
 
 ## 2. Requirements (§2–§6)
