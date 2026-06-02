@@ -137,6 +137,56 @@ class TestRequiresVision:
         assert v is True
 
 
+class TestReviewFixes:
+    """In-house review (2026-06-02): correctness bugs in the first v1.5 cut."""
+
+    def test_outlines_count_not_page_count(self, tmp_path):
+        # /Count is not unique to /Pages — /Outlines (bookmarks) use it too. A
+        # 10-page PDF with 240 bookmarks must report page_count 10, not 240.
+        data = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 10>>endobj\n"
+                b"9 0 obj<</Type/Outlines/Count 240>>endobj\n/Font x\nBT y ET\n"
+                b"trailer<</Root 1 0 R>>\n%%EOF")
+        p, head = _write(tmp_path, "bm.pdf", data)
+        assert _sc()._extract_pdf_metadata(p, head, 131072)["page_count"] == 10
+
+    def test_escaped_paren_title(self, tmp_path):
+        data = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Count 3>>endobj\n/Font\nBT\n"
+                b"6 0 obj<</Title(Annual Report \\(final\\) 2026)>>endobj\n%%EOF")
+        p, head = _write(tmp_path, "esc.pdf", data)
+        assert _sc()._extract_pdf_metadata(p, head, 131072)["title"] == "Annual Report (final) 2026"
+
+    def test_root_count_in_unread_middle(self, tmp_path):
+        # root /Pages /Count sits beyond the 8KB head and before the 128KB tail —
+        # the whole-file read (specialist) must still find it (not undercount/null).
+        data = (b"%PDF-1.6\n" + b"x" * 9000 +
+                b"\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 350>>endobj\n" +
+                b"y" * 200000 + b"\n/Font\nBT\ntrailer<</Root 1 0 R>>\n%%EOF")
+        p, head = _write(tmp_path, "big.pdf", data)
+        assert _sc()._extract_pdf_metadata(p, head, 131072)["page_count"] == 350
+
+    def test_pdf_version_leading_bom(self, tmp_path):
+        data = (b"\xef\xbb\xbf   %PDF-1.7\n/Font\nBT\n"
+                b"2 0 obj<</Type/Pages/Count 2>>endobj\n%%EOF")
+        p, head = _write(tmp_path, "bom.pdf", data)
+        assert _sc()._extract_pdf_metadata(p, head, 131072)["pdf_version"] == "1.7"
+
+    def test_encrypted_info_not_garbage(self, tmp_path):
+        # encrypted PDFs encrypt /Info strings — don't emit ciphertext as producer.
+        data = (b"%PDF-1.6\n/Encrypt 5 0 R\n2 0 obj<</Type/Pages/Count 4>>endobj\n"
+                b"6 0 obj<</Producer(\x01\x9f\xc3garbage)>>endobj\n%%EOF")
+        p, head = _write(tmp_path, "enc.pdf", data)
+        m = _sc()._extract_pdf_metadata(p, head, 131072)
+        assert m["encrypted"] is True
+        assert m["producer"] is None
+
+    def test_jbig2_scan_is_vision(self, tmp_path):
+        data = (b"%PDF-1.5\n2 0 obj<</Type/Pages/Count 1>>endobj\n"
+                b"4 0 obj<</Subtype/Image/Filter/JBIG2Decode>>stream\n\x00\nendstream endobj\n%%EOF")
+        p, head = _write(tmp_path, "jb.pdf", data)
+        v, _ = _sc().detect_requires_vision(p, head, "application/pdf", ".pdf", True)
+        assert v is True
+
+
 class TestDocumentedResidual:
     def test_object_stream_opaque(self, tmp_path):
         # no plaintext markers (simulated object-stream compression): metadata null;

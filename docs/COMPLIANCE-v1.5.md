@@ -55,8 +55,36 @@ out correct — the pieresearch mirror files are genuine 3-page excerpts.
 
 ## 4. Review findings & resolution
 
-Three review legs (in-house multi-agent `/code-review`, Gemini cross-model, PR
-bots). _To be completed on the PR; all CONFIRMED findings fixed before merge._
+**In-house multi-agent `/code-review` (2026-06-02) — real correctness bugs my
+green-checks corpus missed (builder bias again), all fixed before continuing:**
+
+1. **`page_count` over-counted (HIGH).** `/Count` is not unique to `/Pages` —
+   `/Outlines` (bookmarks), annotations, AcroForms use it too; `max(/Count)`
+   grabbed the largest, so a 10-page PDF with 240 bookmarks reported 240. **This
+   falsified the draft's "page_count is null, never wrong" claim** (the corpus had
+   no bookmark-heavy PDFs). Fixed: anchor `/Count` to a `/Type /Pages` dict; read
+   the **whole file** (capped 64 MB) in the specialist so the root page tree is
+   found wherever it sits (also fixes the unread-middle *under*-count). Guards:
+   `test_outlines_count_not_page_count`, `test_root_count_in_unread_middle`.
+   Re-scan: `page_count` max 375, **zero** over-count suspects (was inflated).
+2. **`/Info` string truncation (MEDIUM).** `Title (… \(x\) …)` truncated at the
+   escaped paren. Fixed: honor PDF backslash escapes + unescape. Guard:
+   `test_escaped_paren_title`.
+3. **Encrypted `/Info` → ciphertext garbage.** Fixed: gate string extraction on
+   `/Encrypt` (→ null). Guard: `test_encrypted_info_not_garbage`.
+4. **`%PDF-` anchored at offset 0** → null version for leading-BOM PDFs. Fixed:
+   search the first 1 KB. Guard: `test_pdf_version_leading_bom`.
+5. **Marker-budget inconsistency** between the two tiers (could make `text_detected`
+   and `requires_vision` disagree). Fixed: both use `PDF_MARKER_BUDGET` (fixed
+   128 KB head+tail).
+6. Added `/JBIG2Decode` to the image-marker set; fixed a latent
+   `SCHEMA_VERSION >= "1.3"` string-compare in `test_v1_4` (tuple compare).
+
+Post-fix: 709 passed, 1 skipped; corpus re-scan `requires_vision` 12,
+`page_count` 353 populated (no over-counts), `producer` 320.
+
+**Gemini cross-model + PR bots:** _pending — to run next; CONFIRMED findings
+fixed before merge._
 
 ## 5. Backward Compatibility
 

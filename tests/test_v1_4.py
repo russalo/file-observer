@@ -42,7 +42,8 @@ class TestVersionSurfaces:
         # v1.4's stable invariant — the content-shape gate is method_version 9.
         # (Global SCANNER/LOGIC/SCHEMA move each release; pinned in test_packaging.)
         assert CHATLOG_METHOD_VERSION == 9
-        assert SCHEMA_VERSION >= "1.3"  # content_shape present from 1.3 on
+        # content_shape present from schema 1.3 on (tuple compare — string ">=" breaks at 1.10)
+        assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 3)
 
 
 class TestRejectsAtomicValueFP:

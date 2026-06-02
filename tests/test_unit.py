@@ -790,7 +790,7 @@ class TestAnalyzeMime:
 
 class TestExtractSpecialistMetadata:
     def test_pdf_with_all_fields(self, scanner: Scanner) -> None:
-        sample = b"%PDF-1.4 /Font /Count 7 /Title (My Report) /Author (Jane) /Producer (LaTeX) /Creator (pdfTeX) /CreationDate (D:20260101)"
+        sample = b"%PDF-1.4 /Font /Type /Pages /Count 7 /Title (My Report) /Author (Jane) /Producer (LaTeX) /Creator (pdfTeX) /CreationDate (D:20260101)"
         meta = scanner.extract_specialist_metadata(Path("doc.pdf"), ".pdf", sample)
         assert meta is not None
         assert meta["has_text_streams"] is True
