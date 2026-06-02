@@ -12,7 +12,7 @@
 - **Feature:** pure-Python content-based MIME fallback (no libmagic) + RIFF disambiguation. `detect_mime` gains a magic-signature tier between libmagic and the extension fallback; `MAGIC_SIGNATURES` generalized to a multi-constraint matcher and expanded to ~24 formats.
 - **Versions:** SCANNER 1.2.4→1.3.0; **LOGIC 1.1.4→1.2.0** (new MIME-detection routing); SCHEMA **unchanged 1.2** (no new manifest fields; `magic_signature_fallback` is a new *value* of the existing `signal_provenance.trigger` free-string field).
 - **Overall:** COMPLETE. All §8 acceptance criteria met. Reviewed by the in-house multi-agent `/code-review` (20 agents) AND a Gemini-2.5-pro cross-model pass — both weighted to polyglot/`format_signatures` stability.
-- **Tests:** 660 passed, 1 skipped (+33 in `tests/test_v1_3.py`).
+- **Tests:** 661 passed, 1 skipped (+33 in `tests/test_v1_3.py`).
 - **Determinism / polyglot:** verified stable (see §3).
 
 ## 2. Requirements (§2–§6)
@@ -24,7 +24,7 @@
 | Multi-constraint matcher, behavior-preserving for existing entries | `_signature_matches` (shared by sniff + `scan_signatures`) | PASS |
 | ~24 formats incl. archives/images/data/exe/media | `MAGIC_SIGNATURES` | PASS |
 | RIFF → WebP/WAV/AVI; generic `riff_container` retained, format_signatures-only | sub-types + retained generic, suppressed when a sub-type matches | PASS |
-| Text-gate (§2.1) — no prose misclassification | `_sniff_mime` returns None on `looks_like_text` | PASS |
+| No prose misclassification (§2.1) — MIME *and* format_signatures | signature-level: 2-byte `MZ`/`BM` dropped; `ID3`+version, `bzip2`+block-magic | PASS |
 | LOGIC 1.2.0, SCHEMA 1.2 | version constants | PASS |
 | No manifest field removed/renamed/retyped | additive only | PASS |
 
@@ -37,11 +37,13 @@
 
 ## 4. Review findings & resolution
 
-Two independent reviews (in-house multi-agent + Gemini) found real issues; all CONFIRMED ones were fixed before merge:
+**Three** review legs found real issues; all CONFIRMED ones fixed before merge: the in-house multi-agent `/code-review`, the Gemini cross-model pass, and the **PR review bots** (Gemini/Codex/Copilot), which caught that the *first* fix (a text-gate) was itself wrong.
 
 | Finding | Resolution |
 |---|---|
-| HIGH — short signatures (`MZ`/`BM`/`ID3`/`BZh`) misclassify prose as binary (no-libmagic path) | **Fixed** — text-gate on `_sniff_mime` (§2.1). The RFC's "moderate FP risk, acceptable" call was overruled by the review. |
+| HIGH — short signatures (`MZ`/`BM`/`ID3`/`BZh`) misclassify prose as binary, in MIME *and* `format_signatures` | **Fixed at the signature level.** First attempt (a text-gate on `_sniff_mime`) was rejected by the PR bots — it broke PDF/RTF (ASCII-headed binaries) and didn't cover `format_signatures`. Final: dropped 2-byte `MZ`/`BM`; `ID3` requires a version byte; `bzip2` requires its block magic. The RFC's "acceptable FP risk" call was overruled. |
+| HIGH/Copilot — double `mime_type_fallback` error on libmagic-exception + literal vs constant | **Fixed** — exactly one error (Tier 3 only), `ERR_MIME_TYPE_FALLBACK` constant, `reason` in detail. |
+| Copilot — docs contradicted code (riff_container "removed"; 654 vs 660 test count) | **Fixed** — CONVENTIONS/CLAUDE/HISTORY/COMPLIANCE reconciled (riff_container retained; 661 tests). |
 | HIGH — implementation dropped the generic `riff_container` (spec §4 said retain) → unknown RIFF lost its `format_signature` | **Fixed** — retained + suppressed-on-sub-type. Code now matches the approved spec. |
 | HIGH — reason label mislabeled libmagic-present-but-empty as `libmagic_exception` | **Fixed** — distinguishes `unavailable`/`empty`/`exception`. |
 | LOW — `_signature_matches((), …)` returned 0 (false match) for empty constraints | **Fixed** — guard returns `None`. |
@@ -50,7 +52,7 @@ Two independent reviews (in-house multi-agent + Gemini) found real issues; all C
 | LOW — fewer `mime_type_fallback` errors → lower `degraded_files` in no-libmagic scans | **Accepted** — intended improvement (detection is genuinely less degraded). |
 | Gemini — expansion raises polyglot risk via mid-file matches | **Refuted** — anchored signatures can't mid-file match (see §3). |
 
-**Process note:** the review caught a place where implementation silently deviated from the approved spec (RIFF) and an FP class the author (Claude) had dismissed in the RFC (short signatures). Both reviews — cross-model and in-house multi-agent — were necessary; they surfaced *different* issues. This is the "run both" conclusion from the v1.2.x arc, validated again.
+**Process note:** the review chain caught (a) an FP class the author dismissed in the RFC, (b) a silent spec-deviation (RIFF), and — crucially — (c) the author's *first fix* for (a) being wrong (the text-gate broke PDF/RTF). The PR bots caught (c) that the in-house + Gemile passes had let through. Each layer caught what the others missed: in-house multi-agent (depth on the diff), Gemini (cross-model judgment), PR bots (a fresh pass on the *fix*). "Run all of them" — validated yet again. Table deviations from the approved RFC (2-byte `MZ`/`BM` dropped; PostScript MIME-sniffable rather than format_signatures-only) were review-driven and confirmed with Russell.
 
 ## 5. Verdict
 

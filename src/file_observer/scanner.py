@@ -530,7 +530,9 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
     # archives / compression
     (((0, b"PK\x03\x04"),), "application/zip"),
     (((0, b"\x1f\x8b"),), "application/gzip"),
-    (((0, b"BZh"),), "application/x-bzip2"),
+    # bzip2: "BZh" + level digit + block magic — the second constraint rules out
+    # prose like "BZh is not..." (review: bare "BZh" matched text).
+    (((0, b"BZh"), (4, b"1AY&SY")), "application/x-bzip2"),
     (((0, b"\xfd7zXZ\x00"),), "application/x-xz"),
     (((0, b"7z\xbc\xaf\x27\x1c"),), "application/x-7z-compressed"),
     (((0, b"\x28\xb5\x2f\xfd"),), "application/zstd"),
@@ -538,19 +540,21 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
     # images / data
     (((0, b"II*\x00"),), "image/tiff"),
     (((0, b"MM\x00*"),), "image/tiff"),
-    (((0, b"BM"),), "image/bmp"),
     (((0, b"SQLite format 3\x00"),), "application/vnd.sqlite3"),
     (((0, b"PAR1"),), "application/vnd.apache.parquet"),
     # OLE2 / documents / executables
     (((0, b"\xd0\xcf\x11\xe0"),), "application/x-ole-storage"),
     (((0, b"{\\rtf"),), "application/rtf"),
     (((0, b"\x7fELF"),), "application/x-elf"),
-    (((0, b"MZ"),), "application/vnd.microsoft.portable-executable"),
     (((0, b"%!PS"),), "application/postscript"),
     # media
     (((4, b"ftyp"),), "video/mp4"),
     (((0, b"\x1aE\xdf\xa3"),), "video/x-matroska"),
-    (((0, b"ID3"),), "audio/mpeg"),
+    # ID3v2: require a real major-version byte (2/3/4) so prose like "ID3 tags"
+    # (space at offset 3) doesn't match (review).
+    (((0, b"ID3\x02"),), "audio/mpeg"),
+    (((0, b"ID3\x03"),), "audio/mpeg"),
+    (((0, b"ID3\x04"),), "audio/mpeg"),
     (((0, b"fLaC"),), "audio/flac"),
     (((0, b"OggS"),), "audio/ogg"),
 ]
@@ -1932,12 +1936,7 @@ class Scanner:
                     return detected, ProvenanceEntry(
                         layer="raw", method="detect_mime", trigger="libmagic")
                 reason = "libmagic_empty"  # present but returned falsy (no exception)
-            except Exception as exc:
-                errors.append(ErrorRecord(
-                    code=ERR_MIME_TYPE_FALLBACK,
-                    message=f"libmagic MIME detection failed ({exc}); trying signature/extension inference",
-                    stage="universal",
-                ))
+            except Exception:
                 reason = "libmagic_exception"
         # Tier 2 (v1.3): pure-Python content-based magic-signature sniff (no libmagic).
         sniffed = self._sniff_mime(sample)
@@ -1945,11 +1944,12 @@ class Scanner:
             return sniffed, ProvenanceEntry(
                 layer="raw", method="detect_mime",
                 trigger="magic_signature_fallback", detail={"reason": reason})
-        # Tier 3: extension-based inference — genuinely degraded, so record it.
+        # Tier 3: extension-based inference — genuinely degraded; record exactly
+        # one error here (Tier 1/2 do not append, so no duplicate). reason in detail.
         guessed, _ = mimetypes.guess_type(str(path))
         errors.append(ErrorRecord(
-            code="mime_type_fallback",
-            message="Content-based MIME detection unavailable, used extension-based inference",
+            code=ERR_MIME_TYPE_FALLBACK,
+            message=f"content-based MIME detection unavailable ({reason}); used extension-based inference",
             stage="universal",
         ))
         return guessed or "application/octet-stream", ProvenanceEntry(
@@ -3290,13 +3290,11 @@ class Scanner:
     def _sniff_mime(self, sample: bytes) -> str | None:
         """v1.3: pure-Python content-based MIME from MAGIC_SIGNATURES (no
         libmagic). First matching signature whose label is a MIME type wins;
-        table order puts specific signatures (RIFF sub-types) first.
-
-        A magic-byte MIME is only trustworthy for NON-text content: short ASCII
-        prefixes (MZ/BM/ID3/BZh) otherwise misclassify ordinary prose ("BM25...",
-        "ID3 tags") as binary formats. So text-like samples defer to the
-        extension tier. (PostScript `%!PS` is text → format_signatures-only.)"""
-        if not sample or self.looks_like_text(sample):
+        table order puts specific signatures (RIFF sub-types) first. Signatures
+        are precise enough not to collide with prose (review: dropped the 2-byte
+        MZ/BM; ID3 and bzip2 carry a corroborating byte), so no text-gate is
+        needed — PDF/RTF/PostScript (ASCII-headed) still sniff correctly."""
+        if not sample:
             return None
         for constraints, fmt in MAGIC_SIGNATURES:
             if "/" in fmt and self._signature_matches(sample, constraints) is not None:

@@ -35,11 +35,12 @@ _CASES = {
     "application/zstd": b"\x28\xb5\x2f\xfd" + b"\x00" * 40,
     "application/vnd.rar": b"Rar!\x1a\x07\x00" + b"\x00" * 40,
     "image/tiff": b"II*\x00" + b"\x00" * 40,
-    "image/bmp": b"BM" + b"\x00" * 40,
     "application/vnd.sqlite3": b"SQLite format 3\x00" + b"\x00" * 40,
     "application/vnd.apache.parquet": b"PAR1" + b"\x00" * 40,
     "application/x-elf": b"\x7fELF" + b"\x00" * 40,
-    "application/vnd.microsoft.portable-executable": b"MZ" + b"\x00" * 40,
+    "application/postscript": b"%!PS-Adobe-3.0\n%%Title: x\n" + b"\x00" * 20,
+    "application/pdf": b"%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n" + b"x" * 20,
+    "application/rtf": b"{\\rtf1\\ansi text here}" + b"x" * 20,
     "video/mp4": b"\x00\x00\x00\x20ftypmp42" + b"\x00" * 40,  # ftyp at offset 4
     "video/x-matroska": b"\x1aE\xdf\xa3" + b"\x00" * 40,
     "audio/mpeg": b"ID3\x03\x00" + b"\x00" * 40,
@@ -92,9 +93,10 @@ def test_determinism_same_bytes_same_mime(tmp_path):
 
 # --- review fixes (PR #?? / scratch/review/v130) ---
 
-class TestProseTextGate:
-    """Short ASCII magic prefixes must NOT misclassify ordinary prose as binary
-    (the text-gate on _sniff_mime). These FAILED before the gate."""
+class TestWeakSignatureFalsePositives:
+    """Short ASCII magic prefixes must NOT misclassify ordinary prose as binary.
+    Fixed at the signature level (review): MZ/BM dropped; ID3 + bzip2 carry a
+    corroborating byte. No text-gate (which had broken PDF/RTF)."""
 
     @pytest.mark.parametrize("opening", [
         b"BM25 is a ranking function used in search\n",   # was → image/bmp
