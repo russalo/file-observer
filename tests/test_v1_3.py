@@ -40,7 +40,6 @@ _CASES = {
     "application/vnd.apache.parquet": b"PAR1" + b"\x00" * 40,
     "application/x-elf": b"\x7fELF" + b"\x00" * 40,
     "application/vnd.microsoft.portable-executable": b"MZ" + b"\x00" * 40,
-    "application/postscript": b"%!PS-Adobe-3.0" + b"\x00" * 40,
     "video/mp4": b"\x00\x00\x00\x20ftypmp42" + b"\x00" * 40,  # ftyp at offset 4
     "video/x-matroska": b"\x1aE\xdf\xa3" + b"\x00" * 40,
     "audio/mpeg": b"ID3\x03\x00" + b"\x00" * 40,
@@ -89,3 +88,40 @@ def test_determinism_same_bytes_same_mime(tmp_path):
     m1 = _scan_no_libmagic(d1, "f.dat", data).mime_type
     m2 = _scan_no_libmagic(d2, "f.dat", data).mime_type
     assert m1 == m2 == "application/gzip"
+
+
+# --- review fixes (PR #?? / scratch/review/v130) ---
+
+class TestProseTextGate:
+    """Short ASCII magic prefixes must NOT misclassify ordinary prose as binary
+    (the text-gate on _sniff_mime). These FAILED before the gate."""
+
+    @pytest.mark.parametrize("opening", [
+        b"BM25 is a ranking function used in search\n",   # was → image/bmp
+        b"MZ is a great band from the 90s\n",              # was → application/vnd.microsoft...
+        b"ID3 tags store metadata in mp3 files\n",         # was → audio/mpeg
+        b"BZh is not how you spell anything\n",            # was → application/x-bzip2
+    ])
+    def test_prose_not_misclassified_as_binary(self, tmp_path, opening):
+        rec = _scan_no_libmagic(tmp_path, "notes.txt", opening)
+        assert rec.signal_provenance["mime_type"]["trigger"] == "extension_fallback"
+        assert rec.mime_type == "text/plain"
+
+
+class TestRiffContainerRetained:
+    def test_unknown_riff_still_gets_format_signature(self, tmp_path):
+        # ACON (animated cursor) — not webp/wav/avi. riff_container is retained
+        # for format_signatures continuity; non-MIME so MIME defers to extension.
+        rec = _scan_no_libmagic(tmp_path, "x.dat", _riff(b"ACON"))
+        assert {s["format"] for s in rec.format_signatures} == {"riff_container"}
+        assert rec.is_polyglot is False
+
+    def test_known_riff_subtype_suppresses_generic(self, tmp_path):
+        rec = _scan_no_libmagic(tmp_path, "x.dat", _riff(b"WAVE"))
+        assert {s["format"] for s in rec.format_signatures} == {"audio/wav"}
+        assert rec.is_polyglot is False
+
+
+def test_empty_constraints_never_match():
+    from file_observer.scanner import Scanner
+    assert Scanner._signature_matches(b"anything", ()) is None

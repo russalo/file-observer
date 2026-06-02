@@ -508,9 +508,9 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
 # (offset, pattern); ALL must match for the signature to fire. offset is an int
 # (anchored) or None (pattern occurs anywhere in the head sample). Tested in
 # order — more specific signatures (RIFF sub-types) MUST precede general ones.
-# Every label here is a valid MIME type (contains "/"), so detect_mime's
-# pure-Python fallback can use the table directly. (The pre-v1.3 non-MIME
-# "riff_container" label is superseded by the WebP/WAV/AVI sub-types below.)
+# Labels that are valid MIME types (contain "/") are usable by detect_mime's
+# pure-Python fallback; the one non-MIME label ("riff_container") is
+# format_signatures-only and skipped by _sniff_mime.
 MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
     (((0, b"\x89PNG\r\n\x1a\n"),), "image/png"),
     (((0, b"\xff\xd8\xff"),), "image/jpeg"),
@@ -522,6 +522,11 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
     (((0, b"RIFF"), (8, b"WEBP")), "image/webp"),
     (((0, b"RIFF"), (8, b"WAVE")), "audio/wav"),
     (((0, b"RIFF"), (8, b"AVI ")), "video/x-msvideo"),
+    # generic RIFF retained for format_signatures (non-MIME → _sniff_mime skips
+    # it). scan_signatures suppresses it when a sub-type above matched, so a
+    # known RIFF emits one signature (no false polyglot) and an unknown RIFF
+    # (e.g. ACON cursor) still gets a format_signature. Per v1.3.0 RFC §4.
+    (((0, b"RIFF"),), "riff_container"),
     # archives / compression
     (((0, b"PK\x03\x04"),), "application/zip"),
     (((0, b"\x1f\x8b"),), "application/gzip"),
@@ -1919,19 +1924,21 @@ class Scanner:
 
     def detect_mime(self, path: Path, sample: bytes, errors: list[ErrorRecord]) -> tuple[str, ProvenanceEntry]:
         # Tier 1: libmagic (content-based, primary). Unchanged.
+        reason = "libmagic_unavailable"  # accurate label: absent / empty / exception
         if self._magic:
             try:
                 detected = self._magic.from_file(str(path))
                 if detected:
                     return detected, ProvenanceEntry(
                         layer="raw", method="detect_mime", trigger="libmagic")
+                reason = "libmagic_empty"  # present but returned falsy (no exception)
             except Exception as exc:
                 errors.append(ErrorRecord(
                     code=ERR_MIME_TYPE_FALLBACK,
                     message=f"libmagic MIME detection failed ({exc}); trying signature/extension inference",
                     stage="universal",
                 ))
-        reason = "libmagic_exception" if self._magic else "libmagic_unavailable"
+                reason = "libmagic_exception"
         # Tier 2 (v1.3): pure-Python content-based magic-signature sniff (no libmagic).
         sniffed = self._sniff_mime(sample)
         if sniffed:
@@ -3247,6 +3254,11 @@ class Scanner:
             if off is not None:
                 found.append({"format": fmt, "offset": off})
                 seen_formats.add(fmt)
+        # A recognized RIFF sub-type supersedes the generic riff_container label,
+        # so a known RIFF file emits exactly one signature (no false polyglot).
+        if seen_formats & {"image/webp", "audio/wav", "video/x-msvideo"}:
+            found = [s for s in found if s["format"] != "riff_container"]
+            seen_formats.discard("riff_container")
         found.sort(key=lambda x: x["offset"])
         is_polyglot = len(seen_formats) > 1
         return file_sig, found, is_polyglot
@@ -3259,6 +3271,8 @@ class Scanner:
         match the head sample, else None. offset=int is anchored; offset=None
         means the pattern occurs anywhere in the sample. Shared by
         scan_signatures and _sniff_mime so the two never drift apart."""
+        if not constraints:
+            return None
         anchor: int | None = None
         for offset, pattern in constraints:
             if offset is not None:
@@ -3276,8 +3290,13 @@ class Scanner:
     def _sniff_mime(self, sample: bytes) -> str | None:
         """v1.3: pure-Python content-based MIME from MAGIC_SIGNATURES (no
         libmagic). First matching signature whose label is a MIME type wins;
-        table order puts specific signatures (RIFF sub-types) first."""
-        if not sample:
+        table order puts specific signatures (RIFF sub-types) first.
+
+        A magic-byte MIME is only trustworthy for NON-text content: short ASCII
+        prefixes (MZ/BM/ID3/BZh) otherwise misclassify ordinary prose ("BM25...",
+        "ID3 tags") as binary formats. So text-like samples defer to the
+        extension tier. (PostScript `%!PS` is text → format_signatures-only.)"""
+        if not sample or self.looks_like_text(sample):
             return None
         for constraints, fmt in MAGIC_SIGNATURES:
             if "/" in fmt and self._signature_matches(sample, constraints) is not None:
