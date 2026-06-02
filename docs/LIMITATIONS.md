@@ -93,6 +93,12 @@ speakers. That gate has three accepted, documented blind spots:
 - **`Q:`/`A:`-labeled published interviews** — these are excluded along with FAQs
   (a FAQ and an interview are structurally identical); interviews labeled with
   identities (`Interviewer:`/`Guest:`/names) are unaffected.
+- **Screenplay/script-style transcripts with the speaker on its own line**
+  (`Alice:` then the utterance on the *next* line) — the content-shape signal
+  needs the turn's text on the same line as its label, so a label-on-own-line
+  prose transcript *without* markdown section structure is not flagged. (When
+  such a transcript also has markdown headers, the structure rule still catches
+  it.) Same-line `Speaker: text` — the overwhelmingly common form — is unaffected.
 
 It also has one accepted **false positive** class: a document whose recurring
 capitalized labels carry sentence content but are a *taxonomy*, not speakers —

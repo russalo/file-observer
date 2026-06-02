@@ -12,9 +12,10 @@
 - **Feature:** content-shape chatlog detection gate — an ADDITIVE layer over the
   retained v1.2.4 machinery (stop-list → count floor). The prose rule gains
   `utterance_ratio ≥ 0.6` (function-word / punctuation / length arms), an
-  FP-lexicon dominance rule, a density floor, a version/date structure
-  vote-against, and a FAQ complete-set exclusion. Provisional `content_shape`
-  (`utterance_ratio`/`density`) surfaced in chatlog metadata.
+  FP-lexicon dominance rule, a version-tag structure vote-against, and a FAQ
+  complete-set exclusion. (A density floor was prototyped and DROPPED in review,
+  §5.) Provisional `content_shape` (`utterance_ratio`/`density`) surfaced in
+  chatlog metadata.
 - **Versions:** SCANNER 1.3.0→1.4.0; **LOGIC 1.2.0→1.3.0** (detection routing);
   SCHEMA 1.2→**1.3** (additive `content_shape`); chatlog method_version 8→**9**.
 - **Overall:** COMPLETE. Built falsify-first; all §10 corpus cases pass (27/27
@@ -124,8 +125,29 @@ with the in-house pass on the structure co-signal, plus one clarity nit:**
 Final real-data diff (post all fixes): **0 detection diff vs v1.2.4** across 3,032
 files. Suite: 691 passed, 1 skipped.
 
-**PR bots (Gemini/Codex/Copilot):** _pending — trigger on the PR; CONFIRMED
-findings fixed before merge._
+**PR bots — Codex, Gemini Code Assist, Copilot (PR #34, 2026-06-02):** all
+findings triaged and addressed:
+
+6. **(Codex, P2) Screenplay label-on-own-line not caught by Rule 1.** Content-shape
+   needs same-line content, so a `Alice:\n<utterance>` prose transcript *without*
+   markdown structure is missed. **Accepted FN** (documented in LIMITATIONS + test;
+   the markdown-structure case is caught by fix #4). 0 real-data impact.
+7. **(Gemini) Function-word arm refinements.** Added common contractions
+   (`didn't`/`i'll`/`we've`/…); normalized the curly apostrophe (U+2019) so
+   copy-pasted contractions match; made `_is_utterance` explicitly guard the empty
+   string (`"" in ".!?"` is `True` — it was saved only by the `isalpha` check).
+8. **(Copilot) Rules-definition accuracy.** `nonspeaker_lexicon_ci` reference vs
+   the `nonspeaker_ci` enum name → unified; `fp_lexicon_ci` wrongly listed FAQ
+   tokens → split into `fp_lexicon_ci` (the actual lexicon) + `faq_set`.
+9. **(Copilot, ×7) Doc/code drift — the most valuable catch.** My doc updates
+   predated dropping the density gate, so seven surfaces (the `_prose_dialogue`
+   docstring, RFC §1.2, COMPLIANCE §1, HISTORY, CONVENTIONS ×2, CLAUDE.md) still
+   listed a "density floor" and "version/date" vote-against as shipped behavior.
+   All corrected to the as-built logic (no density gate; version-tag headers only).
+   Exactly the drift `feedback_readme_check_per_pr` warns about — caught by the bots.
+
+Final: **692 passed, 1 skipped**; real-data diff **0 vs v1.2.4**. All three review
+legs complete; all CONFIRMED findings fixed before merge.
 
 ## 6. Backward Compatibility
 

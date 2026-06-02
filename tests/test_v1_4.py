@@ -192,6 +192,16 @@ class TestDocumentedFalseNegatives:
         # length). Real chat is substantive; this degenerate exchange is the FN.
         assert _detect("Human: hi\nAssistant: hello\nHuman: bye") is False
 
+    def test_screenplay_label_on_own_line_no_markdown_missed(self):
+        # Codex review: content-shape needs same-line content, so a label-on-own-
+        # line prose transcript WITHOUT markdown structure is an accepted FN.
+        # (With markdown headers, the structure rule still catches it — see
+        # TestReviewRegressionGuards.test_label_on_own_line_keeps_structure_cosignal.)
+        c = ("Alice:\nI think we should head north into the mountains today.\n"
+             "Bob:\nThat sounds dangerous but I am willing to try it with you.\n"
+             "Alice:\nGood, then let us prepare our gear before nightfall.\n")
+        assert _detect(c) is False
+
 
 class TestContentShapeSurfaced:
     """v1.4.0 (provisional): utterance_ratio + density in chatlog metadata."""

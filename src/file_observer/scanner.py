@@ -619,12 +619,16 @@ CHATLOG_RULES_DEFINITION = (
     "h3_header_re(5+)|section_divider_re(3+)[require nonstoplist_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
     "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2);"
-    "extract:turn_count,speaker_labels(freq>=3,nonspeaker_lexicon_ci),section_markers,"
+    "extract:turn_count,speaker_labels(freq>=3,nonspeaker_ci),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,content_shape{utterance_ratio,density},"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
-    "fp_lexicon_ci:added,answer,caution,changed,deprecated,error,example,examples,faq,"
-    "fixme,fixed,important,note,q,question,removed,result,security,tip,todo,warning;"
+    # fp_lexicon_ci = CHATLOG_FP_LABEL_LEXICON (the §3.3 dominance rule) — admonition
+    # conventions + Keep-a-Changelog verbs ONLY. FAQ tokens are a SEPARATE set
+    # (faq_set, the §4 complete-set rule), not part of the FP lexicon.
+    "fp_lexicon_ci:added,caution,changed,deprecated,error,example,examples,fixed,fixme,"
+    "important,note,removed,result,security,tip,todo,warning;"
+    "faq_set:answer,faq,q,question;"
     # nonspeaker_ci = CHATLOG_SPEAKER_STOP_LIST_CF — labels filtered from detection
     # AND extraction. Enumerated so the rules_hash reflects the actual stop-list
     # (a change to it changes detection/extraction output, so it must change the hash).
@@ -720,8 +724,10 @@ this that these those is are was were be been being am do does did have has had
 to of in on at for with from by about as into like through after over between
 out up down off and or but so if then than because while when where how what why
 who which whom not no yes can could will would should may might must shall
-here there now back yet still just only also too very don't won't can't i'm
-you're it's what's that's
+here there now back yet still just only also too very
+don't won't can't didn't doesn't isn't aren't wasn't weren't hasn't haven't
+hadn't wouldn't couldn't shouldn't i'm you're we're they're it's what's that's
+i'll we'll you'll they'll i've we've you've they've let's
 """.split())
 CHATLOG_WORD_RE = re.compile(r"[a-z']+")
 
@@ -2673,9 +2679,11 @@ class Scanner:
         clear none of the four arms, so they stay at ratio 0.0.
         """
         stripped = content.rstrip()
-        if stripped[-1:] in ".!?" and any(ch.isalpha() for ch in stripped):
+        if stripped and stripped[-1] in ".!?" and any(ch.isalpha() for ch in stripped):
             return True
-        if any(w in CHATLOG_FUNCTION_WORDS for w in CHATLOG_WORD_RE.findall(content.lower())):
+        # normalize curly apostrophe (U+2019) so copy-pasted contractions match
+        words = CHATLOG_WORD_RE.findall(content.lower().replace("’", "'"))
+        if any(w in CHATLOG_FUNCTION_WORDS for w in words):
             return True
         return (len(content.split()) >= CHATLOG_UTTERANCE_MIN_WORDS
                 or len(content) >= CHATLOG_UTTERANCE_MIN_CHARS)
@@ -2703,11 +2711,13 @@ class Scanner:
         rejects cyclic data tables (Item:/Price: — recurring but atomic, a v1.2.4
         false positive) while admitting terse-but-real dialogue via the
         function-word / punctuation arms; a closed FP-lexicon dominance rule
-        (`Added:`-style changelogs); a density floor (labels sprinkled in prose);
-        a version/date structure vote-against (release notes); and a FAQ
-        complete-set exclusion. Recurrence is retained — the all-distinct
-        roll-call FN is accepted (see LIMITATIONS), as is ultra-terse contentless
-        dialogue ("hi"/"bye"), which is irreducibly ambiguous with atomic data.
+        (`Added:`-style changelogs); a version-TAG structure vote-against (release
+        notes; dated-journal headers do NOT vote against); and a FAQ complete-set
+        exclusion. (A density floor was prototyped and DROPPED in review — it is
+        surfaced as an observation but does not gate; see the NOTE below.)
+        Recurrence is retained — the all-distinct roll-call FN is accepted (see
+        LIMITATIONS), as is ultra-terse contentless dialogue ("hi"/"bye"), which
+        is irreducibly ambiguous with atomic data.
         """
         pairs = cls._label_content_pairs(text, drop_nonspeaker=True)
         if not pairs:

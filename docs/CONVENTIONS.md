@@ -45,7 +45,7 @@ The scanner has five distinct things that carry versions. They are independent �
 **When it bumps:** When detection rules, regex patterns, or counting logic change.
 **Format:** Single integer.
 **Current vectors:**
-- `chatlog` method_version: 9 (v1.4.0: content-shape gate over the retained stop-list — `utterance_ratio≥0.6` via function-word/punctuation/length arms, FP-lexicon dominance, density floor, version/date structure vote-against, FAQ complete-set exclusion; provisional `content_shape` surfaced. Prior: 8 = v1.2.4 case-insensitive stop-list + embedded-dialogue parity; 7 = v1.2.3 FAQ stop-list; 6 = v1.2.2 recurrence + stop-list; 5 = v1.2.1 distinct-speaker + co-signal; 4 = v1.2 generalized conversational JSON/JSONL; 3 = v0.10.1 JSONL role detection + v0.9.1 stop-list/H3 threshold)
+- `chatlog` method_version: 9 (v1.4.0: content-shape gate over the retained stop-list — `utterance_ratio≥0.6` via function-word/punctuation/length arms, FP-lexicon dominance, version-tag structure vote-against, FAQ complete-set exclusion; provisional `content_shape` surfaced — a density floor was prototyped then dropped in review, surfaced not gated. Prior: 8 = v1.2.4 case-insensitive stop-list + embedded-dialogue parity; 7 = v1.2.3 FAQ stop-list; 6 = v1.2.2 recurrence + stop-list; 5 = v1.2.1 distinct-speaker + co-signal; 4 = v1.2 generalized conversational JSON/JSONL; 3 = v0.10.1 JSONL role detection + v0.9.1 stop-list/H3 threshold)
 - `reference_tokens` method_version: 2 (v0.9.2: URL-stripped path counting)
 - `author_aggregate` method_version: 1 (v0.10.0: corpus-scoped)
 - `filename_patterns` method_version: 1 (v0.10.0: file-scoped)
@@ -208,7 +208,7 @@ This section is for **us**. It is the running list of everything File Observer c
 
 | Trigger | Tool | Namespace |
 |---|---|---|
-| Content-detected on `.txt`/`.md`/`.mdx`/`.jsonl`/`.json`: prose speaker labels (stop-list filtered; ≥2 distinct, ≥3 total, ≥1 recurring) **with** the v1.4 content-shape gate (`utterance_ratio≥0.6`, FP-lexicon/density/structure/FAQ defenses) **or** ≥5 `### `/≥3 dividers **with** a speaker co-signal **or** conversational JSON/JSONL (≥3 messages, ≥2 distinct speakers) — see chatlog method_version 9 in §1.4 | `chatlog_signals` (`CHATLOG_TOOL`) | `chatlog` (`CHATLOG_NAMESPACE`) |
+| Content-detected on `.txt`/`.md`/`.mdx`/`.jsonl`/`.json`: prose speaker labels (stop-list filtered; ≥2 distinct, ≥3 total, ≥1 recurring) **with** the v1.4 content-shape gate (`utterance_ratio≥0.6`, FP-lexicon/version-tag-structure/FAQ defenses; density surfaced not gated) **or** ≥5 `### `/≥3 dividers **with** a speaker co-signal **or** conversational JSON/JSONL (≥3 messages, ≥2 distinct speakers) — see chatlog method_version 9 in §1.4 | `chatlog_signals` (`CHATLOG_TOOL`) | `chatlog` (`CHATLOG_NAMESPACE`) |
 
 ### 4.3 Specialist metadata fields by namespace
 
