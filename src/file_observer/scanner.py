@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.3.0
-    Schema:     1.2
+    Version:    1.4.0
+    Schema:     1.3
     Python:     >= 3.12
-    Spec:       docs/v1.3.0_RFC_Specification.md (current)
+    Spec:       docs/v1.4.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -71,9 +71,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.3.0"
-LOGIC_VERSION = "1.2.0"
-SCHEMA_VERSION = "1.2"
+SCANNER_VERSION = "1.4.0"
+LOGIC_VERSION = "1.3.0"
+SCHEMA_VERSION = "1.3"
 
 
 # v0.8: register markdown extensions in stdlib mimetypes so that when libmagic
@@ -127,6 +127,25 @@ CHATLOG_SECTION_DIVIDER_RE = re.compile(r"^-{3,}\s*$", re.MULTILINE)
 # rule 2 says "3+ `###` headers in the sample"; a header is a line, not a
 # substring. Prose containing the characters `### ` inline does not count.
 CHATLOG_H3_HEADER_RE = re.compile(r"^### ", re.MULTILINE)
+# v1.4.0: content-shape detection. Captures label + post-colon CONTENT (the
+# label regex above captures only the label). A speaker turn is an *utterance*
+# (a phrase); a data/header/config label's value is *atomic*. utterance_ratio
+# over these lines is the v1.4 content-shape gate (RFC §2) layered over the
+# count rule. NOTE: the inter-token class is `[ \t]+` (HORIZONTAL whitespace),
+# NOT `\s+` — `\s` matches newlines, so `\s+` would let an empty-content label
+# (`Foo: \n`) swallow the *next* line as its content and drop that line's own
+# label (review finding 2026-06-02). Empty content stays paired to its label.
+CHATLOG_LABEL_CONTENT_RE = re.compile(r"^([A-Z][a-zA-Z0-9_]{0,15}):[ \t]+(.*)$", re.MULTILINE)
+# §3.2 structure vote-against: a dense run of VERSION-TAGGED section headers is
+# the signature of a changelog / release-notes, NOT a transcript. 2+ vote against.
+# Tightened (review 2026-06-02): match only version-TAG shapes — bracketed
+# (`## [1.2.0] - 2026-03-01`), `v`-prefixed (`## v1.2.0`), or 3-part semver
+# (`## 1.2.3`). Bare 2-part numbered headings (`## 2.1`) and ISO-dated journal
+# headers (`## 2024-01-01 session`) are NOT versions and must NOT vote against —
+# a dated journal of dialogue is a legitimate chatlog (the dated-CHANGELOG case
+# is already caught by the FP-lexicon dominance rule via its `Added:`/`Fixed:`).
+CHATLOG_VERSION_HEADER_RE = re.compile(
+    r"^#{1,6}[ \t]*(?:\[v?\d+\.\d+[^\]]*\]|v\d+\.\d+|\d+\.\d+\.\d+)", re.MULTILINE)
 # v0.8 chatlog extraction — used by _extract_chatlog_metadata. The detection
 # regexes above test for the presence of patterns; these capture them.
 # Single-character pure-divider line: same character class repeated 3+ times.
@@ -590,25 +609,47 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 8  # v1.2.4: case-insensitive stop-list; embedded-dialogue parity with prose Rule 1
+CHATLOG_METHOD_VERSION = 9  # v1.4.0: content-shape gate over the count rule — utterance_ratio (function-word/punct/length arms) + FP-lexicon dominance + version-tag structure-vote + FAQ complete-set; density surfaced but not gated
 CHATLOG_RULES_DEFINITION = (
-    "detect:speaker_label_re(distinct>=2,total>=3,recurring>=1,stop_list_ci),"
-    "h3_header_re(5+)|section_divider_re(3+)[require speaker_cosignal_distinct>=2],"
+    "detect:prose_composite(stop_list_filtered,floor[distinct>=2,total>=3,recurring>=1],"
+    "faq_complete_set{question,answer,q,a,faq}->reject,"
+    "utterance_ratio>=0.6[utterance=function_word|sentence_punct|words>=4|chars>=25],"
+    "fp_lexicon_dominated(>=half distinct)->reject,"
+    "version_tag_header(>=2)->reject),"
+    "h3_header_re(5+)|section_divider_re(3+)[require nonstoplist_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
-    "line/array/tree,embedded_speaker_labels(distinct>=2,total>=3,recurring>=1),require msgs>=3 AND distinct_speakers>=2);"
-    "extract:turn_count,speaker_labels(freq>=3,stop_list_ci),section_markers,"
-    "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,"
+    "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2);"
+    "extract:turn_count,speaker_labels(freq>=3,nonspeaker_ci),section_markers,"
+    "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,content_shape{utterance_ratio,density},"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
-    "stop_list_ci:allow,answer,arguments,authorization,bcc,caution,cc,command,commands,"
+    # fp_lexicon_ci = CHATLOG_FP_LABEL_LEXICON (the §3.3 dominance rule) — admonition
+    # conventions + Keep-a-Changelog verbs ONLY. FAQ tokens are a SEPARATE set
+    # (faq_set, the §4 complete-set rule), not part of the FP lexicon.
+    "fp_lexicon_ci:added,caution,changed,deprecated,error,example,examples,fixed,fixme,"
+    "important,note,removed,result,security,tip,todo,warning;"
+    "faq_set:answer,faq,q,question;"
+    # nonspeaker_ci = CHATLOG_SPEAKER_STOP_LIST_CF — labels filtered from detection
+    # AND extraction. Enumerated so the rules_hash reflects the actual stop-list
+    # (a change to it changes detection/extraction output, so it must change the hash).
+    "nonspeaker_ci:allow,answer,arguments,authorization,bcc,caution,cc,command,commands,"
     "copyright,date,description,disallow,distribution,documentation,error,example,examples,"
     "fixme,format,from,important,license,lines,message,newsgroups,note,options,organization,"
     "parameters,password,path,question,references,result,returns,sender,subject,summary,"
     "synopsis,tip,to,todo,usage,version,warning"
 )
+# NOTE: these literals MUST equal the live CHATLOG_* threshold constants defined
+# below (they feed static_tuning_hash, the constants gate detection). A guard
+# test (test_v1_4) asserts equality so an edit to one without the other — which
+# would let the vector identity miss a real logic change — fails CI.
 CHATLOG_STATIC_TUNING = {
     "detection_threshold": 3,
     "h3_detection_threshold": 5,
+    "utterance_min_ratio": 0.6,
+    "utterance_min_words": 4,
+    "utterance_min_chars": 25,
+    "fp_lexicon_dominance": 0.5,
+    "structure_header_threshold": 2,
     "top_capitalized_tokens_n": 20,
     "json_role_field_keys": ["type", "role", "from", "speaker", "author"],
     "json_content_field_keys": ["text", "value", "content", "message", "body"],
@@ -652,36 +693,79 @@ CHATLOG_JSON_MESSAGE_RE = re.compile(
 # JSONL, and Claude rich-content blocks (all <2 distinct roles).
 CHATLOG_JSON_ROLE_VALUE_RE = re.compile(
     r'"(?:type|role|from|speaker|author)"\s*:\s*"([^"]{1,40})"')
-# v0.9.1: speaker labels matching these tokens are excluded from detection
-# and extraction. These are common documentation patterns (Note:, Example:, etc.)
-# that match the speaker label regex but are not conversation participants.
-CHATLOG_SPEAKER_STOP_LIST: set[str] = {
-    # documentation / admonition labels (v0.9.1)
-    "Note", "NOTE", "Example", "Examples", "Result", "Warning", "Error",
-    "Disallow", "Allow", "TODO", "FIXME", "TIP", "IMPORTANT", "CAUTION",
-    # v1.2.2: structural/header labels that recur but are never speakers,
-    # surfaced by the corpus sweep — email/usenet headers, man-page sections,
-    # legal notices, form fields. `User` is intentionally NOT here (it is a
-    # legitimate speaker in many transcripts); `Password` and the rest never are.
-    "From", "To", "Cc", "Bcc", "Date", "Subject", "Sender", "References",
-    "Message", "Newsgroups", "Organization", "Lines", "Distribution", "Path",
-    "Version", "Usage", "Options", "Command", "Commands", "Format", "Synopsis",
-    "Description", "Arguments", "Parameters", "Returns", "Summary",
-    "Authorization", "Documentation", "License", "Copyright", "Password",
-    # v1.2.3: FAQ labels — `Question:`/`Answer:` recur like speakers but aren't
-    # (stopgap for the most common recurring-Key:value FP; the real fix is a
-    # non-count signal — see scratch/review/v1_2_2_fp_findings.md). Deliberately
-    # NOT adding single letters `Q`/`A`: `A:`/`B:` is legitimate anonymized dialogue.
-    "Question", "Answer",
-}
-# v1.2.4: match case-INSENSITIVELY. The label regex matches all-caps, so the
-# case-sensitive set left holes (ALL-CAPS `FROM:`/`SUBJECT:` header dumps still
-# false-positived; only FAQ got dual-cased in v1.2.3). Folding once here closes
-# every all-caps hole AND removes the dual-listing maintenance burden — `User`
-# stays a legitimate speaker because it isn't in the set in any case.
-CHATLOG_SPEAKER_STOP_LIST_CF: frozenset[str] = frozenset(
-    w.casefold() for w in CHATLOG_SPEAKER_STOP_LIST
-)
+# v1.4.0 content-shape thresholds (RFC §2.1, §3.1). The content-shape signal is
+# an ADDITIVE layer over the v1.2.4 machinery (stop-list + floor + structure) —
+# real-data falsification showed the stop-list is load-bearing and cannot be
+# replaced (it suppresses doc-section labels the content signal can't). What
+# content-shape ADDS: it rejects cyclic data tables (Item:/Price:, recurring but
+# atomic) that the count rule false-positived, and it lets terse-but-real
+# dialogue through via the function-word / punctuation arms. A label's post-colon
+# content is an *utterance* when it has a function word, ends in sentence
+# punctuation, has >=4 words, OR is >=25 chars; utterance_ratio is the fraction
+# of (non-stop-list) label lines that clear that bar. Tuned on the v1.4
+# adversarial corpus (scratch/review/v1_4_corpus.py): atomic data lands at 0.0,
+# dialogue (incl. terse RPG) at >=0.6. density = label lines / non-blank lines.
+CHATLOG_UTTERANCE_MIN_WORDS = 4
+CHATLOG_UTTERANCE_MIN_CHARS = 25
+CHATLOG_UTTERANCE_MIN_RATIO = 0.6
+CHATLOG_FP_LEXICON_DOMINANCE = 0.5  # reject when >= this fraction of distinct labels are FP-lexicon
+CHATLOG_STRUCTURE_HEADER_MIN = 2    # 2+ version-tag headers vote against (§3.2)
+# density is computed and surfaced (content_shape) but is NOT a detection gate —
+# a density floor was prototyped and falsified in review (it FN'd multi-line-turn
+# dialogue; see _prose_dialogue). No CHATLOG_DENSITY_MIN constant exists.
+
+# v1.4.0: function words — the signal that separates terse dialogue ("hi *there*
+# friend", "*how are you*") from atomic data values ("John Smith", "1.00",
+# "localhost"), which contain none. A closed standard-English class (articles,
+# pronouns, prepositions, conjunctions, aux/wh-words), not a curated denylist.
+CHATLOG_FUNCTION_WORDS: frozenset[str] = frozenset("""
+a an the i you he she it we they me him her us them my your his its our their
+this that these those is are was were be been being am do does did have has had
+to of in on at for with from by about as into like through after over between
+out up down off and or but so if then than because while when where how what why
+who which whom not no yes can could will would should may might must shall
+here there now back yet still just only also too very
+don't won't can't didn't doesn't isn't aren't wasn't weren't hasn't haven't
+hadn't wouldn't couldn't shouldn't i'm you're we're they're it's what's that's
+i'll we'll you'll they'll i've we've you've they've let's
+""".split())
+CHATLOG_WORD_RE = re.compile(r"[a-z']+")
+
+# v1.4.0: the FP-label lexicon (RFC §3.3) — labels that carry sentence content
+# (so utterance_ratio can't reject them) but are never conversation participants.
+# CLOSED by two real specs (admonition conventions + Keep a Changelog), not
+# corpus accretion. Applied as a DOMINANCE rule in _prose_dialogue (reject when
+# the lexicon dominates the distinct labels), catching `Added:`-style changelogs.
+CHATLOG_FP_LABEL_LEXICON: frozenset[str] = frozenset({
+    "note", "warning", "tip", "caution", "important", "example", "examples",
+    "todo", "fixme", "result", "error",
+    "added", "changed", "deprecated", "removed", "fixed", "security",
+})
+# v1.4.0: FAQ complete-set exclusion (RFC §4). A FAQ's *entire* distinct label
+# set is {Question, Answer} (or {Q, A}); an interview labels turns with
+# identities. Reject only when the distinct set is a SUBSET — so `A:`/`B:`
+# anonymized dialogue survives (`B` is not a member) while `Q:`/`A:` FAQ is
+# excluded. Cost: `Q:`/`A:`-labeled published interviews become an FN (LIMITATIONS).
+CHATLOG_FAQ_LABELS: frozenset[str] = frozenset({"question", "answer", "q", "a", "faq"})
+# Non-speaker labels — the full v1.2.4 stop-list, RETAINED (real-data
+# falsification proved it load-bearing: it suppresses doc-section labels
+# (Usage:/Options:/Authorization:) that the content-shape signal cannot, in both
+# Rule 1's label collection and the Rules 2/3 markdown co-signal). Case-folded.
+CHATLOG_SPEAKER_STOP_LIST_CF: frozenset[str] = frozenset({
+    # documentation / admonition labels
+    "note", "example", "examples", "result", "warning", "error",
+    "disallow", "allow", "todo", "fixme", "tip", "important", "caution",
+    # email/usenet headers, man-page sections, legal notices, form fields.
+    # `user` is intentionally absent (a legit speaker in many transcripts).
+    "from", "to", "cc", "bcc", "date", "subject", "sender", "references",
+    "message", "newsgroups", "organization", "lines", "distribution", "path",
+    "version", "usage", "options", "command", "commands", "format", "synopsis",
+    "description", "arguments", "parameters", "returns", "summary",
+    "authorization", "documentation", "license", "copyright", "password",
+    # FAQ labels (Question:/Answer: — the single letters Q/A are handled by the
+    # FAQ complete-set rule, not here, so `A:`/`B:` dialogue is preserved).
+    "question", "answer",
+})
 
 # v0.9: Reference tokens vector identity constants.
 REFERENCE_TOKENS_VECTOR_ID = "reference_tokens"
@@ -2565,18 +2649,122 @@ class Scanner:
         )
         return (text_chars / max(len(sample), 1)) >= 0.85
 
+    @staticmethod
+    def _label_content_pairs(text: str, drop_nonspeaker: bool = False) -> list[tuple[str, str]]:
+        """(label, post-colon content) for each speaker-label line (v1.4.0).
+
+        When ``drop_nonspeaker`` is set, labels in the non-speaker stop-list
+        (From:/Usage:/Note:/Question: …) are excluded — used by detection so
+        doc-section labels never count as turns (the stop-list is load-bearing;
+        see the constant's note). The FAQ single letters Q/A are NOT stop-listed,
+        so `A:`/`B:` dialogue is preserved for the complete-set rule.
+        """
+        pairs = [(m.group(1), m.group(2).strip())
+                 for m in CHATLOG_LABEL_CONTENT_RE.finditer(text)]
+        if drop_nonspeaker:
+            pairs = [(l, c) for l, c in pairs
+                     if l.casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF]
+        return pairs
+
+    @staticmethod
+    def _is_utterance(content: str) -> bool:
+        """A turn is a phrase; a field value is atomic (RFC v1.4.0 §2.1).
+
+        Utterance-like when it (a) contains a function word, (b) ends in
+        sentence punctuation, (c) is multi-word, or (d) is long. The
+        function-word arm is what separates terse-but-real dialogue ("hi *there*
+        friend", "*how are you*") from atomic data values (John Smith, 1.00,
+        localhost), which contain none; the punctuation arm rescues terse
+        punctuated dialogue ("I attack!", "Roll for it."). Atomic-value classes
+        clear none of the four arms, so they stay at ratio 0.0.
+        """
+        stripped = content.rstrip()
+        if stripped and stripped[-1] in ".!?" and any(ch.isalpha() for ch in stripped):
+            return True
+        # normalize curly apostrophe (U+2019) so copy-pasted contractions match
+        words = CHATLOG_WORD_RE.findall(content.lower().replace("’", "'"))
+        if any(w in CHATLOG_FUNCTION_WORDS for w in words):
+            return True
+        return (len(content.split()) >= CHATLOG_UTTERANCE_MIN_WORDS
+                or len(content) >= CHATLOG_UTTERANCE_MIN_CHARS)
+
+    @classmethod
+    def _chatlog_content_shape(cls, text: str) -> tuple[float, float]:
+        """(utterance_ratio, density) over speaker-label lines. (0.0, 0.0) if none.
+        Provisional observed signals surfaced in chatlog metadata (RFC §7)."""
+        pairs = cls._label_content_pairs(text, drop_nonspeaker=True)
+        if not pairs:
+            return (0.0, 0.0)
+        ur = sum(1 for _, c in pairs if cls._is_utterance(c)) / len(pairs)
+        nonblank = sum(1 for ln in text.splitlines() if ln.strip())
+        den = len(pairs) / nonblank if nonblank else 0.0
+        return (round(ur, 3), round(den, 3))
+
+    @classmethod
+    def _prose_dialogue(cls, text: str) -> bool:
+        """v1.4.0 prose dialogue rule — the v1.2.4 count rule PLUS a content-shape
+        gate (RFC §2.2 + §3 + §4).
+
+        Labels are first filtered by the (load-bearing) non-speaker stop-list,
+        then must clear the count floor (>=2 distinct, >=3 total, >=1 recurring).
+        What v1.4.0 ADDS on top: a content-shape gate (`utterance_ratio`) that
+        rejects cyclic data tables (Item:/Price: — recurring but atomic, a v1.2.4
+        false positive) while admitting terse-but-real dialogue via the
+        function-word / punctuation arms; a closed FP-lexicon dominance rule
+        (`Added:`-style changelogs); a version-TAG structure vote-against (release
+        notes; dated-journal headers do NOT vote against); and a FAQ complete-set
+        exclusion. (A density floor was prototyped and DROPPED in review — it is
+        surfaced as an observation but does not gate; see the NOTE below.)
+        Recurrence is retained — the all-distinct roll-call FN is accepted (see
+        LIMITATIONS), as is ultra-terse contentless dialogue ("hi"/"bye"), which
+        is irreducibly ambiguous with atomic data.
+        """
+        pairs = cls._label_content_pairs(text, drop_nonspeaker=True)
+        if not pairs:
+            return False
+        counts = Counter(lbl for lbl, _ in pairs)
+        distinct = list(counts)
+        # §2.2.1 structural floor — recurrence retained (decision Q3)
+        if not (len(counts) >= 2 and sum(counts.values()) >= 3
+                and any(c >= 2 for c in counts.values())):
+            return False
+        # §4 FAQ complete-set exclusion (subset test: {A,B} survives, {Q,A} rejected)
+        if all(d.casefold() in CHATLOG_FAQ_LABELS for d in distinct):
+            return False
+        # §2.2.2 content-shape — the primary non-count signal
+        ur = sum(1 for _, c in pairs if cls._is_utterance(c)) / len(pairs)
+        if ur < CHATLOG_UTTERANCE_MIN_RATIO:
+            return False
+        # §3.3 FP-lexicon dominance (closed list; one stray label doesn't reject)
+        lex_hits = sum(1 for d in distinct if d.casefold() in CHATLOG_FP_LABEL_LEXICON)
+        if lex_hits >= len(distinct) * CHATLOG_FP_LEXICON_DOMINANCE:
+            return False
+        # §3.2 structure vote-against — changelog / release-notes (version-tagged
+        # headers only; dated-journal headers deliberately do NOT vote against)
+        if len(CHATLOG_VERSION_HEADER_RE.findall(text)) >= CHATLOG_STRUCTURE_HEADER_MIN:
+            return False
+        # NOTE: no density gate. A density floor was prototyped (reject labels
+        # sprinkled in prose) but review falsified it — it false-NEGATIVES common
+        # multi-line-turn dialogue (3+ lines/turn → density < 0.5) while the
+        # sprinkled-prose case it targeted sits at HIGHER density (~0.43) than the
+        # dialogue it breaks, so no threshold separates them. `density` is still
+        # surfaced as an observation (content_shape), but recurring-label-in-prose
+        # joins the accepted recurring-taxonomy FP residual (see LIMITATIONS).
+        return True
+
     def _detect_chatlog_pattern(self, text: str) -> bool:
         """Content-based detection of chatlog / journal / vault structure.
 
         Returns True if the decoded text matches any of the rules:
 
-          1. Three or more lines matching the speaker label pattern
-             (excluding stop-list tokens like Note:, Example:, etc.)
+          1. (v1.4.0) Prose dialogue — the count rule plus a content-shape gate
+             (``_prose_dialogue``); rejects cyclic data tables, admits terse
+             dialogue, excludes changelogs/FAQs/release-notes.
           2/3. (v1.2) Markdown structure — 5+ ``### `` headers OR 3+ section
-             dividers — but ONLY when accompanied by a conversational signal
-             (2+ speaker labels). Structure alone over-fired on prose docs
-             (README/specs); requiring a speaker signal kills that false
-             positive while preserving genuine transcripts/journals.
+             dividers — but ONLY with a conversational co-signal: 2+ distinct
+             non-stop-list labels (unchanged from v1.2.4 — real-data
+             falsification showed the stop-list is load-bearing here, suppressing
+             doc-section labels (Usage:/Authorization:) the content signal can't).
           4. Conversational JSON/JSONL (generalized, v1.2).
 
         Detection runs even when ``enable_specialists=False`` because it's
@@ -2584,32 +2772,21 @@ class Scanner:
         """
         if not text:
             return False
-        # Rule 1: prose speaker labels (stop-list filtered). A conversation has
-        # speakers who RECUR and alternate; a header/label block (email headers,
-        # man-page sections, UTF-8 demos, language lists) has many one-shot
-        # labels. v1.2.2: require >=2 distinct speakers, >=3 total turns, AND at
-        # least one speaker who takes multiple turns (real back-and-forth). This
-        # ports the v1.2.1 distinct-speaker hardening (added then only to the
-        # JSON path) to prose, and adds recurrence — the discriminator the corpus
-        # sweep showed separates transcripts (recurring) from header blocks (one-shot).
-        speaker_matches = [
-            m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
-            if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF
-        ]
-        speaker_counts = Counter(speaker_matches)
-        if (len(speaker_counts) >= 2 and sum(speaker_counts.values()) >= 3
-                and any(c >= 2 for c in speaker_counts.values())):
+        # Rule 1 (v1.4.0): prose dialogue (count floor + content-shape gate).
+        if self._prose_dialogue(text):
             return True
-        # Rules 2/3 (v1.2): markdown structure (H3 headers / section dividers)
-        # only counts as a chatlog/journal signal when accompanied by a
-        # conversational co-signal — 2+ speaker labels OR 2+ date-stamped
-        # headers (journal entries). Prose docs have neither, so they no
-        # longer false-positive; transcripts and dated journals still do.
-        # v1.2.1: markdown structure (H3 headers / dividers) counts only with a
-        # SPEAKER co-signal (2+ labels). Dropped the v1.2 date-header co-signal —
-        # it merely relocated the false positive to dated docs (changelogs,
-        # release notes, dated journals are structurally indistinguishable).
-        structure_cosignal = len(speaker_counts) >= 2
+        # Rules 2/3 (v1.2): markdown structure counts only with a conversational
+        # co-signal — 2+ distinct non-stop-list labels. This is a STRUCTURE rule,
+        # not a content-shape rule, so the co-signal uses the label-only regex
+        # (CHATLOG_SPEAKER_LABEL_RE, matches a label regardless of same-line
+        # content) — NOT _label_content_pairs, whose `[ \t]+content` requirement
+        # would miss labels written on their own line (`Alice:\n<utterance>`,
+        # screenplay/script style) and lose the co-signal v1.3.0 had (review
+        # 2026-06-02: both the in-house and Gemini passes flagged this FN).
+        # Stop-list filtering still excludes doc-section labels (Usage:/Note:).
+        speaker_labels = {m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
+                          if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF}
+        structure_cosignal = len(speaker_labels) >= 2
         if structure_cosignal and len(CHATLOG_H3_HEADER_RE.findall(text)) >= 5:
             return True
         if structure_cosignal and len(CHATLOG_SECTION_DIVIDER_RE.findall(text)) >= 3:
@@ -2618,20 +2795,15 @@ class Scanner:
         # (line-delimited, arrays, nested trees, embedded speaker labels).
         return self._detect_conversational_json(text)
 
-    @staticmethod
-    def _string_has_speaker_dialogue(s: Any) -> bool:
+    @classmethod
+    def _string_has_speaker_dialogue(cls, s: Any) -> bool:
         """Dialogue embedded in a JSON string value (e.g. hh-rlhf's
-        '\\n\\nHuman: ...\\n\\nAssistant: ...'). v1.2.4: applies the SAME predicate
-        as prose Rule 1 — >=2 distinct speakers, >=3 total, >=1 recurring — so the
-        same text isn't detected inside a JSON string yet rejected as prose."""
+        '\\n\\nHuman: ...\\n\\nAssistant: ...'). v1.4.0: applies the SAME content-
+        shape composite as prose Rule 1 (RFC §6 parity) — so the same text isn't
+        detected inside a JSON string yet rejected as prose, or vice-versa."""
         if not isinstance(s, str) or len(s) < 20:
             return False
-        labels = Counter(
-            m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(s)
-            if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF
-        )
-        return (len(labels) >= 2 and sum(labels.values()) >= 3
-                and any(c >= 2 for c in labels.values()))
+        return cls._prose_dialogue(s)
 
     def _detect_conversational_json(self, text: str) -> bool:
         """Generalized conversational JSON/JSONL detection (v1.2; tightened v1.2.1).
@@ -2953,12 +3125,22 @@ class Scanner:
             "speaker_change_ratio": change_ratio,
         }
 
+        # v1.4.0 (provisional, RFC §7): the content-shape signals that drive prose
+        # detection, surfaced so consumers can see *why* detection fired. They are
+        # prose-label measures — null in JSONL mode, where the JSON path decides.
+        if jsonl_mode:
+            content_shape: dict[str, float] | None = None
+        else:
+            ur, den = self._chatlog_content_shape(text)
+            content_shape = {"utterance_ratio": ur, "density": den}
+
         return {
             "turn_count": turn_count,
             "speaker_labels": speaker_labels,
             "speaker_turn_counts": speaker_turn_counts,
             "speaker_turn_chars": speaker_turn_chars,
             "alternation": alternation,
+            "content_shape": content_shape,
             "section_marker_count": section_marker_count,
             "section_marker_styles": section_marker_styles,
             "avg_turn_chars": avg_turn_chars,

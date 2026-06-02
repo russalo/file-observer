@@ -18,14 +18,14 @@ The scanner has five distinct things that carry versions. They are independent �
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.3.0`
+**Current:** `1.4.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic — code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
 **Where it lives:** `LOGIC_VERSION` constant in `src/file_observer/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `1.2.0`
+**Current:** `1.3.0`
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent �
 - MAJOR (x.0 → x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `1.2`
+**Current:** `1.3`
 **Note:** This IS a public contract field. As of v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, since v0.9)
@@ -45,7 +45,7 @@ The scanner has five distinct things that carry versions. They are independent �
 **When it bumps:** When detection rules, regex patterns, or counting logic change.
 **Format:** Single integer.
 **Current vectors:**
-- `chatlog` method_version: 8 (v1.2.4: case-insensitive stop-list + embedded-dialogue parity with prose Rule 1; v1.2.3: FAQ `Question`/`Answer` stop-list; v1.2.2: prose Rule 1 recurrence requirement + expanded stop-list; v1.2.1: >=2 distinct speakers + speaker co-signal for markdown-structure FP fixes; v1.2: generalized conversational JSON/JSONL detection. Prior: 3 = v0.10.1 JSONL role detection + v0.9.1 stop-list/H3 threshold)
+- `chatlog` method_version: 9 (v1.4.0: content-shape gate over the retained stop-list — `utterance_ratio≥0.6` via function-word/punctuation/length arms, FP-lexicon dominance, version-tag structure vote-against, FAQ complete-set exclusion; provisional `content_shape` surfaced — a density floor was prototyped then dropped in review, surfaced not gated. Prior: 8 = v1.2.4 case-insensitive stop-list + embedded-dialogue parity; 7 = v1.2.3 FAQ stop-list; 6 = v1.2.2 recurrence + stop-list; 5 = v1.2.1 distinct-speaker + co-signal; 4 = v1.2 generalized conversational JSON/JSONL; 3 = v0.10.1 JSONL role detection + v0.9.1 stop-list/H3 threshold)
 - `reference_tokens` method_version: 2 (v0.9.2: URL-stripped path counting)
 - `author_aggregate` method_version: 1 (v0.10.0: corpus-scoped)
 - `filename_patterns` method_version: 1 (v0.10.0: file-scoped)
@@ -63,9 +63,9 @@ The scanner has five distinct things that carry versions. They are independent �
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.3.0 | Internal |
-| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.2.0 | Internal* |
-| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.2 | **Public** |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.0 | Internal |
+| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.3.0 | Internal* |
+| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.3 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
 
@@ -208,7 +208,7 @@ This section is for **us**. It is the running list of everything File Observer c
 
 | Trigger | Tool | Namespace |
 |---|---|---|
-| Content-detected on `.txt`/`.md`/`.mdx`/`.jsonl`/`.json`: prose speaker labels (≥2 distinct, ≥3 total, ≥1 recurring) **or** ≥5 `### `/≥3 dividers **with** a speaker co-signal **or** conversational JSON/JSONL (≥3 messages, ≥2 distinct speakers) — see chatlog method_version 8 in §1.4 | `chatlog_signals` (`CHATLOG_TOOL`) | `chatlog` (`CHATLOG_NAMESPACE`) |
+| Content-detected on `.txt`/`.md`/`.mdx`/`.jsonl`/`.json`: prose speaker labels (stop-list filtered; ≥2 distinct, ≥3 total, ≥1 recurring) **with** the v1.4 content-shape gate (`utterance_ratio≥0.6`, FP-lexicon/version-tag-structure/FAQ defenses; density surfaced not gated) **or** ≥5 `### `/≥3 dividers **with** a speaker co-signal **or** conversational JSON/JSONL (≥3 messages, ≥2 distinct speakers) — see chatlog method_version 9 in §1.4 | `chatlog_signals` (`CHATLOG_TOOL`) | `chatlog` (`CHATLOG_NAMESPACE`) |
 
 ### 4.3 Specialist metadata fields by namespace
 

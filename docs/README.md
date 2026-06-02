@@ -28,8 +28,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.2",
-  "context": { "scanner_version": "1.3.0", "logic_version": "1.2.0", "...": "…" },
+  "schema_version": "1.3",
+  "context": { "scanner_version": "1.4.0", "logic_version": "1.3.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -46,7 +46,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
     }
   ],
   "vectors_collected": [
-    { "vector_id": "chatlog", "method_version": 8, "identity_digest": "a3f1c2…", "...": "…" }
+    { "vector_id": "chatlog", "method_version": 9, "identity_digest": "a3f1c2…", "...": "…" }
   ],
   "manifest_checksum": "7d2bafef…",
   "manifest_signature": { "algorithm": "hmac-sha256", "key_id": "default", "value": "…" }
@@ -59,8 +59,8 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.3.0` |
-| **Schema** | `1.2` |
+| **Version** | `1.4.0` |
+| **Schema** | `1.3` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
 | **Tests** | 661 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
@@ -260,7 +260,7 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [HISTORY.md](HISTORY.md) | Every version from v0.1 to the current release, with specs and compliance reports |
 | [PUBLIC_CONTRACT.md](PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [CONVENTIONS.md](CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.3.0 RFC Specification](v1.3.0_RFC_Specification.md) | Current release spec — pure-Python MIME fallback. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.4.0 RFC Specification](v1.4.0_RFC_Specification.md) | Current release spec — content-shape chatlog detection gate. v1.0.0 RFC remains the binding schema-freeze contract. |
 
 ---
 

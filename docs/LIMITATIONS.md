@@ -75,6 +75,42 @@ inference. The `signal_provenance.trigger` records which tier produced it
 and extension disagree, File Observer **reports the mismatch** as a signal
 (`mime_analysis.matches_extension`) — it does not rename, re-route, or "fix" the file.
 
+## Chatlog detection has known false negatives (v1.4)
+
+`is_chatlog` is a content-based heuristic. v1.4.0 added a content-shape gate (a
+turn must read like an *utterance* — function word, sentence punctuation, or
+length) to stop recurring *data* labels (`Item:`/`Price:`) being mistaken for
+speakers. That gate has three accepted, documented blind spots:
+
+- **Ultra-terse contentless dialogue** — an exchange of bare one-word turns
+  (`Human: hi` / `Assistant: hello` / `Human: bye`) is *irreducibly* ambiguous
+  with a small key-value block; it carries no function word, punctuation, or
+  length, so it is **not** flagged. Real conversations are substantive and detect
+  normally; this affects only degenerate inputs.
+- **All-distinct multi-party roll-call** — detection requires at least one
+  recurring speaker, so a transcript where every participant speaks exactly once
+  is **not** flagged. Real multi-party dialogue almost always has speakers recur.
+- **`Q:`/`A:`-labeled published interviews** — these are excluded along with FAQs
+  (a FAQ and an interview are structurally identical); interviews labeled with
+  identities (`Interviewer:`/`Guest:`/names) are unaffected.
+- **Screenplay/script-style transcripts with the speaker on its own line**
+  (`Alice:` then the utterance on the *next* line) — the content-shape signal
+  needs the turn's text on the same line as its label, so a label-on-own-line
+  prose transcript *without* markdown section structure is not flagged. (When
+  such a transcript also has markdown headers, the structure rule still catches
+  it.) Same-line `Speaker: text` — the overwhelmingly common form — is unaffected.
+
+It also has one accepted **false positive** class: a document whose recurring
+capitalized labels carry sentence content but are a *taxonomy*, not speakers —
+headerless release notes (`Feature:`/`Bugfix:`), meeting minutes
+(`Action:`/`Decision:`), or labels sprinkled through prose (`Aside:`/`Sidebar:`).
+These are structurally identical to dialogue (the irreducible `Key:value`↔dialogue
+ambiguity) and may be flagged `is_chatlog=true`. Version-tagged changelogs and the
+known changelog/admonition vocabularies are still rejected.
+
+These are deliberate trade-offs to keep false positives low. As always, a null or
+absent `is_chatlog` means "not detected within these rules," not "not a conversation."
+
 ---
 
 *If a limitation here conflicts with observed behavior, the behavior is the
