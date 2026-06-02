@@ -84,8 +84,10 @@ class TestProseTruePositivesStillDetect:
         assert _is_chatlog(tmp_path, "chat.txt", c) is True
 
     def test_human_assistant_transcript(self, tmp_path):
-        c = ("Human: what's the weather\nAssistant: sunny today\n"
-             "Human: thanks\nAssistant: anytime\n")
+        c = ("Human: what is the weather like today\n"
+             "Assistant: it is sunny and warm right now\n"
+             "Human: should I bring an umbrella\n"
+             "Assistant: no, you will not need one today\n")
         assert _is_chatlog(tmp_path, "transcript.txt", c) is True
 
     def test_markdown_transcript_with_h3_structure(self, tmp_path):

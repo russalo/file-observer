@@ -811,8 +811,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "1.3.0"
-        assert ctx.logic_version == "1.2.0"
+        assert ctx.scanner_version == "1.4.0"
+        assert ctx.logic_version == "1.3.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +850,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "1.3.0"
+        assert data["context"]["scanner_version"] == "1.4.0"
 
 
 # ---------------------------------------------------------------------------
@@ -1283,7 +1283,9 @@ class TestDetectChatlogPattern:
     # ---- Rule 1: speaker labels ----
 
     def test_three_speaker_labels_triggers(self, scanner: Scanner) -> None:
-        text = "User: hi\nAssistant: hello\nUser: how are you\n"
+        text = ("User: can you help me debug this error\n"
+                "Assistant: sure, what does the stack trace say\n"
+                "User: it says index out of range\n")
         assert scanner._detect_chatlog_pattern(text) is True
 
     def test_two_speaker_labels_does_not_trigger(self, scanner: Scanner) -> None:
@@ -1438,11 +1440,11 @@ class TestChatlogSpeakerStopList:
     def test_stop_list_mixed_with_real_speakers(self, scanner: Scanner) -> None:
         """Stop-list entries are excluded; real speakers still count."""
         text = (
-            "User: hello\n"
+            "User: hello, can you explain how this works\n"
             "Note: this is a note\n"
-            "Assistant: hi there\n"
+            "Assistant: sure, here is how it all works\n"
             "Example: some example\n"
-            "User: thanks\n"
+            "User: thanks, that makes a lot of sense\n"
         )
         assert scanner._detect_chatlog_pattern(text) is True
 
@@ -1539,8 +1541,8 @@ class TestIsChatlogIntegration:
 
     def test_chatlog_md_file_detected(self, tmp_path: Path) -> None:
         content = (
-            "User: hi\n"
-            "Assistant: hello\n"
+            "User: hi, can you tell me what this does\n"
+            "Assistant: hello, happy to explain it\n"
             "User: tell me about scanner\n"
             "Assistant: it observes files.\n"
         )
@@ -1594,7 +1596,9 @@ class TestIsChatlogIntegration:
     def test_detection_runs_with_specialists_disabled(self, tmp_path: Path) -> None:
         # Phase 1 requirement: chatlog detection must run even when
         # enable_specialists=False, because the detection is cheap.
-        content = "User: hi\nAssistant: hello\nUser: again\n"
+        content = ("User: hi, what can you do for me\n"
+                   "Assistant: hello, I can answer your questions\n"
+                   "User: tell me more about that\n")
         (tmp_path / "chat.md").write_text(content)
         config = ScannerConfig(enable_specialists=False)
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
@@ -1938,7 +1942,12 @@ class TestScanQualityChatlogFiles:
 
     def test_chatlog_files_counter_counts_detections(self, tmp_path: Path) -> None:
         # Three chatlog files + two non-chatlog files → counter == 3.
-        chat = "User: a\nAssistant: b\nUser: c\nAssistant: d\nUser: e\nAssistant: f\n"
+        chat = ("User: can you help me with a question\n"
+                "Assistant: yes of course, go ahead\n"
+                "User: how do I use this tool\n"
+                "Assistant: run it on any directory you like\n"
+                "User: that is really helpful, thank you\n"
+                "Assistant: you are very welcome\n")
         (tmp_path / "chat1.md").write_text(chat)
         (tmp_path / "chat2.md").write_text(chat)
         (tmp_path / "chat3.txt").write_text(chat)
@@ -1950,7 +1959,9 @@ class TestScanQualityChatlogFiles:
 
     def test_chatlog_files_counter_independent_of_specialist_extraction(self, tmp_path: Path) -> None:
         # Detection (and the counter) runs even with enable_specialists=False.
-        chat = "User: a\nUser: b\nUser: c\nAssistant: a\nAssistant: b\nAssistant: c\n"
+        chat = ("User: can you help me with this task\nUser: it is about parsing files\n"
+                "User: specifically json files\nAssistant: yes I can help with that\n"
+                "Assistant: what format are they in\nAssistant: I can walk you through it\n")
         (tmp_path / "chat.md").write_text(chat)
         config = ScannerConfig(enable_specialists=False)
         manifest = Scanner(source_dir=tmp_path, config=config).scan()
@@ -1959,7 +1970,9 @@ class TestScanQualityChatlogFiles:
     def test_chatlog_files_counter_in_json_serialization(self, tmp_path: Path) -> None:
         from file_observer.scanner import manifest_to_json
         import json as _json
-        chat = "User: a\nUser: b\nUser: c\nAssistant: a\nAssistant: b\nAssistant: c\n"
+        chat = ("User: can you help me with this task\nUser: it is about parsing files\n"
+                "User: specifically json files\nAssistant: yes I can help with that\n"
+                "Assistant: what format are they in\nAssistant: I can walk you through it\n")
         (tmp_path / "chat.md").write_text(chat)
         manifest = Scanner(source_dir=tmp_path).scan()
         data = _json.loads(manifest_to_json(manifest))
@@ -2042,8 +2055,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "1.3.0"
-        assert LOGIC_VERSION == "1.2.0"
+        assert SCANNER_VERSION == "1.4.0"
+        assert LOGIC_VERSION == "1.3.0"
 
 
 # ---------------------------------------------------------------------------
@@ -2921,12 +2934,12 @@ class TestChatlogVector:
     """Test chatlog vector registration and corpus summary."""
 
     CHATLOG_TEXT = (
-        "User: hello there\n"
-        "Assistant: hi back\n"
-        "User: how are you\n"
-        "Assistant: doing well\n"
-        "User: thanks\n"
-        "Assistant: anytime\n"
+        "User: hello there, can you help me with something\n"
+        "Assistant: of course, what do you need\n"
+        "User: how do I run the scanner on a folder\n"
+        "Assistant: just call file-observer on the directory\n"
+        "User: thanks, that worked perfectly\n"
+        "Assistant: glad to hear it\n"
     )
 
     def test_chatlog_vector_registered_when_chatlog_detected(self, tmp_path: Path) -> None:
@@ -3227,7 +3240,12 @@ class TestPerDirectorySummary:
         assert dirs == sorted(dirs)
 
     def test_chatlog_files_counted_per_directory(self, tmp_path: Path) -> None:
-        chatlog_text = "User: hi\nAssistant: hello\nUser: bye\nAssistant: see ya\nUser: thanks\nAssistant: np\n"
+        chatlog_text = ("User: hi, can you walk me through this\n"
+                        "Assistant: hello, sure let us begin\n"
+                        "User: how does the first step work\n"
+                        "Assistant: you start by pointing it at a folder\n"
+                        "User: thanks, that is clear now\n"
+                        "Assistant: happy to help anytime\n")
         (tmp_path / "logs").mkdir()
         (tmp_path / "docs").mkdir()
         (tmp_path / "logs" / "chat.txt").write_text(chatlog_text)
@@ -3504,7 +3522,12 @@ class TestJsonlChatlogDetection:
         assert cl["applied_to_count"] >= 1
 
     def test_existing_txt_detection_unchanged(self, tmp_path: Path) -> None:
-        text = "User: hi\nAssistant: hello\nUser: bye\nAssistant: see ya\nUser: thanks\nAssistant: np\n"
+        text = ("User: hi, are you able to help me\n"
+                "Assistant: hello, yes I can help with that\n"
+                "User: how do I get started here\n"
+                "Assistant: just tell me what you want to do\n"
+                "User: thanks, I think I understand now\n"
+                "Assistant: you are welcome, glad it helped\n")
         (tmp_path / "chat.txt").write_text(text)
         manifest = Scanner(source_dir=tmp_path).scan()
         rec = manifest.files[0]
@@ -3530,4 +3553,4 @@ class TestMarkdownReport:
         from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
-        assert "1.3.0" in md
+        assert "1.4.0" in md

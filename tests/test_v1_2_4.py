@@ -52,5 +52,7 @@ class TestF4EmbeddedDialogueParity:
 
     def test_hh_rlhf_embedded_still_detected(self, tmp_path):
         # 2 distinct, recurring (Human x2) — a real embedded conversation, must stay.
-        c = json.dumps({"chosen": "\n\nHuman: hi\n\nAssistant: hello\n\nHuman: bye"})
+        c = json.dumps({"chosen": "\n\nHuman: how do I sort a list of numbers\n\n"
+                                  "Assistant: use the sorted function on the list\n\n"
+                                  "Human: what about sorting in reverse"})
         assert _is_chatlog(tmp_path, "hh.jsonl", c) is True

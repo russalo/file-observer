@@ -46,8 +46,8 @@ class TestGeneralizedDetection:
         assert _scan_text(tmp_path, "trees.jsonl", c).is_chatlog is True
 
     def test_hh_rlhf_embedded_dialogue(self, tmp_path):
-        c = json.dumps({"chosen": "\n\nHuman: hi\n\nAssistant: hello\n\nHuman: bye",
-                        "rejected": "\n\nHuman: hi\n\nAssistant: no"})
+        c = json.dumps({"chosen": "\n\nHuman: how do I reverse a list in python\n\nAssistant: use the reversed builtin or a slice\n\nHuman: which one is faster",
+                        "rejected": "\n\nHuman: how do I reverse a list in python\n\nAssistant: I am not sure about that"})
         assert _scan_text(tmp_path, "hh.jsonl", c).is_chatlog is True
 
     def test_user_assistant_still_detected(self, tmp_path):

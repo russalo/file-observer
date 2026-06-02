@@ -75,6 +75,28 @@ inference. The `signal_provenance.trigger` records which tier produced it
 and extension disagree, File Observer **reports the mismatch** as a signal
 (`mime_analysis.matches_extension`) — it does not rename, re-route, or "fix" the file.
 
+## Chatlog detection has known false negatives (v1.4)
+
+`is_chatlog` is a content-based heuristic. v1.4.0 added a content-shape gate (a
+turn must read like an *utterance* — function word, sentence punctuation, or
+length) to stop recurring *data* labels (`Item:`/`Price:`) being mistaken for
+speakers. That gate has three accepted, documented blind spots:
+
+- **Ultra-terse contentless dialogue** — an exchange of bare one-word turns
+  (`Human: hi` / `Assistant: hello` / `Human: bye`) is *irreducibly* ambiguous
+  with a small key-value block; it carries no function word, punctuation, or
+  length, so it is **not** flagged. Real conversations are substantive and detect
+  normally; this affects only degenerate inputs.
+- **All-distinct multi-party roll-call** — detection requires at least one
+  recurring speaker, so a transcript where every participant speaks exactly once
+  is **not** flagged. Real multi-party dialogue almost always has speakers recur.
+- **`Q:`/`A:`-labeled published interviews** — these are excluded along with FAQs
+  (a FAQ and an interview are structurally identical); interviews labeled with
+  identities (`Interviewer:`/`Guest:`/names) are unaffected.
+
+These are deliberate trade-offs to keep false positives low. As always, a null or
+absent `is_chatlog` means "not detected within these rules," not "not a conversation."
+
 ---
 
 *If a limitation here conflicts with observed behavior, the behavior is the
