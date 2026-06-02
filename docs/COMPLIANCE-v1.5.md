@@ -83,8 +83,28 @@ green-checks corpus missed (builder bias again), all fixed before continuing:**
 Post-fix: 709 passed, 1 skipped; corpus re-scan `requires_vision` 12,
 `page_count` 353 populated (no over-counts), `producer` 320.
 
-**Gemini cross-model + PR bots:** _pending — to run next; CONFIRMED findings
-fixed before merge._
+**Gemini cross-model (gemini-2.5-flash, 2026-06-02 — pro run hit the CLI's
+`Invalid stream` flakiness; flash succeeded):**
+
+7. **(HIGH, confirmed) page-count window too small for a flat page tree.** The
+   `±256`-byte window around `/Type /Pages` missed `/Count` when a large `/Kids`
+   array sat between them (a 100-kid flat tree → `/Count` ~800 B away →
+   `page_count=None`). Fixed: search the **enclosing dict** (forward to `>>`,
+   capped 64 KB; short backward fallback). Guard: `test_flat_page_tree_big_kids`.
+8. **(preempted) ReDoS in the `/Info` escaped-string regex.** `(?:\\.|[^()])*`
+   let `\` match both branches → catastrophic backtracking on `\\\\…` with no
+   closing paren. Fixed to `(?:\\.|[^()\\])*` (linear; 4 000-backslash input
+   returns in <1 ms).
+- Documented/intentional (no change): the 64 MB whole-file cap (opt-in
+  specialist, file already hashed); `>64 MB` head+tail fallback (a documented
+  residual — RFC §1.2); encrypted `/Info` → null (intentional, anti-garbage);
+  `sample_text_marker_density` head-only (retained legacy metric, `text_detected`
+  is the real signal).
+
+Post-Gemini: 710 passed, 1 skipped.
+
+**PR bots (Codex/Gemini/Copilot):** _pending on the PR; CONFIRMED findings fixed
+before merge._
 
 ## 5. Backward Compatibility
 

@@ -179,6 +179,15 @@ class TestReviewFixes:
         assert m["encrypted"] is True
         assert m["producer"] is None
 
+    def test_flat_page_tree_big_kids(self, tmp_path):
+        # Gemini: a flat page tree's /Kids array pushes /Count far past /Type/Pages;
+        # the page-count search must follow the enclosing dict, not a fixed window.
+        kids = b" ".join(f"{i} 0 R".encode() for i in range(3, 103))  # ~800 bytes
+        data = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Kids[" + kids +
+                b"]/Count 100>>endobj\n/Font\nBT\ntrailer<</Root 1 0 R>>\n%%EOF")
+        p, head = _write(tmp_path, "flat.pdf", data)
+        assert _sc()._extract_pdf_metadata(p, head, 131072)["page_count"] == 100
+
     def test_jbig2_scan_is_vision(self, tmp_path):
         data = (b"%PDF-1.5\n2 0 obj<</Type/Pages/Count 1>>endobj\n"
                 b"4 0 obj<</Subtype/Image/Filter/JBIG2Decode>>stream\n\x00\nendstream endobj\n%%EOF")

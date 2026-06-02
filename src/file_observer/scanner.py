@@ -2137,8 +2137,16 @@ class Scanner:
         counts; max over the anchored set is the total."""
         counts: list[int] = []
         for m in re.finditer(rb"/Type\s*/Pages\b", full):
-            seg = full[max(0, m.start() - 256): m.start() + 256]  # the enclosing dict
-            cm = re.search(rb"/Count\s+(\d+)", seg)
+            # Search the ENCLOSING dict, not a fixed byte window: scan FORWARD from
+            # /Type/Pages to the dict close `>>` (capped) — a flat page tree's
+            # /Kids array can push /Count many hundreds of bytes after /Type, so a
+            # small fixed window missed it (review 2026-06-02). Fall back to a
+            # short backward window only when /Count precedes /Type in the dict.
+            close = full.find(b">>", m.end())
+            fwd_end = close + 2 if 0 <= close <= m.end() + 65536 else m.end() + 65536
+            cm = re.search(rb"/Count\s+(\d+)", full[m.start():fwd_end])
+            if cm is None:
+                cm = re.search(rb"/Count\s+(\d+)", full[max(0, m.start() - 512):m.start()])
             if cm:
                 counts.append(int(cm.group(1)))
         return max(counts) if counts else None
@@ -2193,7 +2201,9 @@ class Scanner:
         # literal string: /Key (text). Honor PDF backslash escapes (incl. \( \) )
         # and balanced inner content; `\\.` consumes an escaped byte, `[^()]` a
         # plain one, so an escaped `\)` no longer truncates the value.
-        match = re.search(re.escape(key) + rb"\s*\(((?:\\.|[^()])*)\)", data, re.S)
+        # `[^()\\]` excludes backslash so `\` is consumed ONLY by `\\.` — no
+        # alternation ambiguity, no catastrophic backtracking on `\\\\…` input.
+        match = re.search(re.escape(key) + rb"\s*\(((?:\\.|[^()\\])*)\)", data, re.S)
         if match:
             unescaped = re.sub(rb"\\([()\\])", rb"\1", match.group(1))
             return unescaped.decode("latin-1", errors="replace")
