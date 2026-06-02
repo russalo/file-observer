@@ -94,6 +94,14 @@ speakers. That gate has three accepted, documented blind spots:
   (a FAQ and an interview are structurally identical); interviews labeled with
   identities (`Interviewer:`/`Guest:`/names) are unaffected.
 
+It also has one accepted **false positive** class: a document whose recurring
+capitalized labels carry sentence content but are a *taxonomy*, not speakers —
+headerless release notes (`Feature:`/`Bugfix:`), meeting minutes
+(`Action:`/`Decision:`), or labels sprinkled through prose (`Aside:`/`Sidebar:`).
+These are structurally identical to dialogue (the irreducible `Key:value`↔dialogue
+ambiguity) and may be flagged `is_chatlog=true`. Version-tagged changelogs and the
+known changelog/admonition vocabularies are still rejected.
+
 These are deliberate trade-offs to keep false positives low. As always, a null or
 absent `is_chatlog` means "not detected within these rules," not "not a conversation."
 

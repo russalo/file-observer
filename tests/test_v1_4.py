@@ -88,16 +88,12 @@ class TestRejectsProseLabelFP:
              "Bugfix: corrected an off by one error in the page counter logic\n")
         assert _detect(c) is False
 
-    def test_labels_sprinkled_in_prose_density(self):
-        c = ("This is an ordinary article with several paragraphs of running prose that\n"
-             "explains a topic in some depth before getting to any labelled asides.\n"
-             "Aside: this is a fairly long parenthetical remark that recurs here.\n"
-             "More ordinary running prose continues here for a sentence or two.\n"
-             "Sidebar: another reasonably long labelled aside that also recurs.\n"
-             "Yet more ordinary prose fills the space between the labelled asides.\n"
-             "Aside: a second instance of the recurring aside label with content.\n"
-             "And the article closes with one final paragraph of ordinary prose.\n")
-        assert _detect(c) is False
+    # NOTE: recurring NON-lexicon labels sprinkled in prose (Aside:/Sidebar:) are
+    # an ACCEPTED FP residual — the same recurring-prose-taxonomy family as
+    # release-notes-without-headers and meeting-minutes (see
+    # TestDocumentedResidualFPs). A density floor was prototyped to catch them but
+    # review falsified it (it FN'd multi-line-turn dialogue at lower density than
+    # the sprinkled prose it targeted), so it was dropped.
 
 
 class TestFAQExclusion:
@@ -150,6 +146,28 @@ class TestAdmitsDialogue:
                                   "Human: which one is faster for large lists"})
         assert _scan(tmp_path, "hh.jsonl", c).is_chatlog is True
 
+    def test_multiline_turn_dialogue(self):
+        # Review regression guard: turns that wrap across multiple lines must still
+        # detect (an earlier density floor wrongly rejected these as low-density).
+        c = ("Alice: this is the opening line of a real conversational turn\n"
+             "that wraps onto a second line and even a third line of content\n"
+             "Bob: a reply that also spans more than one line because the\n"
+             "speaker had quite a lot to say in response to the question\n"
+             "Alice: and a final long turn that likewise spans several\n"
+             "lines as people often do when they write at length\n")
+        assert _detect(c) is True
+
+    def test_dated_journal_dialogue(self):
+        # Review regression guard: a dated journal of dialogue is a legitimate
+        # chatlog — ISO-dated headers must NOT vote against it (only version tags do).
+        c = ("## 2024-01-01 morning session\n"
+             "Alice: how is the project going so far this week\n"
+             "Bob: it is going really well thanks for asking\n"
+             "## 2024-01-02 evening session\n"
+             "Alice: any blockers i should know about today\n"
+             "Bob: nothing major just some test flakiness\n")
+        assert _detect(c) is True
+
 
 class TestDocumentedFalseNegatives:
     """Accepted FNs — asserted so a boundary move is deliberate, not accidental."""
@@ -194,3 +212,57 @@ class TestContentShapeSurfaced:
         chat = _scan(tmp_path, "chat.jsonl", c).specialist_metadata["chatlog"]
         # prose-label measures don't apply to JSON — the JSON path decides.
         assert chat["content_shape"] is None
+
+
+class TestDocumentedResidualFPs:
+    """Recurring non-lexicon prose taxonomies — structurally identical to dialogue.
+    Accepted FP residual (the irreducible Key:value↔dialogue ambiguity). Pinned so
+    a future boundary move is deliberate."""
+
+    def test_release_notes_no_header(self):
+        c = ("Feature: added a brand new export pipeline for all the backends\n"
+             "Bugfix: fixed a crash when the cache was cold on the first request\n"
+             "Feature: introduced a faster incremental scan for very large trees\n"
+             "Enhancement: improved the throughput of the parser by a good margin\n")
+        assert _detect(c) is True  # known residual FP
+
+    def test_labels_sprinkled_in_prose(self):
+        c = ("ordinary running prose paragraph one with several words here\n"
+             "Aside: a fairly long parenthetical remark that recurs in the piece\n"
+             "ordinary running prose paragraph two with several words here\n"
+             "Sidebar: another reasonably long labelled aside that also recurs\n"
+             "ordinary running prose paragraph three with several words here\n"
+             "Aside: a second instance of the recurring aside label with content\n")
+        assert _detect(c) is True  # known residual FP (density gate dropped, see scanner)
+
+
+class TestReviewRegressionGuards:
+    """Guards for the in-house multi-agent review findings (2026-06-02)."""
+
+    def test_empty_label_does_not_swallow_next_line(self):
+        # F1: the label regex must use horizontal whitespace [ \t]+, not \s+, so an
+        # empty-content label ("A: \n") does NOT consume the next label line.
+        ns = Scanner(Path("."), ScannerConfig())
+        pairs = ns._label_content_pairs("A: \nB: \nA: \nB: ", drop_nonspeaker=True)
+        assert pairs == [("A", ""), ("B", ""), ("A", ""), ("B", "")]
+
+    def test_version_regex_ignores_bare_numbered_headings(self):
+        # F3: bare 2-part numbered section headings (## 2.1) are NOT version tags
+        # and must not trigger the structure vote-against.
+        import file_observer.scanner as s
+        assert s.CHATLOG_VERSION_HEADER_RE.findall("## 2.1\n## 2.2\n") == []
+        assert len(s.CHATLOG_VERSION_HEADER_RE.findall("## [1.2.0]\n## v2.0\n## 1.2.3\n")) == 3
+
+
+class TestStaticTuningGuard:
+    def test_static_tuning_matches_constants(self):
+        # F10: the hand-maintained CHATLOG_STATIC_TUNING literals feed the vector
+        # static_tuning_hash; they MUST equal the live constants the gate reads, or
+        # a logic change could ship without changing the vector identity.
+        import file_observer.scanner as s
+        t = s.CHATLOG_STATIC_TUNING
+        assert t["utterance_min_ratio"] == s.CHATLOG_UTTERANCE_MIN_RATIO
+        assert t["utterance_min_words"] == s.CHATLOG_UTTERANCE_MIN_WORDS
+        assert t["utterance_min_chars"] == s.CHATLOG_UTTERANCE_MIN_CHARS
+        assert t["fp_lexicon_dominance"] == s.CHATLOG_FP_LEXICON_DOMINANCE
+        assert t["structure_header_threshold"] == s.CHATLOG_STRUCTURE_HEADER_MIN

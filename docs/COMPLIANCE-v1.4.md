@@ -19,8 +19,9 @@
   SCHEMA 1.2→**1.3** (additive `content_shape`); chatlog method_version 8→**9**.
 - **Overall:** COMPLETE. Built falsify-first; all §10 corpus cases pass (27/27
   reference + parity), full suite green (684 passed, 1 skipped).
-- **The headline honest finding (§3):** on **3,032 real doc+chat files the change
-  is a 0-diff wash vs v1.2.4** — it changes behavior only on adversarial inputs.
+- **The headline honest finding (§3):** on **3,032 real doc+chat files** the change
+  fixes 1 real doc FP and adds 0 new FPs vs v1.2.4 — it changes behavior mostly on
+  adversarial inputs (the real-world benefit is small; the value is robustness).
 
 ## 2. Requirements (§2–§7)
 
@@ -31,8 +32,8 @@
 | Utterance predicate: function-word / punctuation / ≥4 words / ≥25 chars | `_is_utterance` + `CHATLOG_FUNCTION_WORDS` | PASS |
 | `utterance_ratio ≥ 0.6` gate (rejects cyclic data tables) | `_prose_dialogue` | PASS |
 | FP-lexicon dominance (`Added:` changelogs) | `CHATLOG_FP_LABEL_LEXICON`, ≥half distinct | PASS |
-| Density floor ≥ 0.5 (sprinkled labels) | `_prose_dialogue` | PASS |
-| Version/date structure vote-against (release notes) | `CHATLOG_VERSION_HEADER_RE`/`CHATLOG_DATE_HEADER_RE` | PASS |
+| Version-tag structure vote-against (release notes) | `CHATLOG_VERSION_HEADER_RE` (tags only; dated-journal headers excluded) | PASS |
+| Density floor | PROTOTYPED, DROPPED in review (FN'd multi-line dialogue) — `density` surfaced, not gated | N/A |
 | FAQ complete-set exclusion (`{question,answer,q,a,faq}`; `A:`/`B:` survives) | `CHATLOG_FAQ_LABELS` subset test | PASS |
 | Rules 2/3 markdown co-signal unchanged (stop-list-filtered distinct ≥2) | restored after regression (§3) | PASS |
 | JSON path parity (`_string_has_speaker_dialogue` → `_prose_dialogue`) | classmethod delegation | PASS |
@@ -78,9 +79,38 @@ the design and overturned the approved RFC premise:
 
 ## 5. Review findings & resolution
 
-Three review legs (in-house multi-agent `/code-review`, Gemini cross-model, PR
-bots). _To be completed after the review passes run on the PR; all CONFIRMED
-findings fixed before merge._
+**In-house multi-agent `/code-review` (7 finder angles, 2026-06-02) — three real
+defects found and fixed; my same-line/same-density adversarial corpus had missed
+all three (textbook builder bias, caught by the decorrelated review):**
+
+1. **Label regex `\s+` crossed newlines (correctness bug).** `^...:\s+(.*)$` —
+   `\s` matches `\n`, so an empty-content label (`A: \n`) consumed the *next*
+   label line as its content and dropped that label. `A: \nB: \nA: \nB:`
+   collapsed to 1 distinct label. **Fixed:** `[ \t]+` (horizontal whitespace).
+   Guard: `test_v1_4.TestReviewRegressionGuards.test_empty_label_does_not_swallow_next_line`.
+2. **Density floor false-negatived multi-line-turn dialogue.** A turn wrapping
+   over 3+ lines drops density to ~0.33 → rejected; and the sprinkled-prose case
+   density targeted sits at *higher* density (~0.43) than the dialogue it broke,
+   so no threshold separates them. **Fixed:** density gate dropped; `density`
+   still surfaced as an observation; recurring-label-in-prose joins the accepted
+   recurring-taxonomy FP residual. Guard: `test_multiline_turn_dialogue`.
+3. **Structure vote-against rejected dated-journal dialogue + matched bare
+   numbered headings.** `## 2024-01-01 session` (a legit journal) and `## 2.1`
+   wrongly voted against. **Fixed:** version-*tag* headers only (bracketed / `v` /
+   3-part semver); dated changelogs still caught via FP-lexicon. Guards:
+   `test_dated_journal_dialogue`, `test_version_regex_ignores_bare_numbered_headings`.
+
+Also addressed: a static-tuning/constant drift guard (`test_static_tuning_matches_constants`,
+finding F10). Lower-severity findings logged: function-word-arm could FP a
+metadata table whose values contain articles (theoretical — 0 occurrences in the
+3,032-file real-data diff); detection/extraction use two label regexes (divergence
+only for the rare label-on-own-line format).
+
+Post-fix real-data diff: **fixes 1 real doc FP, 0 new FPs** (3,032 files). Suite:
+690 passed, 1 skipped.
+
+**Gemini cross-model + PR bots:** _pending — to run on the PR; CONFIRMED findings
+fixed before merge._
 
 ## 6. Backward Compatibility
 

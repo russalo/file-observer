@@ -130,15 +130,22 @@ CHATLOG_H3_HEADER_RE = re.compile(r"^### ", re.MULTILINE)
 # v1.4.0: content-shape detection. Captures label + post-colon CONTENT (the
 # label regex above captures only the label). A speaker turn is an *utterance*
 # (a phrase); a data/header/config label's value is *atomic*. utterance_ratio
-# over these lines is the primary non-count signal (RFC v1.4.0 §2) — it replaces
-# the count-based prose Rule 1 and the ~30 atomic-header stop-list tokens.
-CHATLOG_LABEL_CONTENT_RE = re.compile(r"^([A-Z][a-zA-Z0-9_]{0,15}):\s+(.*)$", re.MULTILINE)
-# §3.2 structure vote-against: a dense run of version / ISO-dated section headers
-# is the signature of a changelog / release-notes / dated journal, NOT a
-# transcript. 2+ such headers vote against chatlog.
+# over these lines is the v1.4 content-shape gate (RFC §2) layered over the
+# count rule. NOTE: the inter-token class is `[ \t]+` (HORIZONTAL whitespace),
+# NOT `\s+` — `\s` matches newlines, so `\s+` would let an empty-content label
+# (`Foo: \n`) swallow the *next* line as its content and drop that line's own
+# label (review finding 2026-06-02). Empty content stays paired to its label.
+CHATLOG_LABEL_CONTENT_RE = re.compile(r"^([A-Z][a-zA-Z0-9_]{0,15}):[ \t]+(.*)$", re.MULTILINE)
+# §3.2 structure vote-against: a dense run of VERSION-TAGGED section headers is
+# the signature of a changelog / release-notes, NOT a transcript. 2+ vote against.
+# Tightened (review 2026-06-02): match only version-TAG shapes — bracketed
+# (`## [1.2.0] - 2026-03-01`), `v`-prefixed (`## v1.2.0`), or 3-part semver
+# (`## 1.2.3`). Bare 2-part numbered headings (`## 2.1`) and ISO-dated journal
+# headers (`## 2024-01-01 session`) are NOT versions and must NOT vote against —
+# a dated journal of dialogue is a legitimate chatlog (the dated-CHANGELOG case
+# is already caught by the FP-lexicon dominance rule via its `Added:`/`Fixed:`).
 CHATLOG_VERSION_HEADER_RE = re.compile(
-    r"^#{1,6}\s*\[?v?\d+\.\d+(?:\.\d+)?\]?(?:\s*[-–]\s*\d{4}-\d{2}-\d{2})?\s*$", re.MULTILINE)
-CHATLOG_DATE_HEADER_RE = re.compile(r"^#{1,6}\s.*\d{4}-\d{2}-\d{2}", re.MULTILINE)
+    r"^#{1,6}[ \t]*(?:\[v?\d+\.\d+[^\]]*\]|v\d+\.\d+|\d+\.\d+\.\d+)", re.MULTILINE)
 # v0.8 chatlog extraction — used by _extract_chatlog_metadata. The detection
 # regexes above test for the presence of patterns; these capture them.
 # Single-character pure-divider line: same character class repeated 3+ times.
@@ -602,13 +609,14 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 9  # v1.4.0: content-shape composite (utterance_ratio + density + structure-vote + closed FP lexicon + FAQ complete-set) replaces count-based prose Rule 1
+CHATLOG_METHOD_VERSION = 9  # v1.4.0: content-shape gate over the count rule — utterance_ratio (function-word/punct/length arms) + FP-lexicon dominance + version-tag structure-vote + FAQ complete-set; density surfaced but not gated
 CHATLOG_RULES_DEFINITION = (
-    "detect:prose_composite(floor[distinct>=2,total>=3,recurring>=1],"
-    "faq_complete_set{question,answer,q,a,faq}->reject,utterance_ratio>=0.6,"
-    "fp_lexicon_dominated(>=half distinct)->reject,density>=0.5,"
-    "version|date_header(>=2)->reject),"
-    "h3_header_re(5+)|section_divider_re(3+)[require utterance_cosignal_distinct>=2],"
+    "detect:prose_composite(stop_list_filtered,floor[distinct>=2,total>=3,recurring>=1],"
+    "faq_complete_set{question,answer,q,a,faq}->reject,"
+    "utterance_ratio>=0.6[utterance=function_word|sentence_punct|words>=4|chars>=25],"
+    "fp_lexicon_dominated(>=half distinct)->reject,"
+    "version_tag_header(>=2)->reject),"
+    "h3_header_re(5+)|section_divider_re(3+)[require nonstoplist_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
     "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2);"
     "extract:turn_count,speaker_labels(freq>=3,nonspeaker_lexicon_ci),section_markers,"
@@ -618,13 +626,16 @@ CHATLOG_RULES_DEFINITION = (
     "fp_lexicon_ci:added,answer,caution,changed,deprecated,error,example,examples,faq,"
     "fixme,fixed,important,note,q,question,removed,result,security,tip,todo,warning"
 )
+# NOTE: these literals MUST equal the live CHATLOG_* threshold constants defined
+# below (they feed static_tuning_hash, the constants gate detection). A guard
+# test (test_v1_4) asserts equality so an edit to one without the other — which
+# would let the vector identity miss a real logic change — fails CI.
 CHATLOG_STATIC_TUNING = {
     "detection_threshold": 3,
     "h3_detection_threshold": 5,
     "utterance_min_ratio": 0.6,
     "utterance_min_words": 4,
     "utterance_min_chars": 25,
-    "density_min": 0.5,
     "fp_lexicon_dominance": 0.5,
     "structure_header_threshold": 2,
     "top_capitalized_tokens_n": 20,
@@ -685,9 +696,11 @@ CHATLOG_JSON_ROLE_VALUE_RE = re.compile(
 CHATLOG_UTTERANCE_MIN_WORDS = 4
 CHATLOG_UTTERANCE_MIN_CHARS = 25
 CHATLOG_UTTERANCE_MIN_RATIO = 0.6
-CHATLOG_DENSITY_MIN = 0.5
 CHATLOG_FP_LEXICON_DOMINANCE = 0.5  # reject when >= this fraction of distinct labels are FP-lexicon
-CHATLOG_STRUCTURE_HEADER_MIN = 2    # 2+ version/date headers vote against (§3.2)
+CHATLOG_STRUCTURE_HEADER_MIN = 2    # 2+ version-tag headers vote against (§3.2)
+# density is computed and surfaced (content_shape) but is NOT a detection gate —
+# a density floor was prototyped and falsified in review (it FN'd multi-line-turn
+# dialogue; see _prose_dialogue). No CHATLOG_DENSITY_MIN constant exists.
 
 # v1.4.0: function words — the signal that separates terse dialogue ("hi *there*
 # friend", "*how are you*") from atomic data values ("John Smith", "1.00",
@@ -2708,15 +2721,17 @@ class Scanner:
         lex_hits = sum(1 for d in distinct if d.casefold() in CHATLOG_FP_LABEL_LEXICON)
         if lex_hits >= len(distinct) * CHATLOG_FP_LEXICON_DOMINANCE:
             return False
-        # §3.1 density floor — rejects labels sprinkled in prose (admonitions)
-        nonblank = sum(1 for ln in text.splitlines() if ln.strip())
-        den = len(pairs) / nonblank if nonblank else 0.0
-        if den < CHATLOG_DENSITY_MIN:
+        # §3.2 structure vote-against — changelog / release-notes (version-tagged
+        # headers only; dated-journal headers deliberately do NOT vote against)
+        if len(CHATLOG_VERSION_HEADER_RE.findall(text)) >= CHATLOG_STRUCTURE_HEADER_MIN:
             return False
-        # §3.2 structure vote-against — changelog / release-notes / dated journal
-        if (len(CHATLOG_VERSION_HEADER_RE.findall(text)) >= CHATLOG_STRUCTURE_HEADER_MIN
-                or len(CHATLOG_DATE_HEADER_RE.findall(text)) >= CHATLOG_STRUCTURE_HEADER_MIN):
-            return False
+        # NOTE: no density gate. A density floor was prototyped (reject labels
+        # sprinkled in prose) but review falsified it — it false-NEGATIVES common
+        # multi-line-turn dialogue (3+ lines/turn → density < 0.5) while the
+        # sprinkled-prose case it targeted sits at HIGHER density (~0.43) than the
+        # dialogue it breaks, so no threshold separates them. `density` is still
+        # surfaced as an observation (content_shape), but recurring-label-in-prose
+        # joins the accepted recurring-taxonomy FP residual (see LIMITATIONS).
         return True
 
     def _detect_chatlog_pattern(self, text: str) -> bool:
