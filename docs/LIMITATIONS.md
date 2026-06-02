@@ -42,8 +42,11 @@ When a specialist cannot extract a field within bounds, the field is null and
 
 ## Optional dependencies degrade gracefully, not silently
 
-Core operation needs only `python-magic` and `chardet`. Optional packages widen
-coverage:
+The declared dependencies are `python-magic` and `chardet`. `python-magic` binds the
+**libmagic** system library — and *libmagic itself is optional as of v1.3*: when it's
+absent (Windows, minimal containers), the built-in pure-Python content sniff covers a
+range of common binary formats before falling back to extension inference. Optional
+*extras* widen coverage further:
 
 - **PyYAML** — frontmatter parsing
 - **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`)
@@ -65,10 +68,12 @@ that every machine produces byte-identical results regardless of environment.
 
 ## MIME detection is a signal, not a correction
 
-MIME type is detected from content (libmagic) with an extension-based fallback.
-When content and extension disagree, File Observer **reports the mismatch** as a
-signal (`mime_analysis.matches_extension`) — it does not rename, re-route, or
-"fix" the file.
+MIME type is detected by a cascade (v1.3): content via libmagic → a built-in
+pure-Python magic-signature sniff (when libmagic is absent) → extension-based
+inference. The `signal_provenance.trigger` records which tier produced it
+(`libmagic` / `magic_signature_fallback` / `extension_fallback`). When content
+and extension disagree, File Observer **reports the mismatch** as a signal
+(`mime_analysis.matches_extension`) — it does not rename, re-route, or "fix" the file.
 
 ---
 

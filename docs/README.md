@@ -28,8 +28,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.0",
-  "context": { "scanner_version": "1.0.2", "logic_version": "1.0.0", "...": "…" },
+  "schema_version": "1.2",
+  "context": { "scanner_version": "1.3.0", "logic_version": "1.2.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -46,7 +46,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
     }
   ],
   "vectors_collected": [
-    { "vector_id": "chatlog", "method_version": 3, "identity_digest": "a3f1c2…", "...": "…" }
+    { "vector_id": "chatlog", "method_version": 8, "identity_digest": "a3f1c2…", "...": "…" }
   ],
   "manifest_checksum": "7d2bafef…",
   "manifest_signature": { "algorithm": "hmac-sha256", "key_id": "default", "value": "…" }
@@ -59,11 +59,11 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.2.1` |
+| **Version** | `1.3.0` |
 | **Schema** | `1.2` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 606 passed; ran clean (zero fatal errors) across 12 corpora / 28,756 files |
+| **Tests** | 661 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
 
 ---
 
@@ -127,11 +127,11 @@ pip install "file-observer[security]"  # Hardened XML parsing
 pip install "file-observer[dev]"       # Full dev environment
 ```
 
-System requirement: `libmagic` for content-based MIME detection.
+**Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for common binary formats (archives, images, data, media), then extension-based inference. Install it for the widest coverage:
 ```bash
 sudo apt install libmagic1    # Debian/Ubuntu
 brew install libmagic         # macOS
-pip install python-magic-bin  # Windows
+pip install python-magic-bin  # Windows (or rely on the pure-Python fallback)
 ```
 
 ### Scan
@@ -245,7 +245,7 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 |---|---|---|
 | Apache Tika | 4,366 | 152 document specialists, 69 PDFs, 57 spreadsheets, 13 emails |
 | OBS Studio | 5,201 | Large C/C++ project, 91 filename patterns |
-| AutoGPT | 3,945 | AI platform, 208 chatlog detections, 1,612 @mentions |
+| AutoGPT | 3,945 | AI platform, 1,612 @mentions; chatlog FP-hardening validation (raw detections cut sharply by v1.2.x) |
 | FastAPI | 3,002 | Documentation-heavy Python, chatlog tuning validation |
 | OpenPreserve | 753 | Adversarial format samples, 285 PDFs |
 | Claude Code logs | 125 | Real AI conversation transcripts, JSONL chatlog detection |
@@ -257,10 +257,10 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 
 | Document | What it covers |
 |---|---|
-| [HISTORY.md](HISTORY.md) | Every version from v0.1 to v1.0, with specs and compliance reports |
+| [HISTORY.md](HISTORY.md) | Every version from v0.1 to the current release, with specs and compliance reports |
 | [PUBLIC_CONTRACT.md](PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [CONVENTIONS.md](CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.0.0 RFC Specification](v1.0.0_RFC_Specification.md) | Current release spec — schema freeze, binding contract |
+| [v1.3.0 RFC Specification](v1.3.0_RFC_Specification.md) | Current release spec — pure-Python MIME fallback. v1.0.0 RFC remains the binding schema-freeze contract. |
 
 ---
 

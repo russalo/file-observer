@@ -80,7 +80,7 @@ Every entry in `files` has these stable fields:
 | `email` | Stable since 0.5 | `.msg`, `.eml` |
 | `spreadsheet` | Stable since 0.5 | `.xlsx`, `.xls` |
 | `document` | Stable since 0.5 | `.docx`, `.doc`, `.rtf`. Dublin Core alignment (since 0.9): `document.title` corresponds to `dc:title`, `document.author` corresponds to `dc:creator`. |
-| `chatlog` | Stable since 0.8 | Content-detected in `.txt`, `.md`, `.mdx` — not extension-driven |
+| `chatlog` | Stable since 0.8 | Content-detected in `.txt`, `.md`, `.mdx`, `.jsonl`, `.json` — not extension-driven |
 
 **Rules:**
 - Namespace keys will not be removed or renamed in MINOR releases
@@ -100,7 +100,7 @@ The `specialist_tool` field uses semantic names that describe **what kind of dow
 | `email_envelope` | `.msg`, `.eml` |
 | `spreadsheet_structure` | `.xlsx`, `.xls` |
 | `document_extraction` | `.docx`, `.doc`, `.rtf` |
-| `chatlog_signals` | Content-detected in `.txt`, `.md`, `.mdx` (not extension-driven) |
+| `chatlog_signals` | Content-detected in `.txt`, `.md`, `.mdx`, `.jsonl`, `.json` (not extension-driven) |
 
 **Stability:** Tool names will not change without a MAJOR schema bump. New tool names may be added for new file types in MINOR releases.
 

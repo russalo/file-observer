@@ -8,7 +8,7 @@ File Observer is an **observation-only** tool. It reads files and emits metadata
 - Opens network connections
 - Runs embedded scripts, macros, or code found in scanned files
 
-File Observer does not execute file content. Its attack surface is limited to parsing. A malformed file can cause a specialist to raise an exception or return incorrect metadata. Because the scanner relies on native dependencies (e.g., libmagic), parsing of untrusted input carries residual risk from dependency vulnerabilities. Keep dependencies updated and consider sandboxing when scanning untrusted files.
+File Observer does not execute file content. Its attack surface is limited to parsing. A malformed file can cause a specialist to raise an exception or return incorrect metadata. When optional native dependencies are present (e.g., libmagic; optional as of v1.3, with a pure-Python fallback), parsing of untrusted input carries residual risk from those dependencies' vulnerabilities. Keep dependencies updated and consider sandboxing when scanning untrusted files.
 
 ## Reporting Vulnerabilities
 
@@ -51,6 +51,6 @@ These are **observations, not assessments**. The scanner reports what it sees. C
 
 | Version | Supported |
 |---|---|
-| 1.0.x | Yes |
-| 0.11.x | Security fixes only |
-| < 0.11 | No |
+| 1.3.x | Yes (current) |
+| 1.0–1.2.x | Security fixes only |
+| < 1.0 | No |
