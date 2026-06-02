@@ -1,5 +1,10 @@
 # File Observer
 
+[![PyPI](https://img.shields.io/pypi/v/file-observer)](https://pypi.org/project/file-observer/)
+![Python](https://img.shields.io/pypi/pyversions/file-observer)
+[![tests](https://github.com/russalo/file-observer/actions/workflows/tests.yml/badge.svg)](https://github.com/russalo/file-observer/actions/workflows/tests.yml)
+[![License: AGPL-3.0 + commercial](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20commercial-blue)](../LICENSE)
+
 **Know what's in your files before you open them.**
 
 *A one-shot, read-only observation pass — not a file watcher. Point it at a directory, get one deterministic JSON manifest of what's inside, before you ingest it.*
