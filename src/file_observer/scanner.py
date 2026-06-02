@@ -71,8 +71,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.2.3"
-LOGIC_VERSION = "1.1.3"
+SCANNER_VERSION = "1.2.4"
+LOGIC_VERSION = "1.1.4"
 SCHEMA_VERSION = "1.2"
 
 
@@ -546,21 +546,21 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 7  # v1.2.3: + Question/Answer stop-list (FAQ FP stopgap)
+CHATLOG_METHOD_VERSION = 8  # v1.2.4: case-insensitive stop-list; embedded-dialogue parity with prose Rule 1
 CHATLOG_RULES_DEFINITION = (
-    "detect:speaker_label_re(distinct>=2,total>=3,recurring>=1,stop_list),"
+    "detect:speaker_label_re(distinct>=2,total>=3,recurring>=1,stop_list_ci),"
     "h3_header_re(5+)|section_divider_re(3+)[require speaker_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
-    "line/array/tree,embedded_speaker_labels,require msgs>=3 AND distinct_speakers>=2);"
-    "extract:turn_count,speaker_labels(freq>=3,stop_list),section_markers,"
+    "line/array/tree,embedded_speaker_labels(distinct>=2,total>=3,recurring>=1),require msgs>=3 AND distinct_speakers>=2);"
+    "extract:turn_count,speaker_labels(freq>=3,stop_list_ci),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
     "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
-    "stop_list:ANSWER,Allow,Answer,Arguments,Authorization,Bcc,CAUTION,Cc,Command,Commands,"
-    "Copyright,Date,Description,Disallow,Distribution,Documentation,Error,Example,"
-    "Examples,FIXME,Format,From,IMPORTANT,License,Lines,Message,NOTE,Newsgroups,"
-    "Note,Options,Organization,Parameters,Password,Path,QUESTION,Question,References,Result,Returns,"
-    "Sender,Subject,Summary,Synopsis,TIP,TODO,To,Usage,Version,Warning"
+    "stop_list_ci:allow,answer,arguments,authorization,bcc,caution,cc,command,commands,"
+    "copyright,date,description,disallow,distribution,documentation,error,example,examples,"
+    "fixme,format,from,important,license,lines,message,newsgroups,note,options,organization,"
+    "parameters,password,path,question,references,result,returns,sender,subject,summary,"
+    "synopsis,tip,to,todo,usage,version,warning"
 )
 CHATLOG_STATIC_TUNING = {
     "detection_threshold": 3,
@@ -628,10 +628,16 @@ CHATLOG_SPEAKER_STOP_LIST: set[str] = {
     # (stopgap for the most common recurring-Key:value FP; the real fix is a
     # non-count signal — see scratch/review/v1_2_2_fp_findings.md). Deliberately
     # NOT adding single letters `Q`/`A`: `A:`/`B:` is legitimate anonymized dialogue.
-    # Membership is case-sensitive and the label regex matches all-caps, so the
-    # common ALL-CAPS FAQ style needs its own entries (PR #30 review).
-    "Question", "Answer", "QUESTION", "ANSWER",
+    "Question", "Answer",
 }
+# v1.2.4: match case-INSENSITIVELY. The label regex matches all-caps, so the
+# case-sensitive set left holes (ALL-CAPS `FROM:`/`SUBJECT:` header dumps still
+# false-positived; only FAQ got dual-cased in v1.2.3). Folding once here closes
+# every all-caps hole AND removes the dual-listing maintenance burden — `User`
+# stays a legitimate speaker because it isn't in the set in any case.
+CHATLOG_SPEAKER_STOP_LIST_CF: frozenset[str] = frozenset(
+    w.casefold() for w in CHATLOG_SPEAKER_STOP_LIST
+)
 
 # v0.9: Reference tokens vector identity constants.
 REFERENCE_TOKENS_VECTOR_ID = "reference_tokens"
@@ -2551,7 +2557,7 @@ class Scanner:
         # sweep showed separates transcripts (recurring) from header blocks (one-shot).
         speaker_matches = [
             m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
-            if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
+            if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF
         ]
         speaker_counts = Counter(speaker_matches)
         if (len(speaker_counts) >= 2 and sum(speaker_counts.values()) >= 3
@@ -2578,14 +2584,17 @@ class Scanner:
     @staticmethod
     def _string_has_speaker_dialogue(s: Any) -> bool:
         """Dialogue embedded in a JSON string value (e.g. hh-rlhf's
-        '\\n\\nHuman: ...\\n\\nAssistant: ...'): 3+ prose speaker labels."""
+        '\\n\\nHuman: ...\\n\\nAssistant: ...'). v1.2.4: applies the SAME predicate
+        as prose Rule 1 — >=2 distinct speakers, >=3 total, >=1 recurring — so the
+        same text isn't detected inside a JSON string yet rejected as prose."""
         if not isinstance(s, str) or len(s) < 20:
             return False
-        labels = [
+        labels = Counter(
             m.group(1) for m in CHATLOG_SPEAKER_LABEL_RE.finditer(s)
-            if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
-        ]
-        return len(labels) >= 3
+            if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF
+        )
+        return (len(labels) >= 2 and sum(labels.values()) >= 3
+                and any(c >= 2 for c in labels.values()))
 
     def _detect_conversational_json(self, text: str) -> bool:
         """Generalized conversational JSON/JSONL detection (v1.2; tightened v1.2.1).
@@ -2694,7 +2703,7 @@ class Scanner:
         (e.g. hh-rlhf's '\\n\\nHuman: ...\\n\\nAssistant: ...')."""
         pairs: list[tuple[str, str]] = []
         matches = [m for m in CHATLOG_SPEAKER_LABEL_RE.finditer(s)
-                   if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST]
+                   if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF]
         for i, m in enumerate(matches):
             end = matches[i + 1].start() if i + 1 < len(matches) else len(s)
             pairs.append((m.group(1), s[m.end():end].strip()))
@@ -2818,7 +2827,7 @@ class Scanner:
             # v0.9.1: filter stop-list tokens from both detection and turn metrics
             raw_label_matches = [
                 m for m in CHATLOG_SPEAKER_LABEL_RE.finditer(text)
-                if m.group(1) not in CHATLOG_SPEAKER_STOP_LIST
+                if m.group(1).casefold() not in CHATLOG_SPEAKER_STOP_LIST_CF
             ]
             turn_count = len(raw_label_matches)
             label_counts = Counter(m.group(1) for m in raw_label_matches)
