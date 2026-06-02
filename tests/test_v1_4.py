@@ -38,11 +38,11 @@ def _turns(seq):
 
 
 class TestVersionSurfaces:
-    def test_versions(self):
-        assert SCANNER_VERSION == "1.4.0"
-        assert LOGIC_VERSION == "1.3.0"
-        assert SCHEMA_VERSION == "1.3"
+    def test_chatlog_method_version(self):
+        # v1.4's stable invariant — the content-shape gate is method_version 9.
+        # (Global SCANNER/LOGIC/SCHEMA move each release; pinned in test_packaging.)
         assert CHATLOG_METHOD_VERSION == 9
+        assert SCHEMA_VERSION >= "1.3"  # content_shape present from 1.3 on
 
 
 class TestRejectsAtomicValueFP:

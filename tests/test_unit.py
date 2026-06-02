@@ -448,33 +448,47 @@ class TestDetectUnicodeBom:
 # ---------------------------------------------------------------------------
 
 class TestDetectRequiresVision:
+    # v1.5: detect_requires_vision now takes `path` (reads head + bounded tail).
+    # A nonexistent path makes _pdf_scan_region fall back to the head sample, so
+    # these head-content tests still exercise the decision logic on the sample.
+    NOPATH = Path("/nonexistent-test.pdf")
+
     def test_image_mime(self, scanner: Scanner) -> None:
-        result, prov = scanner.detect_requires_vision(b"", "image/png", ".png", True)
+        result, prov = scanner.detect_requires_vision(self.NOPATH, b"", "image/png", ".png", True)
         assert result is True
         assert prov.trigger == "image_mime"
-        result2, _ = scanner.detect_requires_vision(b"", "image/jpeg", ".jpg", True)
+        result2, _ = scanner.detect_requires_vision(self.NOPATH, b"", "image/jpeg", ".jpg", True)
         assert result2 is True
 
     def test_pdf_with_text_markers(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 /Font /Text BT\n"
-        result, prov = scanner.detect_requires_vision(sample, "application/pdf", ".pdf", True)
+        result, prov = scanner.detect_requires_vision(self.NOPATH, sample, "application/pdf", ".pdf", True)
         assert result is False
-        assert prov.trigger == "pdf_has_text_markers"
+        assert prov.trigger == "pdf_text_detected"  # v1.5 renamed
 
     def test_pdf_with_crlf_text_markers(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 BT\r\n some text ET\r\n"
-        result, prov = scanner.detect_requires_vision(sample, "application/pdf", ".pdf", True)
+        result, prov = scanner.detect_requires_vision(self.NOPATH, sample, "application/pdf", ".pdf", True)
         assert result is False
-        assert prov.trigger == "pdf_has_text_markers"
+        assert prov.trigger == "pdf_text_detected"
 
-    def test_pdf_without_text_markers(self, scanner: Scanner) -> None:
-        sample = b"%PDF-1.4 just image data"
-        result, prov = scanner.detect_requires_vision(sample, "application/pdf", ".pdf", True)
+    def test_pdf_image_only(self, scanner: Scanner) -> None:
+        # v1.5: image-only (no /Font/BT but has image markers) → vision.
+        sample = b"%PDF-1.4 /XObject /Image /DCTDecode <binary>"
+        result, prov = scanner.detect_requires_vision(self.NOPATH, sample, "application/pdf", ".pdf", True)
         assert result is True
-        assert prov.trigger == "pdf_no_text_markers"
+        assert prov.trigger == "pdf_image_only"
+
+    def test_pdf_no_markers_conservative(self, scanner: Scanner) -> None:
+        # v1.5: no text AND no image markers (e.g. object-stream PDF) → NOT vision
+        # (err away from a false 'needs OCR' on a likely-compressed-text PDF).
+        sample = b"%PDF-1.4 just opaque data"
+        result, prov = scanner.detect_requires_vision(self.NOPATH, sample, "application/pdf", ".pdf", True)
+        assert result is False
+        assert prov.trigger == "pdf_no_markers"
 
     def test_text_file_no_vision(self, scanner: Scanner) -> None:
-        result, prov = scanner.detect_requires_vision(b"hello", "text/plain", ".txt", False)
+        result, prov = scanner.detect_requires_vision(self.NOPATH, b"hello", "text/plain", ".txt", False)
         assert result is False
         assert prov.trigger == "not_applicable"
 
@@ -811,8 +825,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "1.4.0"
-        assert ctx.logic_version == "1.3.0"
+        assert ctx.scanner_version == "1.5.0"
+        assert ctx.logic_version == "1.4.0"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -850,7 +864,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "1.4.0"
+        assert data["context"]["scanner_version"] == "1.5.0"
 
 
 # ---------------------------------------------------------------------------
@@ -957,34 +971,39 @@ class TestManifestChecksumV03:
 # ---------------------------------------------------------------------------
 
 class TestPdfDeepenedMetadata:
+    # v1.5: _extract_pdf_metadata now takes (path, sample, budget). A nonexistent
+    # path makes _pdf_scan_region fall back to the head sample, so these
+    # regex-on-sample tests keep testing the same extraction logic.
+    NOPATH = Path("/nonexistent-test.pdf")
+
     def test_pdf_version_extracted(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.7 /Font"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         assert meta["pdf_version"] == "1.7"
 
     def test_pdf_version_2_0(self, scanner: Scanner) -> None:
         sample = b"%PDF-2.0 content"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         assert meta["pdf_version"] == "2.0"
 
     def test_pdf_version_missing(self, scanner: Scanner) -> None:
         sample = b"not a pdf header"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         assert meta["pdf_version"] is None
 
     def test_encrypted_detected(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 /Encrypt << /Filter /Standard >>"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         assert meta["encrypted"] is True
 
     def test_not_encrypted(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 /Font /Text"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         assert meta["encrypted"] is False
 
     def test_text_marker_density_computed(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 BT some text ET BT more ET"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         density = meta["sample_text_marker_density"]
         assert density is not None
         assert density > 0
@@ -994,16 +1013,16 @@ class TestPdfDeepenedMetadata:
 
     def test_text_marker_density_zero(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 just image data no markers"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         assert meta["sample_text_marker_density"] == 0.0
 
     def test_text_marker_density_empty(self, scanner: Scanner) -> None:
-        meta = scanner._extract_pdf_metadata(b"")
+        meta = scanner._extract_pdf_metadata(self.NOPATH, b"", 131072)
         assert meta["sample_text_marker_density"] is None
 
     def test_all_v03_fields_present(self, scanner: Scanner) -> None:
         sample = b"%PDF-1.4 /Font"
-        meta = scanner._extract_pdf_metadata(sample)
+        meta = scanner._extract_pdf_metadata(self.NOPATH, sample, 131072)
         assert "encrypted" in meta
         assert "pdf_version" in meta
         assert "sample_text_marker_density" in meta
@@ -2055,8 +2074,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "1.4.0"
-        assert LOGIC_VERSION == "1.3.0"
+        assert SCANNER_VERSION == "1.5.0"
+        assert LOGIC_VERSION == "1.4.0"
 
 
 # ---------------------------------------------------------------------------
@@ -3553,4 +3572,4 @@ class TestMarkdownReport:
         from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
-        assert "1.4.0" in md
+        assert "1.5.0" in md
