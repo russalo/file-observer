@@ -8,7 +8,7 @@ extracts metadata and signals, emits a deterministic JSON manifest.
     Version:    1.7.0
     Schema:     1.6
     Python:     >= 3.12
-    Spec:       docs/v1.6.0_RFC_Specification.md (current)
+    Spec:       docs/v1.7.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -2412,12 +2412,16 @@ class Scanner:
                 break
             seen.add(cur)
             if whole is not None:
-                chunk = whole[cur:cur + (1 << 20)]
+                chunk = whole[cur:]               # in memory — no cap needed; the
+                                                  # `trailer` search bounds the parse
+                                                  # (a > 1 MB xref table is fine).
             else:
                 try:
                     with open(path, "rb") as f:
                         f.seek(cur)
-                        chunk = f.read(1 << 20)   # ≤1 MB of xref + trailer
+                        chunk = f.read(1 << 20)   # > cap path: ≤1 MB of xref + trailer
+                                                  # (a > 1 MB table on a > 64 MB PDF
+                                                  # degrades to the v1.5 fallback)
                 except OSError:
                     break
             if not re.match(rb"\s*xref\b", chunk):
