@@ -20,8 +20,10 @@
   structural observable; a drafted `structural_anchor` provenance trigger was
   dropped in review, see §4).
 - **Overall:** COMPLETE. Falsify-first; validated on `corpora_infra` (§3).
-- **Tests:** 744 passed, 1 skipped (+10 in `tests/test_v1_7.py`). Goldens unchanged
-  (PDF specialist is gated; goldens run default config).
+- **Tests:** **749 passed, 1 skipped** (+15 in `tests/test_v1_7.py`). Goldens
+  unchanged (PDF specialist is gated; goldens run default config). The suite grew
+  through review (742 impl → 744 in-house → 746 Gemini → 749 PR bots); the per-leg
+  progression is in §4.
 
 ## 2. Requirements (RFC §2–§7)
 
