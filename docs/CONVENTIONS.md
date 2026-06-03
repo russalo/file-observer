@@ -18,7 +18,7 @@ The scanner has five distinct things that carry versions. They are independent â
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.5.0`
+**Current:** `1.6.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic â€” code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent â
 - MAJOR (x.0 â†’ x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `1.4`
+**Current:** `1.5`
 **Note:** This IS a public contract field. As of v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, since v0.9)
@@ -49,6 +49,7 @@ The scanner has five distinct things that carry versions. They are independent â
 - `reference_tokens` method_version: 2 (v0.9.2: URL-stripped path counting)
 - `author_aggregate` method_version: 1 (v0.10.0: corpus-scoped)
 - `filename_patterns` method_version: 1 (v0.10.0: file-scoped)
+- `provenance` method_version: 1 (v1.6.0: corpus-scoped â€” normalized toolchain (closed table), production era, digitization origin; complements author_aggregate)
 **Internal rule:** A vector at version N in two scanner releases must produce identical counts on identical input. If counts could differ, bump the vector version. This is enforced by the identity digest â€” same digest guarantees same output.
 
 ### 1.5 DICTIONARY_ID (per customer dictionary, future v0.10+)
@@ -63,9 +64,9 @@ The scanner has five distinct things that carry versions. They are independent â
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.5.0 | Internal |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.6.0 | Internal |
 | Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.0 | Internal* |
-| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.4 | **Public** |
+| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.5 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
 
