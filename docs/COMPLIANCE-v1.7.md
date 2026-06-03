@@ -101,7 +101,30 @@ CONFIRMED findings fixed falsify-first; 744 tests (+2 guards):
 - Refuted: the "different code path → same value" candidates (the field-by-field
   v1.5 fallback yields byte-identical output — the corpus 0-diff confirms it).
 
-**Leg — Gemini cross-model + PR bots + CI:** _to be completed on the PR._
+**Leg — Gemini cross-model (done).** pro (2.5-pro) + flash, self-contained prompt,
+v1.7-refreshed guardrail. CONFIRMED findings fixed; 746 tests:
+- **Incremental xref-stream returned a stale object (HIGH, pro+flash):**
+  `_locate_regular_obj` took the *first* `N G obj`; an incremental update appends
+  the newer copy, so the first is stale. Fixed: take the **last** occurrence
+  (latest-wins, matching the classic offset-map path). Guard:
+  `test_locate_picks_last_object_copy`.
+- **`/Info` fallback resurfaced a superseded value (HIGH, pro):** when the anchored
+  (latest) `/Info` lacked a key, the code fell back to a whole-file scan that could
+  find a stale value from a superseded `/Info` on an incrementally-updated PDF.
+  Fixed: the anchored `/Info` region is authoritative (missing key = absent); the
+  whole-file scan is used only when no anchor resolved `/Info`. Guard:
+  `test_anchored_info_does_not_resurface_stale_field`. Corpus re-validated: 0
+  producer diff (the fallback never mattered on real data).
+- **REFUTED — flash's "blocker" on `obj not in offset_map`:** the `/Prev` traversal
+  is latest-section-first, so first-write-wins *is* latest-wins (the incremental
+  unit test proves page_count=3, not the stale 10). Added a clarifying comment.
+- **Accepted (documented, not fixed):** xref-stream PDFs > 64 MB → `page_count` null
+  (honest null, the v1.8 boundary — `whole` unavailable); the ≤1 MB xref-table
+  `split()` allocation (bounded, under the existing ≤64 MB whole-file read); a
+  literal `N G obj` inside another object's content could mis-match the regex-locate
+  path (a real-offset resolver removes it — v1.8). State the trade-off, don't fix.
+
+**Leg — PR bots + CI:** _to be completed on the PR._
 
 ## 5. Backward Compatibility
 

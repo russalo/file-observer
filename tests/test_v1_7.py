@@ -215,6 +215,53 @@ class TestStructuralAnchorInfra:
         assert prod == "InMem 2.0"
 
 
+class TestIncrementalLatestWins:
+    """Gemini review (leg 2): the regex-locate path (xref-stream / no offset map)
+    must pick the LATEST object copy, and the anchored /Info must not fall back to a
+    whole-file scan that resurfaces a superseded value."""
+
+    def test_locate_picks_last_object_copy(self):
+        sc = _sc()
+        # Two copies of object 2 (incremental append) — the LATER /Count must win.
+        whole = (b"%PDF-1.5\n2 0 obj<</Type/Pages/Count 1>>endobj\n"
+                 b"%% ... later incremental update ...\n"
+                 b"2 0 obj<</Type/Pages/Count 9>>endobj\n")
+        region = sc._locate_regular_obj(whole, 2)
+        assert sc._pdf_count_from_pages(region) == 9   # latest, not the stale 1
+
+    def test_anchored_info_does_not_resurface_stale_field(self, tmp_path):
+        # Byte-accurate classic incremental update: the SUPERSEDED /Info (obj 4 v1)
+        # has /Author "Stale"; the LATEST /Info (obj 4 v2) drops it. The anchored
+        # region is authoritative → author is None, NOT the stale value a whole-file
+        # fallback scan would resurface (the dropped fallback).
+        objs = [
+            (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+            (2, b"<< /Type /Pages /Kids [3 0 R] /Count 2 >>"),
+            (3, b"<< /Type /Page /Parent 2 0 R >>"),
+            (4, b"<< /Author (Stale Author) /Producer (P 1.0) >>"),
+        ]
+        out = bytearray(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+        off: dict[int, int] = {}
+        for n, b in objs:
+            off[n] = len(out)
+            out += b"%d 0 obj\n" % n + b + b"\nendobj\n"
+        x1 = len(out)
+        out += b"xref\n0 5\n" + _xref_free()
+        for n, _ in objs:
+            out += _xref_in_use(off[n])
+        out += b"trailer\n<< /Size 5 /Root 1 0 R /Info 4 0 R >>\nstartxref\n%d\n%%%%EOF" % x1
+        out += b"\n"
+        o4 = len(out)
+        out += b"4 0 obj\n<< /Producer (P 2.0) >>\nendobj\n"   # override: no /Author
+        x2 = len(out)
+        out += b"xref\n4 1\n" + _xref_in_use(o4)
+        out += (b"trailer\n<< /Size 5 /Root 1 0 R /Info 4 0 R /Prev %d >>\n"
+                b"startxref\n%d\n%%%%EOF" % (x1, x2))
+        meta = _pdf_meta(tmp_path, "a.pdf", bytes(out))
+        assert meta["producer"] == "P 2.0"          # latest /Info
+        assert meta["author"] is None               # NOT resurfaced from the stale /Info
+
+
 class TestLargeBeyondCap:
     def test_anchor_seek_when_whole_file_read_skipped(self, tmp_path, monkeypatch):
         # Force the genuine unread-middle scenario: the page tree / Info sit PAST

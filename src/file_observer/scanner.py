@@ -2477,11 +2477,19 @@ class Scanner:
         /Info, catalog). Returns None when the whole file isn't available (> cap)."""
         if objnum is None or whole is None:
             return None
-        m = re.search(rb"\b%d\s+\d+\s+obj\b" % objnum, whole)
-        if not m:
+        # LAST occurrence, not first: an incremental update appends the newer copy
+        # of an object after the original, so the last `N G obj` is the current one
+        # (the latest-wins discipline the classic xref path gets from its offset
+        # map; the regex-locate path is the xref-stream best-effort until v1.8).
+        # Residual: a literal `N G obj` inside another object's content could match
+        # — a real-offset resolver (v1.8) removes that.
+        last = None
+        for mm in re.finditer(rb"\b%d\s+\d+\s+obj\b" % objnum, whole):
+            last = mm
+        if last is None:
             return None
-        end = whole.find(b"endobj", m.end())
-        return whole[m.start():end if end >= 0 else m.start() + PDF_ANCHOR_OBJ_CAP]
+        end = whole.find(b"endobj", last.end())
+        return whole[last.start():end if end >= 0 else last.start() + PDF_ANCHOR_OBJ_CAP]
 
     def _pdf_count_via_locate(self, whole: bytes | None, root_ref: int | None) -> int | None:
         cat = self._locate_regular_obj(whole, root_ref)
@@ -2585,22 +2593,20 @@ class Scanner:
             meta["page_count"] = self._pdf_page_count(full)      # v1.5 fallback
         # /Info strings: literal (...) AND hex <...>. Gated on `encrypted` — a
         # standard-security PDF encrypts its /Info strings, so extracting them
-        # yields ciphertext garbage; emit null instead. When the anchor resolved
-        # the /Info object, read from that exact region; else the whole-file scan.
+        # yields ciphertext garbage; emit null instead. When the anchor resolved the
+        # /Info object that region is AUTHORITATIVE (the latest trailer's /Info) — a
+        # missing key is genuinely absent, so we do NOT fall back to a whole-file
+        # scan, which would resurface a stale value from a superseded /Info on an
+        # incrementally-updated PDF (Gemini review). The whole-file scan is used only
+        # when no anchor resolved /Info at all (the v1.5 path).
         info_src = (anchor or {}).get("info_region")
+        src = info_src if info_src is not None else full
         for field_name, pdf_key in [
             ("title", b"/Title"), ("author", b"/Author"),
             ("producer", b"/Producer"), ("creator", b"/Creator"),
             ("creation_date", b"/CreationDate"),
         ]:
-            if meta["encrypted"]:
-                meta[field_name] = None
-            elif info_src is not None:
-                v = self._extract_pdf_string(info_src, pdf_key)
-                # fall back to the whole-file scan if the anchored /Info lacks the key
-                meta[field_name] = v if v is not None else self._extract_pdf_string(full, pdf_key)
-            else:
-                meta[field_name] = self._extract_pdf_string(full, pdf_key)
+            meta[field_name] = None if meta["encrypted"] else self._extract_pdf_string(src, pdf_key)
         # pdf_version: search the head (tolerate a leading BOM / whitespace before %PDF-).
         ver_match = re.search(rb"%PDF-(\d+\.\d+)", sample[:1024])
         meta["pdf_version"] = ver_match.group(1).decode("ascii") if ver_match else None
