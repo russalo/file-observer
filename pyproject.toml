@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.6.0"
+version = "1.7.0"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "docs/README.md"
 requires-python = ">=3.12"
@@ -54,3 +54,11 @@ fo = "file_observer.scanner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Only collect the project's own tests. Without this, a bare `pytest` walks the
+# repo root and tries to import test files inside scratch/corpora* (the harvested
+# repos), which both errors on collection AND writes __pycache__/*.pyc into the
+# shared corpora — polluting the empirical sweep (found running v1.7 against the
+# full library, 2026-06-03).
+testpaths = ["tests"]

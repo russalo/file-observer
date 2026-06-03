@@ -66,25 +66,34 @@ explained by the `context`: dependency versions, Python version, platform, and
 `logic_version`. Determinism is a contract *within* a context, not a promise
 that every machine produces byte-identical results regardless of environment.
 
-## PDF metadata is read from the head + a bounded tail (v1.5)
+## PDF metadata is read by following the file's structural index (v1.5 + v1.7)
 
-The PDF specialist reads the **whole file** (capped at 64 MB) for `page_count`
-and `/Info` (producer/title), and a head+tail window for the font/image markers
-(`text_detected`, `requires_vision`). It does **not** decompress streams.
-`page_count` is anchored to the `/Type /Pages` page tree (so bookmark/`/Outlines`
-counts aren't mistaken for pages), and `producer`/`title` honor balanced and
-escaped parens. These are reliable for PDFs whose page tree / Info are
-**uncompressed** (the common case). Residuals:
-- **PDF 1.5+ object-stream** PDFs compress the page tree / Info / `/Font` refs
-  into streams → `page_count` is **null** (an honest "not observed" — never a
-  wrong value), `producer`/`title` may be null, and `text_detected` may be
-  `false` even for a text PDF.
-- PDFs **larger than 64 MB** fall back to the head+tail window (the root page
-  tree could be in the unread middle → null).
+The PDF specialist obtains `page_count` and `/Info` (producer/title/creation_date)
+by **following the file's own index** (v1.7): `startxref` → the latest trailer →
+the root catalog → the page tree, parsing the classic cross-reference table for
+object offsets and following `/Prev` across incremental updates. Font/image markers
+(`text_detected`, `requires_vision`) still use a head + bounded-tail window (v1.5,
+unchanged). It does **not** decompress content streams. Because the count comes
+from the *root the trailer points at*, an incremental update that deleted pages no
+longer reports the stale (larger) superseded count, and a > 64 MB PDF is resolved
+by offset-seek rather than falling back to a window. `pdf.xref_type`
+(`classic`/`stream`/`none`, provisional) records which form was observed. Residuals:
+- **PDF 1.5+ object-stream / xref-stream** PDFs compress the cross-reference table
+  and often the page tree into streams. v1.7 reads the xref-stream's *plaintext*
+  dict (so `producer`/`/Info` are recovered when the `/Info` object is a regular
+  object), but the compressed offset table and object-stream page tree are **not
+  decoded** → `page_count` remains **null** (an honest "not observed", never a
+  wrong value), and `text_detected` may be `false` even for a text PDF. Decoding
+  these is deferred to **v1.8** (the optional per-format parser fork). On the
+  infra-standards corpus, **~57% of PDFs are xref-stream** — a sizeable null
+  population this lights up.
+- A **broken/absent `startxref`** falls back to the v1.5 whole-file window scan
+  (then to the head sample); a > 64 MB PDF with no followable anchor likewise.
 - Encrypted PDFs: `/Info` strings are encrypted, so they're reported as null.
 `requires_vision` is conservative: it flags a PDF only when text/font markers are
-absent AND image markers are present. Reliable extraction for object-stream PDFs
-would require a full PDF parser, deliberately out of scope (stdlib only).
+absent AND image markers are present. Full extraction for object-stream PDFs would
+require a real PDF parser — deliberately out of scope for v1.7 (stdlib only), the
+v1.8 decision.
 
 ## Provenance vector reports what's observable, not ground truth (v1.6)
 
