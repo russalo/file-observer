@@ -96,13 +96,14 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 
 Supported specialist formats: `.pdf`, `.png`, `.jpg`, `.msg`, `.eml`, `.xlsx`, `.xls`, `.docx`, `.doc`, `.rtf`, `.jsonl`
 
-### 4 observation vectors with cryptographic identity
+### 5 observation vectors with cryptographic identity
 
 | Vector | What it finds |
 |---|---|
 | **chatlog** | Conversation patterns — turns, speakers (per-speaker counts/alternation), section markers. Detects prose transcripts and conversational JSON/JSONL across common schemas (role/from/speaker + text/value/content). Works on `.txt`, `.md`, `.jsonl`, `.json`. |
 | **reference_tokens** | @mentions, wiki links, code blocks, URLs, emails, file paths, ticket numbers |
-| **author_aggregate** | Cross-format author normalization. Spots template defaults vs real humans. |
+| **author_aggregate** | Cross-format author normalization. Spots template defaults vs real humans. (WHO authored.) |
+| **provenance** | Production provenance — normalized `toolchains` (producer/creator via a closed table), `production_years`, and `digitization` (born-digital / scanned / OCR'd). Cross-format: PDF + OOXML `app.xml`. (WHAT-TOOL / WHEN / digitization.) |
 | **filename_patterns** | Date prefixes, version markers, numbered revisions, template names, UUIDs, copy suffixes |
 
 Each vector carries an identity digest (SHA-256). Same digest = same rules + same tuning = same output. Always. *(These are observation vectors — named, fingerprinted observations — not embedding vectors for a vector database.)*

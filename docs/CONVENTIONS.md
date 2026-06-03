@@ -253,9 +253,10 @@ Core counters in `ScanQuality`: total_files, clean_files, degraded_files, error_
 
 ### 4.8 Vectors registry
 
-Four vectors ship in `vectors_collected[]` (see §1.4 for method_versions):
+Five vectors ship in `vectors_collected[]` (see §1.4 for method_versions):
 `chatlog` (content-detected), `reference_tokens` (per-file, 7 subcategories),
-`author_aggregate` (corpus-scoped), `filename_patterns` (per-file, 6 booleans).
+`author_aggregate` (corpus-scoped), `provenance` (corpus-scoped, v1.6),
+`filename_patterns` (per-file, 6 booleans).
 
 ### 4.9 Customer dictionaries (future v0.10+)
 

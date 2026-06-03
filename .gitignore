@@ -53,6 +53,9 @@ changelog/
 inbox/
 outbox/
 
+# Claude Code local state (per-developer permissions + session locks; never committed)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
