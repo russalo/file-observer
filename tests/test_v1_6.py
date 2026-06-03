@@ -53,9 +53,12 @@ def _pdf(producer: bytes, *, text=True, image=False, count=3, year=None) -> byte
 
 class TestVersions:
     def test_versions(self):
-        assert SCANNER_VERSION == "1.6.0"
-        assert LOGIC_VERSION == "1.4.0"      # UNCHANGED — provenance is pure aggregation
-        assert SCHEMA_VERSION == "1.5"
+        # v1.6 invariants as FLOORS (global versions move each release; the exact
+        # current values are pinned in test_packaging). provenance arrived at
+        # SCHEMA 1.5 / method_version 1 and those don't regress.
+        assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 6, 0)
+        assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 5)
+        assert LOGIC_VERSION == "1.4.0"      # UNCHANGED through v1.7 — provenance + anchor reads are not routing
         assert PROVENANCE_METHOD_VERSION == 1
 
 
