@@ -10,9 +10,12 @@ from pathlib import Path
 
 import pytest
 
+import re
+
 from file_observer.scanner import (
     Scanner, ScannerConfig, SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
     PROVENANCE_VECTOR_ID, PROVENANCE_METHOD_VERSION,
+    PROVENANCE_TOOLCHAIN_RULES, provenance_rules_fingerprint, compute_rules_hash,
 )
 
 
@@ -110,6 +113,38 @@ class TestProvenanceVector:
         d2 = _prov(_scan(tmp_path, files))["identity_digest"]
         assert d1 == d2
 
+    def test_toolchains_canonically_ordered(self, tmp_path):
+        # ties broken by name asc (not Counter first-seen/path order) — determinism.
+        m = _scan(tmp_path, {
+            "z.pdf": _pdf(b"Bluebeam 21"), "a.pdf": _pdf(b"Adobe PDF Library 9"),
+            "g.pdf": _pdf(b"Ghostscript 9"),  # 1 each -> sorted by name
+        })
+        names = [t["name"] for t in _prov(m)["summary"]["toolchains"]]
+        assert names == sorted(names)
+
+
+class TestDeterminismContract:
+    """The toolchain table + version regex ARE the rules — editing either must
+    move the rules_hash (the bug class chatlog's enumerated fp_lexicon fixed).
+    A tautological 'same input -> same digest' test would NOT catch a silent
+    table edit; this proves the table actually feeds the hash."""
+
+    def test_table_edit_changes_rules_hash(self):
+        base = compute_rules_hash(provenance_rules_fingerprint())
+        added = PROVENANCE_TOOLCHAIN_RULES + [(re.compile("zzznew"), "ZZZ New", False)]
+        assert compute_rules_hash(provenance_rules_fingerprint(table=added)) != base
+        renamed = [(p, ("RENAMED" if i == 0 else nm), o)
+                   for i, (p, nm, o) in enumerate(PROVENANCE_TOOLCHAIN_RULES)]
+        assert compute_rules_hash(provenance_rules_fingerprint(table=renamed)) != base
+        flipped = [(p, nm, (not o if i == 0 else o))
+                   for i, (p, nm, o) in enumerate(PROVENANCE_TOOLCHAIN_RULES)]
+        assert compute_rules_hash(provenance_rules_fingerprint(table=flipped)) != base
+
+    def test_version_suffix_regex_change_moves_hash(self):
+        base = compute_rules_hash(provenance_rules_fingerprint())
+        other = compute_rules_hash(provenance_rules_fingerprint(suffix_re=re.compile(r"\d+$")))
+        assert other != base
+
 
 class TestOOXMLProducingApp:
     def test_docx_application_extracted_and_normalized(self, tmp_path):
@@ -142,6 +177,61 @@ class TestCorpusSurfacedFixes:
     def test_messy_version_suffix_stripped(self):
         raw = "doPDF Ver 7.2 Build 367 (Windows 7 Home Premium Edition (SP 1) - Version:"
         assert _sc()._normalize_toolchain(raw) == ("doPDF", False)
+
+    def test_null_terminated_latin1_producer_not_mojibaked(self, tmp_path):
+        # A null-terminated latin-1 /Producer (e.g. b"doPDF 7.2\x00") was decoded
+        # as UTF-16 by the v1.6 `b"\x00" in raw` heuristic (regressing v1.5). The
+        # parity-based decode keeps it latin-1; it normalizes to "doPDF".
+        assert _sc()._decode_pdf_bytes(b"doPDF 7.2\x00").startswith("doPDF 7.2")
+        m = _scan(tmp_path, {"a.pdf": _pdf(b"doPDF 7.2\x00", text=True, year=2014)})
+        prod = [f for f in m.files if f.path.endswith("a.pdf")][0].specialist_metadata["pdf"]["producer"]
+        assert _sc()._normalize_toolchain(prod) == ("doPDF", False)
+
+    def test_hex_utf16_producer_decoded(self, tmp_path):
+        # Hex-string /Producer carrying UTF-16BE (FEFF BOM) must decode like the
+        # literal path (shared _decode_pdf_bytes).
+        raw = (b"\xfe\xff" + "Bluebeam".encode("utf-16-be")).hex().encode("ascii")
+        pdf = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Count 1>>endobj\n/Font BT (x) Tj ET\n"
+               b"6 0 obj<</Producer<" + raw + b">>>endobj\n%%EOF")
+        m = _scan(tmp_path, {"a.pdf": pdf})
+        prod = [f for f in m.files if f.path.endswith("a.pdf")][0].specialist_metadata["pdf"]["producer"]
+        assert prod == "Bluebeam"
+        assert _sc()._normalize_toolchain(prod) == ("Bluebeam", False)
+
+    def test_creator_used_when_producer_absent(self, tmp_path):
+        # _run_provenance falls back producer -> creator.
+        pdf = (b"%PDF-1.7\n2 0 obj<</Type/Pages/Count 1>>endobj\n/Font BT (x) Tj ET\n"
+               b"6 0 obj<</Creator(Microsoft Word 2016)>>endobj\n%%EOF")
+        m = _scan(tmp_path, {"a.pdf": pdf})
+        tc = {t["name"]: t["count"] for t in _prov(m)["summary"]["toolchains"]}
+        assert tc.get("Microsoft Word") == 1
+
+    def test_scan_substring_not_overmatched(self):
+        # "Scansoft"/"ScanGauge"/"PDFScanner" merely contain "scan" — must NOT be
+        # mislabeled the Scanner/MFP device (word-anchored rule).
+        n = _sc()._normalize_toolchain
+        assert n("Scansoft PDF Create!")[0] != "Scanner/MFP device"
+        assert n("PDFScanner Pro")[0] != "Scanner/MFP device"
+        assert n("Xerox WorkCentre 7845")[0] == "Scanner/MFP device"  # real device still matches
+
+
+class TestCrossFormatHarvest:
+    def test_docx_application_feeds_provenance_vector(self, tmp_path):
+        # The document/spreadsheet `application` harvest branch (not just PDF) must
+        # reach the vector — exercised end-to-end through a real scan.
+        import zipfile
+        p = tmp_path / "d.docx"
+        with zipfile.ZipFile(p, "w") as z:
+            z.writestr("[Content_Types].xml", "<?xml version='1.0'?><Types/>")
+            z.writestr("docProps/app.xml",
+                       '<?xml version="1.0"?><Properties '
+                       'xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
+                       '<Application>Microsoft Office Word</Application><Words>9</Words></Properties>')
+        m = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True)).scan()
+        v = _prov(m)
+        tc = {t["name"]: t["count"] for t in v["summary"]["toolchains"]}
+        assert tc.get("Microsoft Word") == 1
+        assert v["summary"]["per_namespace_counts"].get("document") == 1
 
 
 class TestComplementsAuthorAggregate:

@@ -863,14 +863,16 @@ PROVENANCE_TOOLCHAIN_RULES: list[tuple[re.Pattern, str, bool]] = [
     (re.compile(r"microsoft.{0,12}word|office\s*word", re.I), "Microsoft Word", False),
     (re.compile(r"microsoft.{0,12}excel", re.I), "Microsoft Excel", False),
     (re.compile(r"microsoft.{0,12}powerpoint", re.I), "Microsoft PowerPoint", False),
-    (re.compile(r"lib[er]*office|openoffice", re.I), "LibreOffice/OpenOffice", False),
+    (re.compile(r"libre?office|openoffice", re.I), "LibreOffice/OpenOffice", False),
     (re.compile(r"pdftex|pdflatex|xetex|luatex|dvips|\bla?tex\b", re.I), "TeX/LaTeX", False),
     (re.compile(r"ghostscript", re.I), "Ghostscript", False),
     (re.compile(r"wkhtmltopdf", re.I), "wkhtmltopdf", False),
     (re.compile(r"3-?heights", re.I), "PDF-Tools 3-Heights", False),
     (re.compile(r"itext|tcpdf|\bfpdf\b|reportlab|\bprince\b|weasyprint", re.I), "PDF library (iText/TCPDF/ReportLab/Prince/…)", False),
     (re.compile(r"quartz|\bcairo\b|coregraphics", re.I), "Quartz/Cairo", False),
-    (re.compile(r"scan|scanner|copier|imagerunner|workcentre|digital\s*sending", re.I), "Scanner/MFP device", False),
+    # Device-name terms only — word-anchored so it doesn't swallow product names
+    # that merely contain "scan" (Scansoft, ScanGauge, PDFScanner) — v1.6 fix.
+    (re.compile(r"\bscanner\b|\bcopier\b|imagerunner|workcentre|workcenter|digital\s*sending", re.I), "Scanner/MFP device", False),
 ]
 # unknown producers: strip from the first version-ish token to end so versions
 # group ("doPDF Ver 7.2 Build 367 (Windows … Version:" → "doPDF"). `.*$` (not a
@@ -878,6 +880,25 @@ PROVENANCE_TOOLCHAIN_RULES: list[tuple[re.Pattern, str, bool]] = [
 PROVENANCE_VERSION_SUFFIX_RE = re.compile(r"\s+(v(er)?\.?\s*)?\d.*$", re.I | re.S)
 PROVENANCE_DIGITIZATION_KEYS = ("born_digital", "scanned", "ocr_detected", "unknown")
 PROVENANCE_AUTHORED_DOC_EXT = {".docx", ".xlsx", ".doc", ".xls", ".rtf"}
+
+
+def provenance_rules_fingerprint(
+    table: list[tuple[re.Pattern, str, bool]] = PROVENANCE_TOOLCHAIN_RULES,
+    suffix_re: re.Pattern = PROVENANCE_VERSION_SUFFIX_RE,
+) -> str:
+    """The string fed to `compute_rules_hash` for the provenance vector.
+
+    The toolchain table and the version-suffix regex ARE the normalization rules —
+    editing either changes the vector's output, so they MUST feed the rules_hash
+    (and thus the identity digest). The prose PROVENANCE_RULES_DEFINITION alone
+    doesn't move when the table does (this is the determinism bug chatlog's
+    enumerated fp_lexicon already fixed). Derived from the live table so it can't
+    drift; parameterized so a guard test can prove a table edit changes the hash."""
+    table_ser = ";".join(
+        f"{p.pattern}=>{name}|{int(is_ocr)}" for p, name, is_ocr in table
+    )
+    return (f"{PROVENANCE_RULES_DEFINITION}"
+            f";table[{table_ser}];version_suffix[{suffix_re.pattern}]")
 
 REFERENCE_EMAIL_RE = re.compile(r"\b[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 REFERENCE_PATH_UNIX_RE = re.compile(r"(?:/[\w.]+){3,}")
@@ -1354,15 +1375,18 @@ class Scanner:
 
         counts = Counter(toolchains)
         summary = {
+            # canonical order: count desc, then name asc (matches author_aggregate;
+            # Counter.most_common leaves ties in first-seen/path order → non-deterministic).
             "toolchains": [{"name": k, "count": c}
-                           for k, c in counts.most_common(PROVENANCE_STATIC_TUNING["top_n"])],
+                           for k, c in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+                           [:PROVENANCE_STATIC_TUNING["top_n"]]],
             "distinct_toolchains": len(counts),
             "production_years": dict(sorted(years.items())),
             "production_year_range": ([min(years), max(years)] if years else []),
             "digitization": {k: digitization.get(k, 0) for k in PROVENANCE_DIGITIZATION_KEYS},
             "per_namespace_counts": dict(sorted(per_ns.items())),
         }
-        rules_hash = compute_rules_hash(PROVENANCE_RULES_DEFINITION)
+        rules_hash = compute_rules_hash(provenance_rules_fingerprint())
         tuning_hash = compute_tuning_hash(PROVENANCE_STATIC_TUNING)
         identity_digest = compute_vector_identity_digest(
             PROVENANCE_VECTOR_ID, PROVENANCE_METHOD_VERSION, rules_hash, tuning_hash,
@@ -2335,9 +2359,10 @@ class Scanner:
         if meta["encrypted"]:
             meta["creation_date"] = None
         else:
-            create_match = re.search(rb"/CreationDate\s*\(([^)]*)\)", full)
-            meta["creation_date"] = (create_match.group(1).decode("latin-1", errors="replace")
-                                     if create_match else None)
+            # Route through _extract_pdf_string for consistent decoding + balanced
+            # parens (v1.6 — a standalone `[^)]*` latin-1 grab mojibake-d UTF-16
+            # dates and truncated on an inner paren).
+            meta["creation_date"] = self._extract_pdf_string(full, b"/CreationDate")
         # pdf_version: search the head (tolerate a leading BOM / whitespace before %PDF-).
         ver_match = re.search(rb"%PDF-(\d+\.\d+)", sample[:1024])
         meta["pdf_version"] = ver_match.group(1).decode("ascii") if ver_match else None
@@ -2394,8 +2419,15 @@ class Scanner:
             return raw[2:].decode("utf-16-be", errors="replace")
         if raw[:2] == b"\xff\xfe":
             return raw[2:].decode("utf-16-le", errors="replace")
-        if b"\x00" in raw:
-            return raw.decode("utf-16-be", errors="replace")
+        # BOM-less UTF-16: detect by parity, not by "any NUL present" (v1.6 fix —
+        # a latin-1 producer with a stray/trailing NUL like b"doPDF 7.2\x00" was
+        # mojibake-d to UTF-16 by the old `b"\x00" in raw` test, regressing v1.5).
+        # UTF-16-BE ASCII has its high (even-index) bytes all NUL; LE the odd-index.
+        if len(raw) >= 2 and len(raw) % 2 == 0:
+            if not any(raw[0::2]):
+                return raw.decode("utf-16-be", errors="replace")
+            if not any(raw[1::2]):
+                return raw.decode("utf-16-le", errors="replace")
         return raw.decode("latin-1", errors="replace")
 
     def _extract_pdf_string(self, data: bytes, key: bytes) -> str | None:

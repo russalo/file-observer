@@ -58,7 +58,60 @@ ASCII synthetic cases missed:
 ## 4. Review findings & resolution
 
 Three review legs (in-house multi-agent `/code-review`, Gemini cross-model, PR
-bots + CI). _To be completed on the PR; all CONFIRMED findings fixed before merge._
+bots + CI).
+
+**Leg 1 — in-house multi-agent `/code-review` (done).** 7 finder angles → verify.
+CONFIRMED/PLAUSIBLE findings, all fixed falsify-first (failing input constructed
+first), then re-validated on `corpora_infra` (Wayne-K facts unchanged):
+- **`_decode_pdf_bytes` NUL regression (v1.5).** The `b"\x00" in raw` → UTF-16
+  heuristic mojibake-d latin-1 producers with a stray/trailing NUL (e.g. null-
+  terminated `doPDF 7.2\x00`). Fixed: parity-based detection (UTF-16-BE/LE only
+  when the high bytes on one parity are *all* NUL). Guard:
+  `test_null_terminated_latin1_producer_not_mojibaked`. On the re-scan `doPDF`
+  now normalizes cleanly.
+- **Determinism gap (same class chatlog's STATIC_TUNING had).** The toolchain
+  table + version-suffix regex weren't in `rules_hash`, so a table edit didn't
+  move the identity digest, and `test_deterministic_identity` was a tautology.
+  Fixed: `provenance_rules_fingerprint()` derives the hashed string from the live
+  table (can't drift); guard `TestDeterminismContract` proves an add / rename /
+  OCR-flip / regex change each moves the hash.
+- **`toolchains` ordering non-canonical.** `Counter.most_common` left ties in
+  path order. Fixed: sort `(-count, name)` like `author_aggregate`. Guard:
+  `test_toolchains_canonically_ordered`.
+- **`scan` catch-all over-matched** (`Scansoft`, `ScanGauge`, `PDFScanner`).
+  Fixed: word-anchored device terms (`\bscanner\b|\bcopier\b|imagerunner|…`);
+  the corpus had zero real `Scanner/MFP` hits, so this is pure FP safety. Guard:
+  `test_scan_substring_not_overmatched`.
+- **`creation_date` bypassed shared decode + balanced-paren parse.** Fixed: route
+  through `_extract_pdf_string`.
+- **`lib[er]*office` sloppy char class** → `libre?office`.
+- **Documented (not code) — intended scope / inherited residuals:** digitization
+  inherits the PDF object-stream blind spot; `applied_to_count` = toolchain-bearing
+  files (own population per block); legacy OLE2 `.doc`/`.xls` carry no `application`
+  (fork B). All recorded in LIMITATIONS.md → "Provenance vector reports what's
+  observable, not ground truth."
+- **Test gaps closed:** doc/spreadsheet harvest branch (end-to-end docx scan),
+  hex-UTF16 producer, producer→creator fallback.
+
+Tests: **732 passed, 1 skipped** (+8 over the pre-review count). Goldens unchanged.
+
+**Leg 2 — Gemini cross-model (done).** Self-contained prompt (full bodies of every
+changed function inlined; no file reads), reviewed with the v1.6-refreshed guardrail
+(reachability×blast-radius rubric + required `trigger` field + full-context clause).
+- **gemini-2.5-pro (OAuth):** 1 finding, low — `_normalize_toolchain` returns a
+  version-only producer (`"v7.2.1"`) unchanged rather than grouping it. **REFUTED on
+  triage:** the stated mechanism ("regex strips `s` to empty → returns raw") is wrong —
+  `PROVENANCE_VERSION_SUFFIX_RE` requires a leading `\s+` and `s` is whitespace-collapsed,
+  so a position-0 version token never matches and `cleaned` is never empty for non-empty
+  `s` (verified by direct call). The residual (version-only producers stay distinct) is
+  the correct observe-don't-interpret behavior — faithfully reporting an un-normalizable
+  producer beats collapsing distinct raw values into a nameless `""` bucket — and did not
+  occur in 320 real PDFs. A textbook "model gets the mechanism wrong" catch by the
+  grounding layer.
+- **gemini-2.5-flash (API key):** `No substantiated findings.`
+No code change from leg 2.
+
+**Leg 3 — PR bots + CI**: _pending on the PR; all CONFIRMED findings fixed before merge._
 
 ## 5. Backward Compatibility
 
