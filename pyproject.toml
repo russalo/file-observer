@@ -54,3 +54,11 @@ fo = "file_observer.scanner:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+# Only collect the project's own tests. Without this, a bare `pytest` walks the
+# repo root and tries to import test files inside scratch/corpora* (the harvested
+# repos), which both errors on collection AND writes __pycache__/*.pyc into the
+# shared corpora — polluting the empirical sweep (found running v1.7 against the
+# full library, 2026-06-03).
+testpaths = ["tests"]
