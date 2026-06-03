@@ -18,8 +18,10 @@
   aggregation, no routing change (like the v1.1 corpus-intelligence vectors);
   SCHEMA 1.4→**1.5** (additive `provenance` vector); vector `method_version` **1**.
 - **Overall:** COMPLETE. Falsify-first; validated on `corpora_infra` (§3).
-- **Tests:** 724 passed, 1 skipped (+11 in `tests/test_v1_6.py`). Goldens
+- **Tests:** **734 passed, 1 skipped** (+21 in `tests/test_v1_6.py`). Goldens
   unchanged (provenance is specialist-gated, absent from default-config goldens).
+  The suite grew through review (724 pre-review → 732 after legs 1–2 → 734 after
+  the leg-3 bot guards); the per-leg progression is in §4.
 
 ## 2. Requirements (§2–§7)
 
@@ -93,7 +95,8 @@ first), then re-validated on `corpora_infra` (Wayne-K facts unchanged):
 - **Test gaps closed:** doc/spreadsheet harvest branch (end-to-end docx scan),
   hex-UTF16 producer, producer→creator fallback.
 
-Tests: **732 passed, 1 skipped** (+8 over the pre-review count). Goldens unchanged.
+Tests after legs 1–2: **732 passed, 1 skipped** (+8 over the pre-review count; leg 3
+adds 2 more → 734 final). Goldens unchanged.
 
 **Leg 2 — Gemini cross-model (done).** Self-contained prompt (full bodies of every
 changed function inlined; no file reads), reviewed with the v1.6-refreshed guardrail
