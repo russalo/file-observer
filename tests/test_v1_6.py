@@ -15,7 +15,8 @@ import re
 from file_observer.scanner import (
     Scanner, ScannerConfig, SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
     PROVENANCE_VECTOR_ID, PROVENANCE_METHOD_VERSION,
-    PROVENANCE_TOOLCHAIN_RULES, provenance_rules_fingerprint, compute_rules_hash,
+    PROVENANCE_TOOLCHAIN_RULES, PROVENANCE_VERSION_SUFFIX_RE,
+    provenance_rules_fingerprint, compute_rules_hash,
 )
 
 
@@ -145,6 +146,16 @@ class TestDeterminismContract:
         other = compute_rules_hash(provenance_rules_fingerprint(suffix_re=re.compile(r"\d+$")))
         assert other != base
 
+    def test_flag_only_edit_moves_hash(self):
+        # Dropping re.I from a rule changes matching behavior but not the pattern
+        # source string — the fingerprint must still move (Codex, PR #36).
+        base = compute_rules_hash(provenance_rules_fingerprint())
+        p0, n0, o0 = PROVENANCE_TOOLCHAIN_RULES[0]
+        no_ci = [(re.compile(p0.pattern), n0, o0)] + list(PROVENANCE_TOOLCHAIN_RULES[1:])  # re.I dropped
+        assert compute_rules_hash(provenance_rules_fingerprint(table=no_ci)) != base
+        suffix_no_s = re.compile(PROVENANCE_VERSION_SUFFIX_RE.pattern, re.I)  # re.S dropped
+        assert compute_rules_hash(provenance_rules_fingerprint(suffix_re=suffix_no_s)) != base
+
 
 class TestOOXMLProducingApp:
     def test_docx_application_extracted_and_normalized(self, tmp_path):
@@ -232,6 +243,25 @@ class TestCrossFormatHarvest:
         tc = {t["name"]: t["count"] for t in v["summary"]["toolchains"]}
         assert tc.get("Microsoft Word") == 1
         assert v["summary"]["per_namespace_counts"].get("document") == 1
+
+    def test_app_xml_with_encoding_declaration_and_utf16(self, tmp_path):
+        # Real Office app.xml carries `<?xml ... encoding="UTF-8"?>` and is occasionally
+        # UTF-16; the parser must get RAW BYTES so it honors the declaration/BOM rather
+        # than a forced utf-8 decode (gemini-code-assist, PR #36). My first test used a
+        # bare `<?xml version='1.0'?>` — builder bias; this closes the gap.
+        import zipfile
+        ns = 'xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"'
+        body = (f'<Properties {ns}><Application>Microsoft Office Word</Application></Properties>')
+        for label, decl, enc in [
+            ("utf8_decl", '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>', "utf-8"),
+            ("utf16", '<?xml version="1.0" encoding="UTF-16" standalone="yes"?>', "utf-16"),
+        ]:
+            p = tmp_path / f"{label}.docx"
+            with zipfile.ZipFile(p, "w") as z:
+                z.writestr("[Content_Types].xml", "<?xml version='1.0'?><Types/>")
+                z.writestr("docProps/app.xml", (decl + body).encode(enc))
+            meta = _sc()._extract_docx_metadata(p)
+            assert meta is not None and meta.get("application") == "Microsoft Office Word", label
 
 
 class TestComplementsAuthorAggregate:

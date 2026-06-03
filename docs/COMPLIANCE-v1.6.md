@@ -111,7 +111,27 @@ changed function inlined; no file reads), reviewed with the v1.6-refreshed guard
 - **gemini-2.5-flash (API key):** `No substantiated findings.`
 No code change from leg 2.
 
-**Leg 3 — PR bots + CI**: _pending on the PR; all CONFIRMED findings fixed before merge._
+**Leg 3 — PR bots + CI (done, PR #36).** CI (`test`) green. Two inline findings,
+both addressed:
+- **Codex (P2) — regex flags absent from the provenance fingerprint.** CONFIRMED.
+  `provenance_rules_fingerprint` serialized `p.pattern`/`suffix_re.pattern` but not
+  their flags, so a flag-only edit (drop `re.I` from a rule, `re.S` from the suffix
+  regex) changed matching behavior without moving the identity digest — a residual of
+  the same determinism gap leg 1 fixed. Fixed: serialize `int(p.flags)` too. Guard:
+  `test_flag_only_edit_moves_hash`.
+- **gemini-code-assist (medium) — forced utf-8 decode before XML parse.** ADOPTED at
+  low severity. The two v1.6 `docProps/app.xml` reads decoded to a str before
+  `xml_fromstring`; raw bytes lets the parser honor the encoding declaration/BOM (a
+  forced utf-8 decode corrupts a UTF-16 app.xml). The worse hypothesis — that real
+  Office files (which carry `encoding="UTF-8"`) would raise `ValueError` and silently
+  drop `application` — was **falsified** (both backends parse it on Py 3.12); the real
+  trigger (UTF-16 app.xml / conflicting declaration) is rare, but the fix is free and
+  strictly more correct, and the docx sibling got it too. Guard:
+  `test_app_xml_with_encoding_declaration_and_utf16` (closes a builder-bias gap — the
+  original test used a bare `<?xml version='1.0'?>`). Pre-existing v0.x decode sites
+  left out of scope.
+
+Tests after leg 3: **734 passed, 1 skipped** (+2 guards). Goldens unchanged.
 
 ## 5. Backward Compatibility
 

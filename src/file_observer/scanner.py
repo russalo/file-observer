@@ -894,11 +894,14 @@ def provenance_rules_fingerprint(
     doesn't move when the table does (this is the determinism bug chatlog's
     enumerated fp_lexicon already fixed). Derived from the live table so it can't
     drift; parameterized so a guard test can prove a table edit changes the hash."""
+    # Include flags, not just .pattern — dropping re.I from a rule (or re.S from the
+    # suffix regex) changes matching behavior without changing the source string, and
+    # a flag-only edit MUST still move the digest (Codex review, PR #36).
     table_ser = ";".join(
-        f"{p.pattern}=>{name}|{int(is_ocr)}" for p, name, is_ocr in table
+        f"{p.pattern}|{int(p.flags)}=>{name}|{int(is_ocr)}" for p, name, is_ocr in table
     )
     return (f"{PROVENANCE_RULES_DEFINITION}"
-            f";table[{table_ser}];version_suffix[{suffix_re.pattern}]")
+            f";table[{table_ser}];version_suffix[{suffix_re.pattern}|{int(suffix_re.flags)}]")
 
 REFERENCE_EMAIL_RE = re.compile(r"\b[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 REFERENCE_PATH_UNIX_RE = re.compile(r"(?:/[\w.]+){3,}")
@@ -2581,7 +2584,10 @@ class Scanner:
             app_raw = self._safe_zip_read(zf, "docProps/app.xml")
             if app_raw is not None:
                 try:
-                    aroot = xml_fromstring(app_raw.decode("utf-8", errors="replace"))
+                    # Pass raw bytes — the parser detects encoding from the XML
+                    # declaration / BOM; a forced utf-8 decode corrupts a UTF-16
+                    # app.xml (gemini-code-assist, PR #36).
+                    aroot = xml_fromstring(app_raw)
                     ns_e = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
                     for el in aroot.iter(f"{{{ns_e}}}Application"):
                         if el.text and el.text.strip():
@@ -2671,7 +2677,8 @@ class Scanner:
             app_raw = self._safe_zip_read(zf, "docProps/app.xml")
             if app_raw is not None:
                 try:
-                    root = xml_fromstring(app_raw.decode("utf-8", errors="replace"))
+                    # Raw bytes — parser detects encoding (gemini-code-assist, PR #36).
+                    root = xml_fromstring(app_raw)
                     ns = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
                     for el in root.iter(f"{{{ns}}}Words"):
                         if el.text and el.text.isdigit():
