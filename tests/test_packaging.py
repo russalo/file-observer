@@ -37,7 +37,7 @@ def test_canonical_top_level_api():
 
     import file_observer
 
-    assert file_observer.__version__ == "1.5.0"
+    assert file_observer.__version__ == "1.6.0"
     assert "Scanner" in file_observer.__all__
 
 
@@ -69,9 +69,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.5.0"
-    assert SCHEMA_VERSION == "1.4"  # v1.5.0 additive: provisional pdf.text_detected
-    assert LOGIC_VERSION == "1.4.0"  # v1.5.0: PDF requires_vision routing fix
+    assert SCANNER_VERSION == "1.6.0"
+    assert SCHEMA_VERSION == "1.5"  # v1.6.0 additive: provenance vector
+    assert LOGIC_VERSION == "1.4.0"  # unchanged at v1.6 (provenance is pure aggregation)
 
 
 def test_legacy_scanner_import_warns():

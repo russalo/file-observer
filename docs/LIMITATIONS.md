@@ -86,6 +86,31 @@ escaped parens. These are reliable for PDFs whose page tree / Info are
 absent AND image markers are present. Reliable extraction for object-stream PDFs
 would require a full PDF parser, deliberately out of scope (stdlib only).
 
+## Provenance vector reports what's observable, not ground truth (v1.6)
+
+The corpus-scoped `provenance` vector normalizes producer/creator strings into
+toolchains, counts production years, and classifies digitization origin. Its
+inputs are the already-extracted specialist metadata, so it inherits those
+residuals and adds a few of its own:
+- **Digitization inherits the PDF object-stream blind spot.** `born_digital` /
+  `scanned` lean on `text_detected` / `requires_vision`; an object-stream PDF
+  whose `/Font` refs are compressed can read as no-text and be classed `unknown`
+  (or `scanned` if image markers are present). The OCR-producer fingerprint
+  (`ocr_detected`) is the only digitization signal independent of stream
+  decompression. Treat the counts as a floor, not a census.
+- **`applied_to_count` = files that contributed a *toolchain*** (a non-empty
+  producer/creator/application). The `digitization` and `production_years` blocks
+  have their own, generally larger, populations (a PDF with no producer still
+  classifies digitization). Don't divide one block by `applied_to_count`.
+- **Legacy OLE2 `.doc` / `.xls` carry no `application`** — only PDF (producer/
+  creator) and OOXML (`docProps/app.xml`) feed the vector (fork B scope). A
+  legacy-Office-heavy corpus will under-count toolchains; OLE2/EML producing-app
+  harvest is deferred to a later minor.
+- **The toolchain table is a closed, versioned dictionary.** Unknown producers
+  pass through with a mechanical version-suffix strip (so versions group); they
+  are never dropped. Editing the table changes the vector's `rules_hash` (and
+  thus its identity digest) — expansion is a deliberate, versioned change.
+
 ## MIME detection is a signal, not a correction
 
 MIME type is detected by a cascade (v1.3): content via libmagic → a built-in
