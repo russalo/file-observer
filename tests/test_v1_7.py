@@ -121,6 +121,10 @@ def _pdf_meta(tmp_path, name, data):
     return _scan_one(tmp_path, name, data).specialist_metadata["pdf"]
 
 
+def _sc():
+    return Scanner(source_dir=Path("."), config=ScannerConfig(enable_specialists=True))
+
+
 class TestVersions:
     def test_versions(self):
         assert SCANNER_VERSION == "1.7.0"
@@ -178,6 +182,37 @@ class TestLinearizedTwoStartxref:
         pdf2 = head + b"%\xe2\xe3\xcf\xd3\n" + decoy + tail
         meta = _pdf_meta(tmp_path, "a.pdf", pdf2)
         assert meta["page_count"] == 5
+
+
+class TestStructuralAnchorInfra:
+    """Review findings (in-house leg): the STRUCTURAL_ANCHORS table must actually
+    drive dispatch (not be decorative), and the ≤cap path must read the file once
+    (slice the whole-file bytes), not re-open per object."""
+
+    def test_dispatch_is_keyed_off_the_table(self):
+        from file_observer.scanner import STRUCTURAL_ANCHORS
+        assert STRUCTURAL_ANCHORS["pdf"] == "trailer_pointer"
+        sc = _sc()
+        whole = _classic(count=3, producer=b"X 1.0")
+        # "pdf" → trailer_pointer → the anchor reader resolves from `whole`.
+        got = sc._read_structural_index(Path("/nonexistent"), b"", whole, "pdf")
+        assert got is not None and got["xref_type"] == "classic" and got["page_count"] == 3
+        # formats whose anchor kind has no reader here (eocd/fat) and unknown
+        # formats route to nothing — the table is the contract.
+        assert sc._read_structural_index(Path("/x"), b"", whole, "zip") is None
+        assert sc._read_structural_index(Path("/x"), b"", whole, "bogus") is None
+
+    def test_resolution_reads_no_file_when_whole_present(self):
+        # The read-once fix: when the whole-file bytes are supplied, object
+        # resolution must slice them and never touch the filesystem. A bogus path
+        # that would raise on open still yields correct results → proves no I/O.
+        sc = _sc()
+        whole = _classic(count=9, producer=b"InMem 2.0")
+        anchor = sc._pdf_anchor(Path("/definitely/not/a/real/path.pdf"), b"", whole)
+        assert anchor is not None
+        assert anchor["page_count"] == 9
+        prod = sc._extract_pdf_string(anchor["info_region"], b"/Producer")
+        assert prod == "InMem 2.0"
 
 
 class TestLargeBeyondCap:

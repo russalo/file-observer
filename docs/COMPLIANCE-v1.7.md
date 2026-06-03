@@ -16,10 +16,11 @@
   tail-index lesson OLE2 (v0.7.1) and PDF (v1.5) each learned per-format.
 - **Versions:** SCANNER 1.6.0→**1.7.0**; **LOGIC unchanged (1.4.0)** — index reads
   are specialist extraction, not routing (the `requires_vision` marker window is
-  untouched); SCHEMA 1.5→**1.6** (additive provisional `pdf.xref_type`); new
-  `signal_provenance.trigger` value `structural_anchor`.
+  untouched); SCHEMA 1.5→**1.6** (additive provisional `pdf.xref_type` — the
+  structural observable; a drafted `structural_anchor` provenance trigger was
+  dropped in review, see §4).
 - **Overall:** COMPLETE. Falsify-first; validated on `corpora_infra` (§3).
-- **Tests:** 742 passed, 1 skipped (+8 in `tests/test_v1_7.py`). Goldens unchanged
+- **Tests:** 744 passed, 1 skipped (+10 in `tests/test_v1_7.py`). Goldens unchanged
   (PDF specialist is gated; goldens run default config).
 
 ## 2. Requirements (RFC §2–§7)
@@ -37,7 +38,7 @@
 | Graceful fallback to v1.5 window on broken/absent anchor (never raise) | field-by-field fallback | PASS |
 | LOGIC unchanged (no routing change; marker window untouched) | LOGIC 1.4.0 | PASS |
 | > FULL_READ_CAP PDFs resolved by offset-seek (not whole-file read) | `_resolve_obj_region` seek | PASS |
-| ZIP/OLE2 documented as already-structural, no behavior change | `STRUCTURAL_ANCHORS` (doc only) | PASS |
+| Table is load-bearing (dispatches the reader); ZIP/OLE2 entries doc-only | `_read_structural_index` + `STRUCTURAL_ANCHORS` | PASS |
 | No field removed/renamed/retyped | additive `xref_type` only | PASS |
 
 ## 3. Falsification & validation
@@ -71,15 +72,43 @@ chatlog/polyglot/format_sig/mime on ~18k real files.
 ## 4. Review findings & resolution
 
 Four review legs (empirical sweep [done — NO DRIFT], in-house multi-agent
-`/code-review`, Gemini cross-model, PR bots + CI). _In-house + Gemini + bots to be
-completed on the PR; all CONFIRMED findings fixed before merge._
+`/code-review`, Gemini cross-model, PR bots + CI).
+
+**Leg — empirical sweep (done):** restored to v1.7 + extended to `corpora_infra` +
+`pdf_signal`; self-compares NO DRIFT; zero detection drift v1.4→v1.7 on ~18k files.
+
+**Leg — in-house multi-agent `/code-review` (done).** 7 finder angles → verify. All
+CONFIRMED findings fixed falsify-first; 744 tests (+2 guards):
+- **Doc-ahead-of-code (HIGH):** the docs claimed a new `signal_provenance.trigger`
+  value `structural_anchor`, but it was never emitted (only a code comment) — and
+  PDF specialist-metadata fields carry **no per-field `signal_provenance`** at all,
+  so the trigger doesn't fit the model. Resolved by **dropping the trigger claim**
+  across all surfaces; `pdf.xref_type` (classic/stream/none) is the structural
+  observable, with `none` signalling the v1.5 fallback.
+- **Decorative abstraction (HIGH, altitude):** `STRUCTURAL_ANCHORS` was declared but
+  referenced nowhere — the RFC's "shared infrastructure" was cosmetic. Resolved by a
+  `_read_structural_index(path, sample, whole, fmt)` **dispatcher keyed off the
+  table** (`pdf`→`trailer_pointer`→`_pdf_anchor`); the table is now the contract
+  (v1.8 adds an entry + a branch). Guard: `test_dispatch_is_keyed_off_the_table`.
+- **Redundant full-file reads (CONFIRMED, two angles):** `_pdf_full_or_region` read
+  ≤64 MB, then `_locate_regular_obj` re-read it up to 3× and `_resolve_obj_region`
+  re-opened per object. Resolved: read once — the helpers slice the already-read
+  whole-file bytes (`whole`); they seek only for > cap PDFs (`whole=None`). Guard:
+  `test_resolution_reads_no_file_when_whole_present` (bogus path + valid `whole`
+  still resolves → proves zero I/O).
+- **Duplicated `/Count` extraction (cleanup):** unified into `_pdf_count_from_pages`,
+  shared by the map and locate paths.
+- Refuted: the "different code path → same value" candidates (the field-by-field
+  v1.5 fallback yields byte-identical output — the corpus 0-diff confirms it).
+
+**Leg — Gemini cross-model + PR bots + CI:** _to be completed on the PR._
 
 ## 5. Backward Compatibility
 
-- New provisional `specialist_metadata.pdf.xref_type` (classic/stream/none). No
-  existing field removed/renamed/retyped. SCHEMA 1.5→1.6 (additive). LOGIC unchanged
-  → no routing/output change for existing fields; on the corpus, `page_count` and
-  `producer` are byte-identical to v1.6 (zero regression).
-- New `signal_provenance.trigger` value `structural_anchor` (a new value of an
-  existing free-string field, not a new field/type).
+- New provisional `specialist_metadata.pdf.xref_type` (classic/stream/none) — the
+  structural observable. No existing field removed/renamed/retyped. SCHEMA 1.5→1.6
+  (additive). LOGIC unchanged → no routing/output change for existing fields; on the
+  corpus, `page_count` and `producer` are byte-identical to v1.6 (zero regression).
+- No new `signal_provenance` trigger (a drafted `structural_anchor` trigger was
+  dropped in review — see §4).
 - v1.0 public contract holds.

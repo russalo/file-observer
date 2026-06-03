@@ -2347,18 +2347,22 @@ class Scanner:
 
     # ---- v1.7 structural-anchor reader (PDF) --------------------------------
     @staticmethod
-    def _pdf_last_startxref(path: Path, sample: bytes) -> int | None:
+    def _pdf_last_startxref(path: Path, sample: bytes, whole: bytes | None = None) -> int | None:
         """Byte offset of the cross-reference section from the LAST `startxref` in
         the file tail. Linearized PDFs carry an early `startxref` too — the trailing
-        one (at EOF) is the authoritative entry point."""
-        try:
-            size = path.stat().st_size
-            with open(path, "rb") as f:
-                if size > PDF_STARTXREF_TAIL:
-                    f.seek(size - PDF_STARTXREF_TAIL)
-                tail = f.read()
-        except OSError:
-            tail = sample
+        one (at EOF) is the authoritative entry point. Uses `whole`'s tail when the
+        file was already fully read (no extra open); else seeks the tail."""
+        if whole is not None:
+            tail = whole[-PDF_STARTXREF_TAIL:]
+        else:
+            try:
+                size = path.stat().st_size
+                with open(path, "rb") as f:
+                    if size > PDF_STARTXREF_TAIL:
+                        f.seek(size - PDF_STARTXREF_TAIL)
+                    tail = f.read()
+            except OSError:
+                tail = sample
         idx = tail.rfind(b"startxref")
         if idx < 0:
             return None
@@ -2372,28 +2376,32 @@ class Scanner:
         return int(m.group(1)) if m else None
 
     @staticmethod
-    def _resolve_obj_region(path: Path, offset: int) -> bytes:
-        """Read a single object's dict region by seeking to its byte offset (from
-        the xref). Bounded by PDF_ANCHOR_OBJ_CAP; trimmed at `endobj`."""
+    def _resolve_obj_region(path: Path, offset: int, whole: bytes | None) -> bytes:
+        """A single object's dict region at byte `offset`. Slices the already-read
+        whole-file bytes when present (≤ FULL_READ_CAP — the common case, ZERO extra
+        I/O); seeks the file only for > cap PDFs (where `whole` is None because the
+        full read was skipped). Bounded by PDF_ANCHOR_OBJ_CAP; trimmed at `endobj`."""
         if offset < 0:
             return b""
-        try:
-            with open(path, "rb") as f:
-                f.seek(offset)
-                chunk = f.read(PDF_ANCHOR_OBJ_CAP)
-        except OSError:
-            return b""
+        if whole is not None:
+            chunk = whole[offset:offset + PDF_ANCHOR_OBJ_CAP]
+        else:
+            try:
+                with open(path, "rb") as f:
+                    f.seek(offset)
+                    chunk = f.read(PDF_ANCHOR_OBJ_CAP)
+            except OSError:
+                return b""
         end = chunk.find(b"endobj")
         return chunk if end < 0 else chunk[:end]
 
     @staticmethod
-    def _parse_classic_xref(path: Path) -> tuple[dict[int, int], int | None, int | None] | None:
+    def _parse_classic_xref(path: Path, sx: int, whole: bytes | None
+                            ) -> tuple[dict[int, int], int | None, int | None] | None:
         """Parse the classic xref table(s) → {object_number: byte_offset}, plus the
         /Root and /Info object numbers. Follows /Prev across incremental updates
-        (bounded by PDF_XREF_PREV_HOPS); the LATEST section wins per object."""
-        sx = Scanner._pdf_last_startxref(path, b"")
-        if sx is None:
-            return None
+        (bounded by PDF_XREF_PREV_HOPS); the LATEST section wins per object. Reads
+        each section from `whole` (slice) when available, else by seek."""
         offset_map: dict[int, int] = {}
         root_ref: int | None = None
         info_ref: int | None = None
@@ -2403,12 +2411,15 @@ class Scanner:
             if cur is None or cur in seen:
                 break
             seen.add(cur)
-            try:
-                with open(path, "rb") as f:
-                    f.seek(cur)
-                    chunk = f.read(1 << 20)   # ≤1 MB of xref + trailer
-            except OSError:
-                break
+            if whole is not None:
+                chunk = whole[cur:cur + (1 << 20)]
+            else:
+                try:
+                    with open(path, "rb") as f:
+                        f.seek(cur)
+                        chunk = f.read(1 << 20)   # ≤1 MB of xref + trailer
+                except OSError:
+                    break
             if not re.match(rb"\s*xref\b", chunk):
                 break   # not a classic table (e.g. xref stream) — caller handles
             ti = chunk.find(b"trailer")
@@ -2439,84 +2450,97 @@ class Scanner:
             return None
         return offset_map, root_ref, info_ref
 
+    @staticmethod
+    def _pdf_count_from_pages(pg: bytes) -> int | None:
+        """The `/Count` of a single page-tree node region (shared by the map and
+        locate resolution paths so the extraction lives in one place)."""
+        m = re.search(rb"/Count\s+(\d+)", pg)
+        return int(m.group(1)) if m else None
+
     def _pdf_count_via_map(self, path: Path, offset_map: dict[int, int],
-                           root_ref: int | None) -> int | None:
+                           root_ref: int | None, whole: bytes | None) -> int | None:
         """Root catalog → /Pages → /Count, resolving each object by its xref offset
         (so a superseded page-tree fragment can't win)."""
         if root_ref is None or root_ref not in offset_map:
             return None
-        cat = self._resolve_obj_region(path, offset_map[root_ref])
+        cat = self._resolve_obj_region(path, offset_map[root_ref], whole)
         pages_ref = self._pdf_obj_ref(cat, b"/Pages")
         if pages_ref is None or pages_ref not in offset_map:
             return None
-        pg = self._resolve_obj_region(path, offset_map[pages_ref])
-        m = re.search(rb"/Count\s+(\d+)", pg)
-        return int(m.group(1)) if m else None
+        return self._pdf_count_from_pages(
+            self._resolve_obj_region(path, offset_map[pages_ref], whole))
 
-    def _locate_regular_obj(self, path: Path, objnum: int | None) -> bytes | None:
-        """Find a regular (uncompressed) object `N G obj` by scanning the file
-        (≤ cap). For xref-STREAM PDFs, whose offset table is compressed (v1.8), this
-        recovers refs that are plain objects (the common case for /Info, catalog)."""
-        if objnum is None:
+    def _locate_regular_obj(self, whole: bytes | None, objnum: int | None) -> bytes | None:
+        """Find a regular (uncompressed) object `N G obj` in the already-read
+        whole-file bytes. For xref-STREAM PDFs, whose offset table is compressed
+        (v1.8), this recovers refs that are plain objects (the common case for
+        /Info, catalog). Returns None when the whole file isn't available (> cap)."""
+        if objnum is None or whole is None:
             return None
-        try:
-            if path.stat().st_size > PDF_FULL_READ_CAP:
-                return None
-            with open(path, "rb") as f:
-                data = f.read()
-        except OSError:
-            return None
-        m = re.search(rb"\b%d\s+\d+\s+obj\b" % objnum, data)
+        m = re.search(rb"\b%d\s+\d+\s+obj\b" % objnum, whole)
         if not m:
             return None
-        end = data.find(b"endobj", m.end())
-        return data[m.start():end if end >= 0 else m.start() + PDF_ANCHOR_OBJ_CAP]
+        end = whole.find(b"endobj", m.end())
+        return whole[m.start():end if end >= 0 else m.start() + PDF_ANCHOR_OBJ_CAP]
 
-    def _pdf_count_via_locate(self, path: Path, root_ref: int | None) -> int | None:
-        cat = self._locate_regular_obj(path, root_ref)
+    def _pdf_count_via_locate(self, whole: bytes | None, root_ref: int | None) -> int | None:
+        cat = self._locate_regular_obj(whole, root_ref)
         if not cat:
             return None
-        pg = self._locate_regular_obj(path, self._pdf_obj_ref(cat, b"/Pages"))
-        if not pg:
-            return None
-        m = re.search(rb"/Count\s+(\d+)", pg)
-        return int(m.group(1)) if m else None
+        pg = self._locate_regular_obj(whole, self._pdf_obj_ref(cat, b"/Pages"))
+        return self._pdf_count_from_pages(pg) if pg else None
 
-    def _pdf_anchor(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+    def _read_structural_index(self, path: Path, sample: bytes, whole: bytes | None,
+                               fmt: str) -> dict[str, Any] | None:
+        """Dispatch to the reader for a format's structural index, keyed off the
+        declared STRUCTURAL_ANCHORS table — the v1.7 generalization seam. v1.7
+        implements the PDF `trailer_pointer`; ZIP (`eocd`) / OLE2 (`fat`) are
+        declared but read by zipfile/olefile elsewhere, so they have no reader here
+        yet (a v1.8 addition is a table entry + a branch)."""
+        if STRUCTURAL_ANCHORS.get(fmt) == "trailer_pointer":
+            return self._pdf_anchor(path, sample, whole)
+        return None
+
+    def _pdf_anchor(self, path: Path, sample: bytes, whole: bytes | None
+                    ) -> dict[str, Any] | None:
         """Follow the PDF's structural index. Returns {xref_type, page_count,
         info_region} or None when no anchor can be followed (caller falls back to
-        the v1.5 window scan). Never raises."""
-        sx = self._pdf_last_startxref(path, sample)
+        the v1.5 window scan). Reads from `whole` (slice) when available, else seeks.
+        Never raises."""
+        sx = self._pdf_last_startxref(path, sample, whole)
         if sx is None:
             return None
-        try:
-            with open(path, "rb") as f:
-                f.seek(sx)
-                head = f.read(64)
-        except OSError:
-            return None
+        if whole is not None:
+            head = whole[sx:sx + 64]
+        else:
+            try:
+                with open(path, "rb") as f:
+                    f.seek(sx)
+                    head = f.read(64)
+            except OSError:
+                return None
         # Classic cross-reference table.
         if re.match(rb"\s*xref\b", head):
-            parsed = self._parse_classic_xref(path)
+            parsed = self._parse_classic_xref(path, sx, whole)
             if parsed is None:
                 return None
             offset_map, root_ref, info_ref = parsed
-            info_region = (self._resolve_obj_region(path, offset_map[info_ref])
+            info_region = (self._resolve_obj_region(path, offset_map[info_ref], whole)
                            if info_ref is not None and info_ref in offset_map else None)
             return {"xref_type": "classic",
-                    "page_count": self._pdf_count_via_map(path, offset_map, root_ref),
+                    "page_count": self._pdf_count_via_map(path, offset_map, root_ref, whole),
                     "info_region": info_region}
         # Cross-reference STREAM (PDF 1.5+): the dict is plaintext (carries /Root,
         # /Info); the offset table is compressed (decoding it → v1.8). Recover
         # /Info + page_count by locating the referenced regular objects.
         if re.match(rb"\s*\d+\s+\d+\s+obj\b", head):
-            region = self._resolve_obj_region(path, sx)
+            region = self._resolve_obj_region(path, sx, whole)
             if b"/XRef" in region:
                 info_ref = self._pdf_obj_ref(region, b"/Info")
                 return {"xref_type": "stream",
                         "page_count": self._pdf_count_via_locate(
-                            path, self._pdf_obj_ref(region, b"/Root")),
-                        "info_region": self._locate_regular_obj(path, info_ref)}
+                            whole, self._pdf_obj_ref(region, b"/Root")),
+                        "info_region": self._locate_regular_obj(whole, info_ref)}
         return None
 
     def _extract_pdf_metadata(self, path: Path, sample: bytes,
@@ -2534,6 +2558,14 @@ class Scanner:
         # page_count + /Info read the whole file (capped) — the root page tree and
         # trailer Info can sit in the middle of a large non-linearized PDF.
         full = self._pdf_full_or_region(path, sample)
+        # `whole` is the complete file bytes when it was fully read (≤ cap — the
+        # common case); the anchor reader then resolves every object by slicing it
+        # (one read, no re-opens). None for > cap PDFs, where the anchor falls back
+        # to seeking the file directly.
+        try:
+            whole = full if path.stat().st_size <= PDF_FULL_READ_CAP else None
+        except OSError:
+            whole = None
         meta: dict[str, Any] = {}
         meta["has_text_streams"] = (
             b"/Text" in region or b"/Font" in region
@@ -2541,13 +2573,14 @@ class Scanner:
         )
         meta["encrypted"] = b"/Encrypt" in full
         # v1.7: follow the structural anchor (startxref → latest trailer → root →
-        # page tree). Precise on incremental updates (the root count, not the max
-        # over superseded fragments) and on > 64 MB PDFs (the pointer is followed
-        # regardless of size). Falls back to the v1.5 window scan field-by-field.
-        anchor = self._pdf_anchor(path, sample)
+        # page tree), dispatched via STRUCTURAL_ANCHORS. Precise on incremental
+        # updates (the root count, not the max over superseded fragments) and on
+        # > 64 MB PDFs (the pointer is followed regardless of size). `xref_type`
+        # records the form observed (`none` = no anchor followed → v1.5 fallback).
+        anchor = self._read_structural_index(path, sample, whole, "pdf")
         meta["xref_type"] = (anchor or {}).get("xref_type") or "none"
         if anchor and anchor.get("page_count") is not None:
-            meta["page_count"] = anchor["page_count"]            # trigger: structural_anchor
+            meta["page_count"] = anchor["page_count"]
         else:
             meta["page_count"] = self._pdf_page_count(full)      # v1.5 fallback
         # /Info strings: literal (...) AND hex <...>. Gated on `encrypted` — a
