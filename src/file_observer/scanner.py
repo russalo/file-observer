@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.5.0
-    Schema:     1.4
+    Version:    1.6.0
+    Schema:     1.5
     Python:     >= 3.12
-    Spec:       docs/v1.5.0_RFC_Specification.md (current)
+    Spec:       docs/v1.6.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -71,9 +71,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.5.0"
-LOGIC_VERSION = "1.4.0"
-SCHEMA_VERSION = "1.4"
+SCANNER_VERSION = "1.6.0"
+LOGIC_VERSION = "1.4.0"   # unchanged at v1.6 — provenance is pure aggregation, no routing change
+SCHEMA_VERSION = "1.5"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -834,6 +834,51 @@ AUTHOR_AGGREGATE_RULES_DEFINITION = (
 AUTHOR_AGGREGATE_STATIC_TUNING = {"top_n": 20, "template_default_threshold": 0.4}
 AUTHOR_AGGREGATE_EXCLUDED_VALUES = {"", "unknown", "user", "none", "null", "n/a"}
 
+# v1.6: production-provenance vector. Complements author_aggregate (WHO authored);
+# this is WHAT-TOOL / WHEN / digitization. Corpus-scoped, pure observation.
+PROVENANCE_VECTOR_ID = "provenance"
+PROVENANCE_METHOD_VERSION = 1
+PROVENANCE_RULES_DEFINITION = (
+    "harvest:pdf.producer|pdf.creator|pdf.creation_date|{document,spreadsheet}.application;"
+    "normalize:toolchain_table(closed,first_match,version_stripped_passthrough);"
+    "digitization:ocr_producer->ocr_detected|requires_vision->scanned|text_detected->born_digital"
+    "|authored_doc_ext->born_digital|else unknown;"
+    "aggregate(corpus):toolchains(top_n),production_years,digitization,per_namespace"
+)
+PROVENANCE_STATIC_TUNING = {"top_n": 20}
+# Closed, documented toolchain-normalization table (the vector's dictionary). Ordered:
+# OCR + specific BEFORE generic; first match wins. `is_ocr` feeds digitization.
+# (regex, normalized_name, is_ocr)
+PROVENANCE_TOOLCHAIN_RULES: list[tuple[re.Pattern, str, bool]] = [
+    (re.compile(r"paper\s*capture", re.I), "Adobe Acrobat (OCR / Paper Capture)", True),
+    (re.compile(r"abbyy|finereader", re.I), "ABBYY FineReader", True),
+    (re.compile(r"omnipage|tesseract|readiris", re.I), "OCR (OmniPage/Tesseract/Readiris)", True),
+    (re.compile(r"adobe\s*pdf\s*library", re.I), "Adobe PDF Library", False),
+    (re.compile(r"acrobat\s*distiller", re.I), "Adobe Acrobat Distiller", False),
+    (re.compile(r"adobe\s*(acrobat|indesign|illustrator|photoshop|framemaker)", re.I), "Adobe (Acrobat/CS app)", False),
+    (re.compile(r"\.hdi\b|pdfplot", re.I), "Autodesk (HDI plot driver)", False),
+    (re.compile(r"autocad|autodesk", re.I), "Autodesk", False),
+    (re.compile(r"bluebeam", re.I), "Bluebeam", False),
+    (re.compile(r"microsoft.{0,6}print\s*to\s*pdf", re.I), "Microsoft Print to PDF", False),
+    (re.compile(r"microsoft.{0,12}word|office\s*word", re.I), "Microsoft Word", False),
+    (re.compile(r"microsoft.{0,12}excel", re.I), "Microsoft Excel", False),
+    (re.compile(r"microsoft.{0,12}powerpoint", re.I), "Microsoft PowerPoint", False),
+    (re.compile(r"lib[er]*office|openoffice", re.I), "LibreOffice/OpenOffice", False),
+    (re.compile(r"pdftex|pdflatex|xetex|luatex|dvips|\bla?tex\b", re.I), "TeX/LaTeX", False),
+    (re.compile(r"ghostscript", re.I), "Ghostscript", False),
+    (re.compile(r"wkhtmltopdf", re.I), "wkhtmltopdf", False),
+    (re.compile(r"3-?heights", re.I), "PDF-Tools 3-Heights", False),
+    (re.compile(r"itext|tcpdf|\bfpdf\b|reportlab|\bprince\b|weasyprint", re.I), "PDF library (iText/TCPDF/ReportLab/Prince/…)", False),
+    (re.compile(r"quartz|\bcairo\b|coregraphics", re.I), "Quartz/Cairo", False),
+    (re.compile(r"scan|scanner|copier|imagerunner|workcentre|digital\s*sending", re.I), "Scanner/MFP device", False),
+]
+# unknown producers: strip from the first version-ish token to end so versions
+# group ("doPDF Ver 7.2 Build 367 (Windows … Version:" → "doPDF"). `.*$` (not a
+# restricted char class) so colons/parens in a messy build string don't block it.
+PROVENANCE_VERSION_SUFFIX_RE = re.compile(r"\s+(v(er)?\.?\s*)?\d.*$", re.I | re.S)
+PROVENANCE_DIGITIZATION_KEYS = ("born_digital", "scanned", "ocr_detected", "unknown")
+PROVENANCE_AUTHORED_DOC_EXT = {".docx", ".xlsx", ".doc", ".xls", ".rtf"}
+
 REFERENCE_EMAIL_RE = re.compile(r"\b[\w._%+-]+@[\w.-]+\.[a-zA-Z]{2,}\b")
 REFERENCE_PATH_UNIX_RE = re.compile(r"(?:/[\w.]+){3,}")
 REFERENCE_PATH_WIN_RE = re.compile(r"[A-Za-z]:\\(?:[\w.]+\\){2,}[\w.]*")
@@ -1105,6 +1150,7 @@ class Scanner:
     def _run_corpus_vectors(self, records: list[FileRecord]) -> None:
         """Run corpus-scoped vectors after the file walk completes."""
         self._run_author_aggregate(records)
+        self._run_provenance(records)
 
     def _run_author_aggregate(self, records: list[FileRecord]) -> None:
         """v0.10: author_aggregate corpus vector. Pulls authors from specialists."""
@@ -1229,6 +1275,109 @@ class Scanner:
                 "per_namespace_counts": {k: v for k, v in ns_counts.items() if v > 0},
                 "per_extension_distinct_authors": per_ext_distinct,
             },
+        ))
+
+    @staticmethod
+    def _normalize_toolchain(raw: str) -> tuple[str, bool]:
+        """Normalize a producer/creator string to a canonical toolchain name and an
+        is_ocr flag (v1.6). Closed table, first match wins; OCR + specific rules
+        precede generic. Unknown producers are passed through with a trailing
+        version/build suffix stripped so versions group ("doPDF Ver 7.2 …" → "doPDF")."""
+        s = " ".join(raw.split())
+        for pattern, name, is_ocr in PROVENANCE_TOOLCHAIN_RULES:
+            if pattern.search(s):
+                return (name, is_ocr)
+        cleaned = PROVENANCE_VERSION_SUFFIX_RE.sub("", s).strip()
+        return (cleaned or s, False)
+
+    def _classify_digitization(self, rec: 'FileRecord', is_ocr: bool) -> str | None:
+        """born_digital / scanned / ocr_detected / unknown — reuses v1.5 signals.
+        Returns None for files where digitization is not a meaningful axis (so the
+        counts cover only PDFs + authored documents)."""
+        if is_ocr:
+            return "ocr_detected"
+        pdf = (rec.specialist_metadata or {}).get("pdf")
+        if pdf:
+            if rec.requires_vision:
+                return "scanned"
+            if pdf.get("text_detected"):
+                return "born_digital"
+            return "unknown"
+        if rec.extension in PROVENANCE_AUTHORED_DOC_EXT:
+            return "born_digital"
+        return None
+
+    def _run_provenance(self, records: list[FileRecord]) -> None:
+        """v1.6: corpus-scoped production-provenance vector — normalized toolchain,
+        production era, digitization origin. Pure observation (no LOGIC change).
+        Gated on enable_specialists (provenance lives in specialist metadata)."""
+        if not self.config.enable_specialists:
+            return
+        toolchains: list[str] = []
+        years: dict[str, int] = {}
+        digitization: dict[str, int] = {}
+        per_ns: dict[str, int] = {}
+
+        for rec in records:
+            sm = rec.specialist_metadata or {}
+            producer: str | None = None
+            ns_source: str | None = None
+            pdf = sm.get("pdf")
+            if pdf:
+                producer = pdf.get("producer") or pdf.get("creator")
+                ns_source = "pdf"
+            else:
+                for ns in ("document", "spreadsheet"):
+                    app = sm.get(ns, {}).get("application") if isinstance(sm.get(ns), dict) else None
+                    if app:
+                        producer, ns_source = app, ns
+                        break
+
+            is_ocr = False
+            if producer and isinstance(producer, str) and producer.strip():
+                name, is_ocr = self._normalize_toolchain(producer.strip())
+                if name:
+                    toolchains.append(name)
+                    if ns_source:
+                        per_ns[ns_source] = per_ns.get(ns_source, 0) + 1
+
+            if pdf:
+                cd = pdf.get("creation_date")
+                if cd and isinstance(cd, str):
+                    ym = re.search(r"(\d{4})", cd)
+                    if ym and 1980 <= int(ym.group(1)) <= 2099:
+                        years[ym.group(1)] = years.get(ym.group(1), 0) + 1
+
+            cls = self._classify_digitization(rec, is_ocr)
+            if cls:
+                digitization[cls] = digitization.get(cls, 0) + 1
+
+        counts = Counter(toolchains)
+        summary = {
+            "toolchains": [{"name": k, "count": c}
+                           for k, c in counts.most_common(PROVENANCE_STATIC_TUNING["top_n"])],
+            "distinct_toolchains": len(counts),
+            "production_years": dict(sorted(years.items())),
+            "production_year_range": ([min(years), max(years)] if years else []),
+            "digitization": {k: digitization.get(k, 0) for k in PROVENANCE_DIGITIZATION_KEYS},
+            "per_namespace_counts": dict(sorted(per_ns.items())),
+        }
+        rules_hash = compute_rules_hash(PROVENANCE_RULES_DEFINITION)
+        tuning_hash = compute_tuning_hash(PROVENANCE_STATIC_TUNING)
+        identity_digest = compute_vector_identity_digest(
+            PROVENANCE_VECTOR_ID, PROVENANCE_METHOD_VERSION, rules_hash, tuning_hash,
+        )
+        self._vector_registry.register(VectorRecord(
+            vector_id=PROVENANCE_VECTOR_ID,
+            method_version=PROVENANCE_METHOD_VERSION,
+            scope="corpus",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=None,
+            identity_digest=identity_digest,
+            applied_to_count=len(toolchains),
+            summary=summary,
         ))
 
     def _extract_filename_patterns(self, filename: str) -> dict[str, bool]:
@@ -2235,29 +2384,37 @@ class Scanner:
             i += 1
         return None                              # unterminated / runaway
 
+    @staticmethod
+    def _decode_pdf_bytes(raw: bytes) -> str:
+        """Decode PDF string bytes (literal OR hex). PDF strings carry text either
+        as PDFDocEncoded (~latin-1) or UTF-16 with a byte-order mark — both literal
+        `(…)` and hex `<…>` forms (v1.6: the literal path previously assumed
+        latin-1, mojibake-ing UTF-16BE producer strings like `þÿ\x00M\x00i…`)."""
+        if raw[:2] == b"\xfe\xff":
+            return raw[2:].decode("utf-16-be", errors="replace")
+        if raw[:2] == b"\xff\xfe":
+            return raw[2:].decode("utf-16-le", errors="replace")
+        if b"\x00" in raw:
+            return raw.decode("utf-16-be", errors="replace")
+        return raw.decode("latin-1", errors="replace")
+
     def _extract_pdf_string(self, data: bytes, key: bytes) -> str | None:
         # literal string: /Key (…) — depth-aware (balanced + escaped parens).
         km = re.search(re.escape(key) + rb"\s*\(", data)
         if km:
             val = self._pdf_literal_string(data, km.end() - 1)  # at the '('
             if val is not None:
-                return val.decode("latin-1", errors="replace")
-        # hex string: /Key <48656C6C6F>. PDF hex strings are often UTF-16BE (with a
-        # FEFF BOM); plain ASCII hex also occurs. Decode accordingly.
+                return self._decode_pdf_bytes(val)
+        # hex string: /Key <48656C6C6F>.
         match = re.search(re.escape(key) + rb"\s*<([0-9A-Fa-f\s]+)>", data)
         if match:
             hexstr = re.sub(rb"\s", b"", match.group(1))
             if len(hexstr) % 2:
                 hexstr += b"0"  # ISO 32000 §7.3.4.3: odd-length hex pads a trailing 0
             try:
-                raw = bytes.fromhex(hexstr.decode("ascii"))
+                return self._decode_pdf_bytes(bytes.fromhex(hexstr.decode("ascii")))
             except ValueError:
                 return None
-            if raw[:2] == b"\xfe\xff":
-                return raw[2:].decode("utf-16-be", errors="replace")
-            if b"\x00" in raw:
-                return raw.decode("utf-16-be", errors="replace")
-            return raw.decode("latin-1", errors="replace")
         return None
 
     def _extract_png_metadata(self, sample: bytes) -> dict[str, Any] | None:
@@ -2387,7 +2544,20 @@ class Scanner:
                             header_rows[sheet_name] = cells
                 except Exception:
                     continue
-            return {"sheet_names": sheet_names, "header_rows": header_rows}
+            result: dict[str, Any] = {"sheet_names": sheet_names, "header_rows": header_rows}
+            # v1.6: producing app from docProps/app.xml (if present in the budget window)
+            app_raw = self._safe_zip_read(zf, "docProps/app.xml")
+            if app_raw is not None:
+                try:
+                    aroot = xml_fromstring(app_raw.decode("utf-8", errors="replace"))
+                    ns_e = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+                    for el in aroot.iter(f"{{{ns_e}}}Application"):
+                        if el.text and el.text.strip():
+                            result["application"] = el.text.strip()
+                        break
+                except Exception:
+                    pass
+            return result
         finally:
             zf.close()
 
@@ -2465,7 +2635,7 @@ class Scanner:
                         break
                 except Exception:
                     pass
-            # App properties from docProps/app.xml (word count)
+            # App properties from docProps/app.xml (word count + producing app, v1.6)
             app_raw = self._safe_zip_read(zf, "docProps/app.xml")
             if app_raw is not None:
                 try:
@@ -2474,6 +2644,10 @@ class Scanner:
                     for el in root.iter(f"{{{ns}}}Words"):
                         if el.text and el.text.isdigit():
                             meta["word_count"] = int(el.text)
+                        break
+                    for el in root.iter(f"{{{ns}}}Application"):  # v1.6: producing app
+                        if el.text and el.text.strip():
+                            meta["application"] = el.text.strip()
                         break
                 except Exception:
                     pass

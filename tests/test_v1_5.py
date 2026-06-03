@@ -73,10 +73,13 @@ OPAQUE = b"%PDF-1.5\n" + FILLER + FILLER + b"\n%%EOF\n"
 
 
 class TestVersionSurfaces:
-    def test_versions(self):
-        assert SCANNER_VERSION == "1.5.0"
-        assert LOGIC_VERSION == "1.4.0"
-        assert SCHEMA_VERSION == "1.4"
+    def test_schema_invariant(self):
+        # v1.5's stable invariant — provisional pdf.text_detected exists from
+        # schema 1.4 on, and PDF requires_vision routing landed at LOGIC 1.4.0.
+        # (Global versions move each release; exact values pinned in test_packaging.
+        # Tuple compare — string ">=" breaks at 1.10.)
+        assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 4)
+        assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 4, 0)
 
 
 class TestMetadataFromTail:
