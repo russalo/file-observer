@@ -124,7 +124,23 @@ v1.7-refreshed guardrail. CONFIRMED findings fixed; 746 tests:
   literal `N G obj` inside another object's content could mis-match the regex-locate
   path (a real-offset resolver removes it — v1.8). State the trade-off, don't fix.
 
-**Leg — PR bots + CI:** _to be completed on the PR._
+**Leg — PR bots + CI (done, PR #39).** CI green. CONFIRMED findings fixed:
+- **`/Info` still resurfaced when anchor present but region None (HIGH, gemini+codex):**
+  the leg-2 fix only covered "region present, key missing"; the sibling "anchor
+  resolved but no /Info region" still fell back to a whole-file scan. Fixed by
+  gating on authority: a resolved region is used; on a fully-read file (≤cap) a
+  missing region means absent (no scan); only a > cap file whose /Info couldn't be
+  read, or no anchor, uses the v1.5 window. **Corpus re-validation caught that the
+  first cut REGRESSED a 445 MB xref-stream PDF** (lost a real producer v1.5 found in
+  the tail) — the `whole is not None` discriminator fixes both. Guards:
+  `test_anchor_with_no_info_does_not_resurface`,
+  `test_over_cap_xref_stream_recovers_info_via_fallback`.
+- **`split(b"\n")` missed CR-only xref line endings (medium, gemini):** → `splitlines()`
+  (ISO 32000 allows `\r`/`\n`/`\r\n`). Guard: `test_cr_only_xref_line_endings`.
+
+749 tests. Corpus: 0 page_count / 0 producer diff vs v1.6 (320 producers); the
+review round-trip (bot finding → fix → corpus re-validation → regression → final
+fix) is the layers working as designed.
 
 ## 5. Backward Compatibility
 

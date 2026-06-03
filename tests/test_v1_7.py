@@ -262,6 +262,45 @@ class TestIncrementalLatestWins:
         assert meta["author"] is None               # NOT resurfaced from the stale /Info
 
 
+class TestPRBotFindings:
+    """PR bots (gemini + codex): the anchored /Info is authoritative even when the
+    trailer has NO /Info (don't resurface from the whole file); and the xref parser
+    must handle CR-only line endings."""
+
+    def test_anchor_with_no_info_does_not_resurface(self, tmp_path):
+        # Classic PDF whose trailer has NO /Info, plus a dangling /Author object
+        # appended after %%EOF (unreferenced). The anchor resolves (xref_type
+        # classic) but info_region is None → author must be None, NOT "Ghost".
+        base = _classic(producer=None, count=2)             # trailer omits /Info
+        pdf = base + b"\n5 0 obj\n<< /Author (Ghost) >>\nendobj\n"
+        meta = _pdf_meta(tmp_path, "a.pdf", pdf)
+        assert meta["xref_type"] == "classic"               # anchor was followed
+        assert meta["author"] is None                       # not scanned from `full`
+        assert meta["producer"] is None
+
+    def test_over_cap_xref_stream_recovers_info_via_fallback(self, tmp_path, monkeypatch):
+        # A > cap xref-stream PDF: whole=None so the locate path can't read /Info
+        # (info_region None). This is NOT "authoritatively absent" — fall back to the
+        # v1.5 window scan, whose tail holds the producer. (Regression caught when a
+        # 445 MB corpus PDF lost its producer; corpus re-validation found it.)
+        import file_observer.scanner as S
+        monkeypatch.setattr(S, "PDF_FULL_READ_CAP", 64)   # force whole=None
+        meta = _pdf_meta(tmp_path, "a.pdf", _xref_stream(producer=b"BigStream 9.0", count=5))
+        assert meta["xref_type"] == "stream"
+        assert meta["producer"] == "BigStream 9.0"        # recovered via fallback, not lost
+
+    def test_cr_only_xref_line_endings(self, tmp_path):
+        # A classic PDF with CR-only (\r) line endings in the xref table must still
+        # parse (splitlines, not split(b"\n")).
+        pdf = _classic(count=4, producer=b"CR 1.0")
+        # rebuild the xref region with \r line endings (it's all after "xref\n…")
+        head, _, xref = pdf.partition(b"xref\n")
+        xref_cr = xref.replace(b" \n", b" \r").replace(b"xref\n", b"xref\r")
+        meta = _pdf_meta(tmp_path, "a.pdf", head + b"xref\r" + xref_cr)
+        assert meta["xref_type"] == "classic"
+        assert meta["page_count"] == 4
+
+
 class TestLargeBeyondCap:
     def test_anchor_seek_when_whole_file_read_skipped(self, tmp_path, monkeypatch):
         # Force the genuine unread-middle scenario: the page tree / Info sit PAST

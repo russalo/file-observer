@@ -2425,7 +2425,10 @@ class Scanner:
             ti = chunk.find(b"trailer")
             table = chunk[:ti] if ti >= 0 else chunk
             obj = 0
-            for raw in table.split(b"\n"):
+            # splitlines() (not split(b"\n")) — PDF xref entries may end in `\r`,
+            # `\n`, or `\r\n` (ISO 32000); a CR-only table would otherwise parse as
+            # one line and yield no offsets (gemini PR review).
+            for raw in table.splitlines():
                 ln = raw.strip()
                 if not ln or ln == b"xref":
                     continue
@@ -2599,14 +2602,31 @@ class Scanner:
         # scan, which would resurface a stale value from a superseded /Info on an
         # incrementally-updated PDF (Gemini review). The whole-file scan is used only
         # when no anchor resolved /Info at all (the v1.5 path).
+        # /Info source + how authoritative it is:
+        #  - a resolved region (bytes) → authoritative, use it.
+        #  - anchor followed on a FULLY-READ file (whole present, ≤ cap) but no
+        #    region → the latest trailer genuinely has no /Info; the fields are
+        #    absent and we must NOT scan the whole file (that would resurface a
+        #    superseded /Info on an incremental update — gemini + codex PR review).
+        #  - anchor on a > cap file whose /Info object couldn't be read (whole None
+        #    → the xref-stream locate path can't slice), OR no anchor at all → use
+        #    the v1.5 window scan (its bounded tail holds the latest revision's
+        #    /Info). Without this, a > 64 MB xref-stream PDF loses a real producer
+        #    that v1.5 found in the tail (corpus re-validation caught this).
         info_src = (anchor or {}).get("info_region")
-        src = info_src if info_src is not None else full
+        if info_src is not None:
+            src: bytes | None = info_src
+        elif anchor is not None and whole is not None:
+            src = None
+        else:
+            src = full
         for field_name, pdf_key in [
             ("title", b"/Title"), ("author", b"/Author"),
             ("producer", b"/Producer"), ("creator", b"/Creator"),
             ("creation_date", b"/CreationDate"),
         ]:
-            meta[field_name] = None if meta["encrypted"] else self._extract_pdf_string(src, pdf_key)
+            meta[field_name] = (None if (meta["encrypted"] or src is None)
+                                else self._extract_pdf_string(src, pdf_key))
         # pdf_version: search the head (tolerate a leading BOM / whitespace before %PDF-).
         ver_match = re.search(rb"%PDF-(\d+\.\d+)", sample[:1024])
         meta["pdf_version"] = ver_match.group(1).decode("ascii") if ver_match else None
