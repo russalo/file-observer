@@ -86,8 +86,10 @@ by offset-seek rather than falling back to a window. `pdf.xref_type`
   optional dependency. `pdf.parser` records the tier. Residuals:
   - The stdlib fallback is **scoped to common cases** — it returns null (never a
     wrong value; validated against pypdf as an oracle) on ~12% of object-stream
-    PDFs that use exotic predictors (avg/paeth/TIFF) or unusual `/W`. Installing
-    `file-observer[pdf]` (pypdf) recovers those too.
+    PDFs that use exotic predictors (avg/paeth/TIFF), unusual `/W`, or an **indirect
+    `/Length`** (`/Length 5 0 R`, which it doesn't resolve). It also **refuses a
+    decompression bomb** (a flate stream expanding past 64 MB → null, not OOM).
+    Installing `file-observer[pdf]` (pypdf) recovers the scoped-out cases too.
   - **Empty-password-encrypted** object-stream PDFs stay null — the decode is gated
     on `not encrypted` (pypdf could decrypt them; a conservative scope choice).
   - PDFs **> 64 MB**: the stdlib decoder needs the whole file in memory (skips > 64

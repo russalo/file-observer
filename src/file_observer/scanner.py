@@ -97,6 +97,10 @@ PDF_FULL_READ_CAP = 67108864  # 64 MB; larger PDFs fall back to head+tail
 PDF_XREF_PREV_HOPS = 32          # max incremental-update revisions to follow
 PDF_ANCHOR_OBJ_CAP = 65536       # bytes read per resolved object (dict region)
 PDF_STARTXREF_TAIL = 2048        # bytes of file tail scanned for the last `startxref`
+PDF_INFLATE_CAP = 67108864       # 64 MB cap on a single decompressed PDF stream —
+                                 # bounds a decompression bomb (a small flate stream
+                                 # that expands to GBs); legit xref/ObjStm are far
+                                 # smaller. Same discipline as _ZIP_MAX_DECOMPRESS.
 # Declared structural anchors, keyed off the v1.3 format identification. PDF is the
 # v1.7 adopter; ZIP/OLE2 are documented as already-structural (zipfile finds the
 # EOCD, olefile walks the FAT) — no behavior change to them in v1.7.
@@ -2695,6 +2699,21 @@ class Scanner:
     # /W, etc.); cross-validated against pypdf as an oracle (0 disagreements on the
     # 371-PDF corpus; recovers 327, nulls 44 scoped-out).
     @staticmethod
+    def _safe_inflate(body: bytes, cap: int = PDF_INFLATE_CAP) -> bytes | None:
+        """zlib-inflate `body`, bounded to `cap` bytes — refuses a decompression bomb
+        (a small flate stream that expands to GBs) by returning None when the output
+        would exceed the cap, instead of exhausting memory. Same discipline as
+        `_ZIP_MAX_DECOMPRESS`. Returns None on any zlib error. (gemini PR review.)"""
+        try:
+            d = zlib.decompressobj()
+            out = d.decompress(body, cap)
+            if d.unconsumed_tail:          # output hit the cap and there is more → refuse
+                return None
+            return out
+        except Exception:
+            return None
+
+    @staticmethod
     def _pdf_stream_body(data: bytes, obj_off: int) -> tuple[bytes, bytes] | tuple[None, None]:
         """(dict_bytes, raw_stream_body) for the object at absolute `obj_off`."""
         win = data[obj_off:obj_off + PDF_ANCHOR_OBJ_CAP]
@@ -2774,9 +2793,8 @@ class Scanner:
             index = [int(x) for x in im.group(1).split()] if im else [0, size]
             if root_ref is None:
                 root_ref = Scanner._pdf_obj_ref(d, b"/Root")
-            try:
-                raw = zlib.decompress(body)
-            except Exception:
+            raw = Scanner._safe_inflate(body)
+            if raw is None:
                 break
             pm = re.search(rb"/Predictor\s+(\d+)", d)
             if pm and int(pm.group(1)) > 1:
@@ -2820,9 +2838,8 @@ class Scanner:
         if not fm:
             return None
         first = int(fm.group(1))
-        try:
-            dec = zlib.decompress(body)
-        except Exception:
+        dec = Scanner._safe_inflate(body)
+        if dec is None:
             return None
         hdr = dec[:first].split()
         pairs = [(int(hdr[i]), int(hdr[i + 1])) for i in range(0, len(hdr) - 1, 2)]

@@ -95,7 +95,21 @@ CONFIRMED findings fixed; 757 tests, corpus re-validated (653/616, oracle parity
   pypdf could decrypt (2 corpus PDFs) — a deliberate conservative scope. The exotic
   predictors (avg/paeth/TIFF) the stdlib decoder nulls are oracle-clean (0 disagree).
 
-**Leg — Gemini cross-model + PR bots + CI:** _to be completed on the PR._
+**Leg — Gemini cross-model (done).** pro + flash, v1.8-refreshed guardrail.
+- **zlib decompression bomb (HIGH, pro+flash converged):** the stdlib decoder's
+  `zlib.decompress(body)` was unbounded — a small flate stream expanding to GBs
+  exhausts memory (the scanner reads *untrusted* files). Fixed: `_safe_inflate`
+  (`decompressobj().decompress(body, cap)` + `unconsumed_tail` check) caps a single
+  stream at 64 MB (`PDF_INFLATE_CAP`), refusing a bomb → null, no OOM — same
+  discipline as the existing `_ZIP_MAX_DECOMPRESS`. Guard:
+  `test_safe_inflate_refuses_bomb`. Re-validated: legit PDFs unaffected (653, oracle
+  parity 0 disagreements).
+- **Accepted/documented (scoped-out → null, never wrong):** indirect `/Length`
+  (`/Length 5 0 R`, not resolved); a malformed `/ObjStm` header (odd/non-int pairs →
+  caught by the top-level guard → null). Both are oracle-clean (0 disagreements) and
+  recovered by pypdf; added to LIMITATIONS.
+
+**Leg — PR bots + CI:** _to be completed on the PR._
 
 ## 5. Backward Compatibility
 

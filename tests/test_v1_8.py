@@ -161,3 +161,17 @@ class TestStdlibOracleParity:
 
 def _sc():
     return Scanner(source_dir=Path("."), config=ScannerConfig(enable_specialists=True))
+
+
+class TestDecompressionBomb:
+    """Gemini PR review: the stdlib decoder's zlib.decompress was unbounded — a small
+    flate stream that expands to GBs would exhaust memory. `_safe_inflate` caps it."""
+
+    def test_safe_inflate_refuses_bomb(self):
+        bomb = zlib.compress(b"\x00" * (50 * 1024 * 1024))   # ~50 MB → tiny compressed
+        assert len(bomb) < 100_000
+        # cap below the expanded size → refused (None), no OOM.
+        assert _sc()._safe_inflate(bomb, cap=1 << 20) is None
+        # legit small stream within the cap → returned intact.
+        ok = zlib.compress(b"hello world")
+        assert _sc()._safe_inflate(ok, cap=1 << 20) == b"hello world"
