@@ -1845,11 +1845,13 @@ class Scanner:
         # read_sample / hash_file do bare open() — an unreadable file (permissions,
         # vanished, special file) must degrade to a FileRecord+ErrorRecord, not abort
         # the whole scan (red-team #5; these calls sit outside the stat try above).
+        read_failed = False
         try:
             sample = self.read_sample(path)
         except OSError as exc:
             errors.append(ErrorRecord(ERR_UNIVERSAL_READ_FAILED, str(exc), "universal"))
             sample = b""
+            read_failed = True
         mime_type, mime_prov = self.detect_mime(path, sample, errors)
         provenance["mime_type"] = asdict(mime_prov)
         mime_analysis = self.analyze_mime(path, mime_type, extension)
@@ -1859,11 +1861,14 @@ class Scanner:
             inputs=["mime_type"],
             detail={"detected": mime_analysis.detected_mime, "extension": mime_analysis.extension_mime},
         ))
-        try:
-            checksum = self.hash_file(path)
-        except OSError as exc:
-            errors.append(ErrorRecord(ERR_UNIVERSAL_READ_FAILED, str(exc), "universal"))
-            checksum = ""
+        if read_failed:
+            checksum = ""          # already known unreadable — don't re-open just to fail (gemini PR review)
+        else:
+            try:
+                checksum = self.hash_file(path)
+            except OSError as exc:
+                errors.append(ErrorRecord(ERR_UNIVERSAL_READ_FAILED, str(exc), "universal"))
+                checksum = ""
         created_at = self.safe_created_at(stat)
         modified_at = self.ts_to_iso(stat.st_mtime)
         stage_folder = rel_path.parts[0] if len(rel_path.parts) > 1 else ""
@@ -4495,14 +4500,18 @@ class Scanner:
             path.with_suffix(path.suffix + ".md"),
             path.with_name(path.stem + ".json"),
         ]
-        # A max-length base name makes the candidate exceed the 255-byte filesystem
-        # limit → `.exists()` raises OSError [Errno 36]. Treat any OSError as "no
-        # sidecar" so one pathological filename can't abort the whole scan (red-team
-        # #4) — same defensive stance as _zip_namelist.
-        try:
-            return any(c.exists() for c in candidates)
-        except OSError:
-            return False
+        # A max-length base name makes a candidate exceed the 255-byte filesystem
+        # limit → `.exists()` raises OSError [Errno 36]. Guard EACH candidate
+        # independently so one over-long candidate can't (a) abort the scan
+        # (red-team #4) or (b) hide a valid shorter sidecar that exists (PR review:
+        # a single try/except around the whole `any()` would skip the rest).
+        for c in candidates:
+            try:
+                if c.exists():
+                    return True
+            except OSError:
+                continue
+        return False
 
     def run_specialist_probe(self, path: Path, extension: str, errors: list[ErrorRecord]) -> None:
         if extension == ".json":

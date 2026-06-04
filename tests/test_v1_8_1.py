@@ -98,6 +98,20 @@ class TestNeverCrashesScan:
             os.chmod(p, 0o644)                        # let tmp cleanup remove it
 
 
+class TestSidecarPerCandidate:
+    """PR review (#4 refinement) — guarding each sidecar candidate independently
+    must not let one over-long candidate hide a valid shorter sidecar that exists."""
+
+    def test_overlong_first_candidate_does_not_hide_real_sidecar(self, tmp_path):
+        # base name chosen so candidate[0] (base + ".json", +5 bytes) overruns the
+        # 255-byte limit (→ OSError) while candidate[2] (stem + ".json") fits + exists.
+        base = "a" * 250 + ".x"            # 252 bytes
+        (tmp_path / base).write_text("doc")
+        sidecar = tmp_path / ("a" * 250 + ".json")   # 255 bytes — the stem-based candidate
+        sidecar.write_text("{}")
+        assert _sc().detect_sidecar(tmp_path / base) is True   # pre-fix: OSError on cand[0] → False
+
+
 class TestNoTreeEscape:
     """#6 — a symlink pointing OUTSIDE the scan tree must not be read into the
     manifest (and an in-tree file is still scanned)."""
@@ -106,7 +120,10 @@ class TestNoTreeEscape:
         outside = tmp_path.parent / f"rt_outside_{tmp_path.name}.txt"
         outside.write_text("SECRET-OUTSIDE-THE-TREE")
         try:
-            (tmp_path / "escape.txt").symlink_to(outside)
+            try:
+                (tmp_path / "escape.txt").symlink_to(outside)
+            except (OSError, NotImplementedError):
+                pytest.skip("symlinks unsupported here (Windows w/o privilege)")
             (tmp_path / "real.txt").write_text("in-tree")
             m = _scan(tmp_path)
             paths = {f.path for f in m.files}
