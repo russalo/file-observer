@@ -126,13 +126,38 @@ class TestParserField:
 
 
 class TestDependencyMatrix:
-    def test_pypdf_absent_falls_through(self, tmp_path, monkeypatch):
-        # With pypdf forced unavailable, tier 1 is skipped. Until the stdlib decoder
-        # (tier 2) lands, the object-stream page_count stays None (honest) and
-        # parser is "none" — NEVER a wrong value. (This assertion tightens to a
-        # recovered value once tier 2 is implemented.)
+    def test_pypdf_present_uses_tier1(self, tmp_path):
+        meta = _pdf_meta(tmp_path, "f.pdf", _objstm_pdf(5))
+        assert meta["page_count"] == 5 and meta["parser"] == "pypdf"
+
+    def test_pypdf_absent_falls_to_stdlib(self, tmp_path, monkeypatch):
+        # With pypdf forced unavailable, the stdlib decoder (tier 2) recovers the
+        # object-stream page_count — the "works without the dep" path.
         import file_observer.scanner as S
         monkeypatch.setattr(S, "pypdf", None, raising=False)
-        meta = _pdf_meta(tmp_path, "f.pdf", _objstm_pdf(3))
-        assert meta["page_count"] is None
-        assert meta["parser"] in ("none", "stdlib")
+        for n in (1, 3, 7):
+            meta = _pdf_meta(tmp_path, f"f{n}.pdf", _objstm_pdf(n))
+            assert meta["page_count"] == n, n
+            assert meta["parser"] == "stdlib"
+
+
+class TestStdlibOracleParity:
+    """The stdlib decoder must NEVER disagree with pypdf (the oracle) — it may null
+    on exotic inputs, but a different value is a bug."""
+    def test_stdlib_matches_pypdf_on_fixtures(self):
+        import io
+        sc = _sc()
+        for n in (1, 2, 3, 5, 7, 11):
+            data = _objstm_pdf(n)
+            (Path("/tmp") / "x.pdf")  # noqa — just for clarity
+            oracle = len(pypdf.PdfReader(io.BytesIO(data)).pages)
+            # call the stdlib tier directly via a temp file
+            import tempfile
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tf:
+                tf.write(data); tf.flush()
+                got = sc._pdf_via_stdlib(Path(tf.name))
+            assert got is not None and got["page_count"] == oracle == n
+
+
+def _sc():
+    return Scanner(source_dir=Path("."), config=ScannerConfig(enable_specialists=True))
