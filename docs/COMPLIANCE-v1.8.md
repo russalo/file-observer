@@ -68,8 +68,34 @@ honest, never wrong.
 ## 4. Review findings & resolution
 
 Four review legs (empirical sweep, in-house multi-agent `/code-review`, Gemini
-cross-model, PR bots + CI). _To be completed on the PR; all CONFIRMED findings fixed
-before merge._
+cross-model, PR bots + CI).
+
+**Leg — in-house multi-agent `/code-review` (done).** 7 finder angles → verify.
+CONFIRMED findings fixed; 757 tests, corpus re-validated (653/616, oracle parity
+0 disagreements — all behavior-preserving):
+- **`pypdf` not in `ScanContext` (HIGH — doc-ahead-of-code, the v1.7-trigger class):**
+  the docs claimed pypdf joins `ScanContext`, but `_build_context` didn't record it —
+  a real determinism gap (pypdf presence/version changes `parser`/`page_count`/
+  `producer` but wasn't in the context that explains cross-environment variance).
+  Fixed: `deps["pypdf"] = {available, version}`.
+- **Redundant whole-file reads (CONFIRMED, converged):** the stdlib decoder did its
+  own `path.read_bytes()` and pypdf re-opened the path, ignoring the `whole` bytes
+  `_extract_pdf_metadata` already read. Fixed: thread `whole` through the cascade —
+  the stdlib tier reuses it, pypdf reads it via `io.BytesIO` (also removes any
+  file-handle concern). Behavior-preserving (653/616 unchanged).
+- **`_pdf_resolve_via_map` lacked the `endobj` trim** that `_resolve_obj_region` has
+  (asymmetric robustness — could match a stale key in junk before `endobj`). Fixed
+  for parity.
+- **Stale module-docstring `Spec:`** (still v1.7.0) → v1.8.0 (removed the dup).
+- Tidied: predictor loop bound to the standard `range(0, len(raw), stride)` idiom.
+- **Documented / accepted (state the trade-off):** tier 2 (stdlib) fills `page_count`
+  only, not `/Info` — so `producer` may be null without pypdf; this variance is now
+  contractually explained by the `pypdf` ScanContext dependency (a parked residual:
+  `/Info`-via-stdlib). The `not encrypted` gate skips empty-password-encrypted PDFs
+  pypdf could decrypt (2 corpus PDFs) — a deliberate conservative scope. The exotic
+  predictors (avg/paeth/TIFF) the stdlib decoder nulls are oracle-clean (0 disagree).
+
+**Leg — Gemini cross-model + PR bots + CI:** _to be completed on the PR._
 
 ## 5. Backward Compatibility
 

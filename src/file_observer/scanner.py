@@ -8,7 +8,7 @@ extracts metadata and signals, emits a deterministic JSON manifest.
     Version:    1.8.0
     Schema:     1.7
     Python:     >= 3.12
-    Spec:       docs/v1.7.0_RFC_Specification.md (current)
+    Spec:       docs/v1.8.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -34,6 +34,7 @@ import mimetypes
 import os
 import platform
 import re
+import io
 import struct
 import sys
 import zlib
@@ -1569,6 +1570,13 @@ class Scanner:
             deps["defusedxml"] = {"available": True, "version": dxml_ver}
         else:
             deps["defusedxml"] = {"available": False, "version": None}
+        # pypdf (v1.8): its presence/version changes object-stream page_count/Info
+        # (and the `pdf.parser` tier), so it MUST be in the context that explains
+        # cross-environment variance — capability-locked determinism (review catch).
+        if pypdf is not None:
+            deps["pypdf"] = {"available": True, "version": getattr(pypdf, "__version__", "unknown")}
+        else:
+            deps["pypdf"] = {"available": False, "version": None}
 
         return ScanContext(
             logic_version=LOGIC_VERSION,
@@ -2658,7 +2666,7 @@ class Scanner:
         # `parser` records which tier produced a recovered value (none = not used).
         meta["parser"] = "none"
         if meta["page_count"] is None and not meta["encrypted"]:
-            decoded = self._pdf_decode_compressed(path)
+            decoded = self._pdf_decode_compressed(path, whole)
             if decoded:
                 meta["parser"] = decoded["parser"]
                 if decoded.get("page_count") is not None:
@@ -2668,14 +2676,16 @@ class Scanner:
                         meta[k] = decoded[k]
         return meta
 
-    def _pdf_decode_compressed(self, path: Path) -> dict[str, Any] | None:
+    def _pdf_decode_compressed(self, path: Path, whole: bytes | None) -> dict[str, Any] | None:
         """v1.8 tiered decode for object-stream PDFs (page tree / Info compressed):
         pypdf (tier 1) → stdlib decoder (tier 2) → None. The first tier to return a
-        result wins; every tier degrades to the next, never raises."""
-        result = self._pdf_via_pypdf(path)
+        result wins; every tier degrades to the next, never raises. `whole` is the
+        already-read whole file (≤ cap) — reused by both tiers so the file isn't
+        re-read (read-once, like the v1.7 anchor)."""
+        result = self._pdf_via_pypdf(path, whole)
         if result is not None:
             return result
-        return self._pdf_via_stdlib(path)
+        return self._pdf_via_stdlib(path, whole)
 
     # ---- v1.8 tier 2: stdlib object-stream decoder (no dependency) -----------
     # Decodes the compressed cross-reference stream + object streams in stdlib
@@ -2715,7 +2725,7 @@ class Scanner:
         stride = columns + 1
         out = bytearray()
         prev = bytearray(columns)
-        for i in range(0, len(raw) - columns, stride):
+        for i in range(0, len(raw), stride):   # partial trailing row handled by the break below
             ft = raw[i]
             row = bytearray(raw[i + 1:i + 1 + columns])
             if len(row) < columns:
@@ -2830,21 +2840,28 @@ class Scanner:
         ent = objmap.get(num)
         if not ent:
             return None
-        if ent[0] == 1:
-            return data[ent[1]:ent[1] + PDF_ANCHOR_OBJ_CAP]
-        if ent[0] == 2:
+        if ent[0] == 1:                          # regular object at a byte offset
+            chunk = data[ent[1]:ent[1] + PDF_ANCHOR_OBJ_CAP]
+            end = chunk.find(b"endobj")           # trim at endobj (parity with
+            return chunk if end < 0 else chunk[:end]   # _resolve_obj_region — no stale-key match)
+        if ent[0] == 2:                          # compressed in an object stream
             return Scanner._pdf_objstm_extract(data, objmap, ent[1], ent[2])
         return None
 
-    def _pdf_via_stdlib(self, path: Path) -> dict[str, Any] | None:
+    def _pdf_via_stdlib(self, path: Path, whole: bytes | None = None) -> dict[str, Any] | None:
         """Tier 2: decode an object-stream PDF's page_count in stdlib. Returns a dict
-        (`parser="stdlib"`) or None. Never raises."""
-        try:
-            if path.stat().st_size > PDF_FULL_READ_CAP:
+        (`parser="stdlib"`) or None. Never raises. Reuses the already-read `whole`
+        file (≤ cap) when given; > cap files (whole=None) are skipped (needs the
+        whole file in memory)."""
+        if whole is not None:
+            data = whole
+        else:
+            try:
+                if path.stat().st_size > PDF_FULL_READ_CAP:
+                    return None
+                data = path.read_bytes()
+            except OSError:
                 return None
-            data = path.read_bytes()
-        except OSError:
-            return None
         try:
             sx = self._pdf_last_startxref(path, b"", data)
             if sx is None:
@@ -2868,11 +2885,13 @@ class Scanner:
             return None
 
     @staticmethod
-    def _pdf_via_pypdf(path: Path) -> dict[str, Any] | None:
+    def _pdf_via_pypdf(path: Path, whole: bytes | None = None) -> dict[str, Any] | None:
         """Tier 1: read page_count + /Info via the optional `pypdf` parser, scoped to
         exactly those facts (no text/structure — observe, don't extract). Bounded
         (strict=False, no network/JS). Returns a dict (with `parser="pypdf"`) or None
-        when pypdf is absent / can't read / found nothing. Never raises."""
+        when pypdf is absent / can't read / found nothing. Never raises. Reads from
+        the already-read `whole` bytes via BytesIO when given (no re-read, no file
+        handle); else opens the path (e.g. > cap files)."""
         if pypdf is None:
             return None
 
@@ -2883,7 +2902,8 @@ class Scanner:
             return s or None
 
         try:
-            reader = pypdf.PdfReader(str(path), strict=False)
+            source: Any = io.BytesIO(whole) if whole is not None else str(path)
+            reader = pypdf.PdfReader(source, strict=False)
             if getattr(reader, "is_encrypted", False):
                 try:
                     reader.decrypt("")          # empty-password (owner-only) PDFs
