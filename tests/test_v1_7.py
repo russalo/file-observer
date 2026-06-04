@@ -127,9 +127,11 @@ def _sc():
 
 class TestVersions:
     def test_versions(self):
-        assert SCANNER_VERSION == "1.7.0"
-        assert LOGIC_VERSION == "1.4.0"      # UNCHANGED — index reads are extraction, not routing
-        assert SCHEMA_VERSION == "1.6"
+        # v1.7 invariants as FLOORS (global versions move each release; exact current
+        # values pinned in test_packaging). xref_type arrived at SCHEMA 1.6.
+        assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 7, 0)
+        assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 6)
+        assert LOGIC_VERSION == "1.4.0"      # UNCHANGED through v1.8 — extraction, not routing
 
 
 class TestClassicXref:

@@ -5,8 +5,8 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.7.0
-    Schema:     1.6
+    Version:    1.8.0
+    Schema:     1.7
     Python:     >= 3.12
     Spec:       docs/v1.7.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
@@ -59,6 +59,11 @@ except ImportError:
     olefile = None  # type: ignore[assignment]
 
 try:
+    import pypdf  # v1.8: optional PDF parser (tier 1) for object-stream page_count/Info
+except ImportError:
+    pypdf = None  # type: ignore[assignment]
+
+try:
     import tomllib
 except ImportError:
     tomllib = None  # type: ignore[assignment]
@@ -71,9 +76,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.7.0"
-LOGIC_VERSION = "1.4.0"   # unchanged at v1.7 — structural-anchor index reads are specialist extraction, not routing
-SCHEMA_VERSION = "1.6"
+SCANNER_VERSION = "1.8.0"
+LOGIC_VERSION = "1.4.0"   # unchanged at v1.8 — object-stream decode is specialist extraction, not routing
+SCHEMA_VERSION = "1.7"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -2645,7 +2650,76 @@ class Scanner:
         count_et = len(re.findall(rb"\bET\b", sample))
         meta["sample_text_marker_density"] = (
             (count_bt + count_et) / len(sample) if len(sample) > 0 else None)
+        # v1.8: object-stream PDFs (PDF 1.5+) compress the page tree into an /ObjStm,
+        # so v1.7's byte reader leaves page_count (and sometimes /Info) null. A tiered
+        # decode fills them — pypdf (tier 1) → stdlib decoder (tier 2) → null —
+        # ADDITIVE ONLY: it fills nulls, never overrides a value v1.7 produced.
+        # `parser` records which tier produced a recovered value (none = not used).
+        meta["parser"] = "none"
+        if meta["page_count"] is None and not meta["encrypted"]:
+            decoded = self._pdf_decode_compressed(path)
+            if decoded:
+                meta["parser"] = decoded["parser"]
+                if decoded.get("page_count") is not None:
+                    meta["page_count"] = decoded["page_count"]
+                for k in ("title", "author", "producer", "creator", "creation_date"):
+                    if meta.get(k) is None and decoded.get(k) is not None:
+                        meta[k] = decoded[k]
         return meta
+
+    def _pdf_decode_compressed(self, path: Path) -> dict[str, Any] | None:
+        """v1.8 tiered decode for object-stream PDFs (page tree / Info compressed):
+        pypdf (tier 1) → stdlib decoder (tier 2) → None. The first tier to return a
+        result wins; every tier degrades to the next, never raises."""
+        result = self._pdf_via_pypdf(path)
+        # tier 2 (stdlib in-house decoder) is added in the next step of the v1.8 build
+        return result
+
+    @staticmethod
+    def _pdf_via_pypdf(path: Path) -> dict[str, Any] | None:
+        """Tier 1: read page_count + /Info via the optional `pypdf` parser, scoped to
+        exactly those facts (no text/structure — observe, don't extract). Bounded
+        (strict=False, no network/JS). Returns a dict (with `parser="pypdf"`) or None
+        when pypdf is absent / can't read / found nothing. Never raises."""
+        if pypdf is None:
+            return None
+
+        def _s(v: Any) -> str | None:
+            if v is None:
+                return None
+            s = str(v).strip()
+            return s or None
+
+        try:
+            reader = pypdf.PdfReader(str(path), strict=False)
+            if getattr(reader, "is_encrypted", False):
+                try:
+                    reader.decrypt("")          # empty-password (owner-only) PDFs
+                except Exception:
+                    return None
+            out: dict[str, Any] = {"parser": "pypdf", "page_count": None,
+                                   "title": None, "author": None, "producer": None,
+                                   "creator": None, "creation_date": None}
+            try:
+                out["page_count"] = len(reader.pages)
+            except Exception:
+                pass
+            try:
+                md = reader.metadata
+                if md is not None:
+                    out["title"] = _s(md.title)
+                    out["author"] = _s(md.author)
+                    out["producer"] = _s(md.producer)
+                    out["creator"] = _s(md.creator)
+                    out["creation_date"] = _s(md.get("/CreationDate"))
+            except Exception:
+                pass
+            if out["page_count"] is None and all(
+                    out[k] is None for k in ("title", "author", "producer", "creator", "creation_date")):
+                return None                      # nothing useful → let the cascade continue
+            return out
+        except Exception:
+            return None
 
     @staticmethod
     def _pdf_literal_string(data: bytes, open_paren: int) -> bytes | None:
