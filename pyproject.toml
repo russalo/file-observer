@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.7.0"
+version = "1.8.0"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "docs/README.md"
 requires-python = ">=3.12"
@@ -39,7 +39,8 @@ dependencies = ["python-magic", "chardet"]
 yaml = ["PyYAML"]
 msg = ["olefile"]
 security = ["defusedxml"]
-dev = ["pytest", "PyYAML", "olefile", "defusedxml"]
+pdf = ["pypdf"]   # v1.8: object-stream page_count/Info (tier 1; stdlib fallback if absent)
+dev = ["pytest", "PyYAML", "olefile", "defusedxml", "pypdf"]
 
 [project.urls]
 Homepage = "https://github.com/russalo/file-observer"

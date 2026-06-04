@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent �
 - MAJOR (x.0 → x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `1.6`
+**Current:** `1.7`
 **Note:** This IS a public contract field. As of v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, since v0.9)
@@ -66,7 +66,7 @@ The scanner has five distinct things that carry versions. They are independent �
 |---|---|---|---|---|
 | Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.6.0 | Internal |
 | Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.0 | Internal* |
-| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.6 | **Public** |
+| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.7 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
 
@@ -215,7 +215,7 @@ This section is for **us**. It is the running list of everything File Observer c
 
 | Namespace | Fields |
 |---|---|
-| `pdf` | has_text_streams, page_count, title, author, producer, creator, creation_date, encrypted, pdf_version, sample_text_marker_density, **text_detected** (v1.5, provisional), **xref_type** (v1.7, provisional — classic/stream/none) |
+| `pdf` | has_text_streams, page_count, title, author, producer, creator, creation_date, encrypted, pdf_version, sample_text_marker_density, **text_detected** (v1.5, provisional), **xref_type** (v1.7, provisional — classic/stream/none), **parser** (v1.8, provisional — pypdf/stdlib/none, the decode tier that filled an object-stream `page_count`/`/Info`) |
 | `image` | width, height, bit_depth (PNG only) |
 | `email` | subject, from, to, date, message_id, has_attachments |
 | `spreadsheet` | sheet_names, header_rows (XLSX only), format (`biff` or `ooxml`), **application** (OOXML `app.xml`, v1.6) |
