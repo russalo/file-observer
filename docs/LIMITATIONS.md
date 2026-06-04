@@ -66,6 +66,11 @@ explained by the `context`: dependency versions, Python version, platform, and
 `logic_version`. Determinism is a contract *within* a context, not a promise
 that every machine produces byte-identical results regardless of environment.
 
+When a file cannot be `stat()`-ed (deleted mid-scan, a TOCTOU race, a special
+file), its degraded record reports `created_at` **and** `modified_at` as `null`
+— never the wall-clock scan time — so the manifest stays reproducible across runs
+even on that error path (v1.8.2).
+
 ## PDF metadata is read by following the file's structural index (v1.5 + v1.7)
 
 The PDF specialist obtains `page_count` and `/Info` (producer/title/creation_date)

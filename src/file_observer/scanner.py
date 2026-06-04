@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.8.1
+    Version:    1.8.2
     Schema:     1.7
     Python:     >= 3.12
     Spec:       docs/v1.8.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.8.1"
-LOGIC_VERSION = "1.4.1"   # v1.8.1 — red-team hardening changed discovery (skip out-of-tree symlinks) + error handling (unreadable/long-name files → ErrorRecord, not crash)
+SCANNER_VERSION = "1.8.2"
+LOGIC_VERSION = "1.4.2"   # v1.8.2 — stat-failure record's modified_at → None (was wall-clock now_iso), restoring determinism on the degraded path (Gemini maestro-audit F2)
 SCHEMA_VERSION = "1.7"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -1812,7 +1812,9 @@ class Scanner:
                 mime_type="application/octet-stream",
                 size_bytes=0,
                 created_at=None,
-                modified_at=self.now_iso(),
+                modified_at=None,   # stat failed → mtime unknown; None (not wall-clock
+                                    # now_iso) keeps this degraded record deterministic
+                                    # so it doesn't perturb manifest_checksum (Gemini F2)
                 checksum_sha256="",
                 stage_folder="",
                 directory_depth=0,

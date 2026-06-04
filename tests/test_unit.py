@@ -825,8 +825,8 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "1.8.1"
-        assert ctx.logic_version == "1.4.1"
+        assert ctx.scanner_version == "1.8.2"
+        assert ctx.logic_version == "1.4.2"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -864,7 +864,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "1.8.1"
+        assert data["context"]["scanner_version"] == "1.8.2"
 
 
 # ---------------------------------------------------------------------------
@@ -2074,8 +2074,8 @@ class TestSemanticToolNames:
 
     def test_version_is_current(self) -> None:
         from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "1.8.1"
-        assert LOGIC_VERSION == "1.4.1"
+        assert SCANNER_VERSION == "1.8.2"
+        assert LOGIC_VERSION == "1.4.2"
 
 
 # ---------------------------------------------------------------------------
@@ -3572,4 +3572,4 @@ class TestMarkdownReport:
         from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
-        assert "1.8.1" in md
+        assert "1.8.2" in md
