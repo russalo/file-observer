@@ -175,3 +175,7 @@ class TestDecompressionBomb:
         # legit small stream within the cap → returned intact.
         ok = zlib.compress(b"hello world")
         assert _sc()._safe_inflate(ok, cap=1 << 20) == b"hello world"
+        # a VALID stream with trailing garbage after the zlib data (common in PDF
+        # stream bodies) must NOT be falsely refused — key on eof, not unconsumed_tail
+        # (gemini PR review: the bomb fix had a false-positive).
+        assert _sc()._safe_inflate(ok + b"\n%junk trailing bytes", cap=1 << 20) == b"hello world"

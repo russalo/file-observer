@@ -2707,7 +2707,11 @@ class Scanner:
         try:
             d = zlib.decompressobj()
             out = d.decompress(body, cap)
-            if d.unconsumed_tail:          # output hit the cap and there is more → refuse
+            # A bomb is when the stream did NOT finish within `cap` output bytes
+            # (`not d.eof`). Do NOT key on `unconsumed_tail` — a valid stream that
+            # finished can still leave trailing bytes after the zlib data (common in
+            # PDF stream bodies), which would falsely refuse it (gemini PR review).
+            if not d.eof:
                 return None
             return out
         except Exception:

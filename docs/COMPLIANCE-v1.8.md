@@ -109,7 +109,17 @@ CONFIRMED findings fixed; 757 tests, corpus re-validated (653/616, oracle parity
   caught by the top-level guard → null). Both are oracle-clean (0 disagreements) and
   recovered by pypdf; added to LIMITATIONS.
 
-**Leg — PR bots + CI:** _to be completed on the PR._
+**Leg — PR bots + CI (done, PR #41).** CI green.
+- **`_safe_inflate` false-positive (HIGH, gemini) — a bug in the leg-2 bomb fix:**
+  keying the bomb check on `unconsumed_tail` would wrongly refuse a VALID stream that
+  has trailing bytes after the zlib data (common in PDF stream bodies). Fixed: key on
+  `not d.eof` (stream didn't finish within the cap). Guard extended:
+  `test_safe_inflate_refuses_bomb` now asserts trailing-garbage is tolerated.
+- **codex (P2) — run the cascade when page_count is present but /Info compressed:**
+  valid in theory, but **measured-negligible** — exactly 1 corpus PDF is in that state
+  (stream + page_count + no producer), and pypdf has no producer for it either (0
+  recoverable). Declined with data: broadening the trigger would run pypdf on more
+  PDFs for zero payoff (efficiency). Documented as a measured residual.
 
 ## 5. Backward Compatibility
 
