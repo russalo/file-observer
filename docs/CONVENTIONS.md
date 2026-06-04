@@ -25,7 +25,7 @@ The scanner has five distinct things that carry versions. They are independent â
 **Where it lives:** `LOGIC_VERSION` constant in `src/file_observer/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `1.4.0`
+**Current:** `1.4.1`
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -65,7 +65,7 @@ The scanner has five distinct things that carry versions. They are independent â
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
 | Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.6.0 | Internal |
-| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.0 | Internal* |
+| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.1 | Internal* |
 | Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.7 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
@@ -243,6 +243,7 @@ Core counters in `ScanQuality`: total_files, clean_files, degraded_files, error_
 | Code | Stage | Meaning |
 |---|---|---|
 | `universal_stat_failed` | universal | `path.stat()` raised |
+| `universal_read_failed` | universal | `read_sample`/`hash_file` `open()` raised (permissions/vanished/special file) â€” v1.8.1; degrades to a record + this error, never aborts the scan |
 | `unsupported_extension` | universal | Extension not in SUPPORTED_EXTENSIONS |
 | `mime_type_fallback` | universal | libmagic unavailable |
 | `baseline_decode_failed` | baseline | Text decoding raised |

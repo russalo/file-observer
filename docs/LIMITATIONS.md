@@ -88,7 +88,10 @@ by offset-seek rather than falling back to a window. `pdf.xref_type`
     wrong value; validated against pypdf as an oracle) on ~12% of object-stream
     PDFs that use exotic predictors (avg/paeth/TIFF), unusual `/W`, or an **indirect
     `/Length`** (`/Length 5 0 R`, which it doesn't resolve). It also **refuses a
-    decompression bomb** (a flate stream expanding past 64 MB → null, not OOM).
+    decompression bomb** (a flate stream expanding past 64 MB → null, not OOM) and,
+    as of v1.8.1, an attacker `/Columns` (capped to the inflated-stream size),
+    zero-width `/W [0 0 0]` xref entries, and the compositional `/Prev`-chain work
+    (aggregate inflate budget) — all → null, never an unbounded alloc/loop.
     Installing `file-observer[pdf]` (pypdf) recovers the scoped-out cases too.
   - **Empty-password-encrypted** object-stream PDFs stay null — the decode is gated
     on `not encrypted` (pypdf could decrypt them; a conservative scope choice).
@@ -101,6 +104,17 @@ by offset-seek rather than falling back to a window. `pdf.xref_type`
 - Encrypted PDFs: `/Info` strings are encrypted, so they're reported as null.
 `requires_vision` is conservative: it flags a PDF only when text/font markers are
 absent AND image markers are present.
+
+## The scan stays within the source tree (v1.8.1)
+
+The directory walk follows symlinks **only when the target resolves inside the
+source tree**. A symlink pointing outside (e.g. `→ /etc/passwd`) is skipped — it is
+not read into the manifest — mirroring the path-traversal guard on ZIP entries
+(`_is_safe_zip_entry`). This also keeps the scan deterministic (an external symlink
+target that mutates between runs can't change the manifest). In-tree symlinks are
+followed normally. A single unreadable file (permissions, special file) or a
+maximum-length filename degrades to one `FileRecord` + `ErrorRecord`
+(`universal_read_failed`) rather than aborting the whole scan.
 
 ## Provenance vector reports what's observable, not ground truth (v1.6)
 

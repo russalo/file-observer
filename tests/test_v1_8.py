@@ -92,9 +92,9 @@ def _classic_pdf(count=3, producer=b"Classic 1.0"):
 
 class TestVersions:
     def test_versions(self):
-        assert SCANNER_VERSION == "1.8.0"
-        assert LOGIC_VERSION == "1.4.0"      # UNCHANGED — decode is specialist extraction
-        assert SCHEMA_VERSION == "1.7"
+        assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 8, 0)
+        assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 4, 0)
+        assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 7)
 
 
 class TestFixtureSanity:

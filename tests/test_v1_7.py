@@ -131,7 +131,7 @@ class TestVersions:
         # values pinned in test_packaging). xref_type arrived at SCHEMA 1.6.
         assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 7, 0)
         assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 6)
-        assert LOGIC_VERSION == "1.4.0"      # UNCHANGED through v1.8 — extraction, not routing
+        assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 4, 0)   # floor — LOGIC moves with patches
 
 
 class TestClassicXref:
