@@ -19,7 +19,8 @@
   `pdf.parser` = `pypdf`/`stdlib`/`none`). `pypdf` is an optional dep
   (`file-observer[pdf]`), gated like `olefile`.
 - **Overall:** COMPLETE. Decision (RFC §4): **B with an A fallback**, measured-first.
-- **Tests:** 757 passed, 1 skipped (+8 in `tests/test_v1_8.py`).
+- **Tests:** **758 passed, 1 skipped** (+12 in `tests/test_v1_8.py`). The suite grew
+  through review (757 build → 758 after the bomb-guard); per-leg notes in §4.
 
 ## 2. Requirements (RFC §2–§6)
 
