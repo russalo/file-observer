@@ -33,8 +33,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.6",
-  "context": { "scanner_version": "1.7.0", "logic_version": "1.4.0", "...": "…" },
+  "schema_version": "1.7",
+  "context": { "scanner_version": "1.8.0", "logic_version": "1.4.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -64,8 +64,8 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.7.0` |
-| **Schema** | `1.6` |
+| **Version** | `1.8.0` |
+| **Schema** | `1.7` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
 | **Tests** | 734 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
@@ -266,7 +266,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [HISTORY.md](HISTORY.md) | Every version from v0.1 to the current release, with specs and compliance reports |
 | [PUBLIC_CONTRACT.md](PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [CONVENTIONS.md](CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.7.0 RFC Specification](v1.7.0_RFC_Specification.md) | Current release spec — structural-anchor PDF reader (follow `startxref` → trailer → page tree). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.8.0 RFC Specification](v1.8.0_RFC_Specification.md) | Current release spec — object-stream PDF decode (optional `pypdf` → stdlib fallback). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.7.0 RFC Specification](v1.7.0_RFC_Specification.md) | Prior — structural-anchor PDF reader (follow `startxref` → trailer → page tree). |
 | [v1.6.0 RFC Specification](v1.6.0_RFC_Specification.md) | Prior — production-provenance dimension (toolchain / era / digitization). |
 
 ---

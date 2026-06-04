@@ -1,0 +1,83 @@
+# v1.8.0 Spec Compliance Report
+
+**Report Date:** 2026-06-04
+**Spec:** docs/v1.8.0_RFC_Specification.md
+**Implementation:** src/file_observer/scanner.py (v1.8.0)
+**Prior:** COMPLIANCE-v1.7.md (structural-anchor reader)
+
+---
+
+## 1. Executive Summary
+
+- **Feature:** decode **object-stream PDFs** (PDF 1.5+ with the page tree compressed
+  into an `/ObjStm`) that v1.7 left `page_count = null`. A tiered cascade fills them:
+  **`pypdf` (tier 1, optional) → stdlib in-house decoder (tier 2) → null** — so the
+  recovery works **whether or not** the optional dependency is installed. Closes the
+  post-v1.5 three-minor arc (provenance → structural road → decode the index).
+- **Versions:** SCANNER 1.7.0→**1.8.0**; **LOGIC unchanged (1.4.0)** — decode is
+  specialist extraction, not routing; SCHEMA 1.6→**1.7** (additive provisional
+  `pdf.parser` = `pypdf`/`stdlib`/`none`). `pypdf` is an optional dep
+  (`file-observer[pdf]`), gated like `olefile`.
+- **Overall:** COMPLETE. Decision (RFC §4): **B with an A fallback**, measured-first.
+- **Tests:** 757 passed, 1 skipped (+8 in `tests/test_v1_8.py`).
+
+## 2. Requirements (RFC §2–§6)
+
+| Req | Implementation | Status |
+|---|---|---|
+| Tiered cascade pypdf → stdlib → null | `_pdf_decode_compressed` | PASS |
+| Tier 1: optional pypdf, gated import, page_count + /Info only | `_pdf_via_pypdf` (pypdf gated like olefile) | PASS |
+| Tier 2: stdlib decode (zlib + predictor + /W xref + /ObjStm) | `_pdf_via_stdlib` + helpers | PASS |
+| Stdlib scoped to common cases; null (never wrong) on exotic | predictor/`/W` guards → None | PASS |
+| Stdlib cross-validated against pypdf oracle (0 disagreements) | corpus check (§3) | PASS |
+| Additive only — fill nulls, never override a v1.7 value | `_extract_pdf_metadata` guard | PASS |
+| Observe-only: page_count + /Info, no text/structure | scoped wrapper | PASS |
+| Provisional `pdf.parser` (pypdf/stdlib/none) | `_extract_pdf_metadata` | PASS |
+| LOGIC unchanged (no routing change) | LOGIC 1.4.0 | PASS |
+| Optional dep recorded; core install lean | `[pdf]` extra; gated import | PASS |
+| No field removed/renamed/retyped | additive `pdf.parser` only | PASS |
+
+## 3. Falsification & validation (measure-first, oracle-validated)
+
+**Step 1 — pypdf-as-oracle payoff (before building).** On `corpora_infra` (655 PDFs):
+of the **300** object-stream PDFs v1.7 left null, pypdf recovers **300/300 (100%)**,
+with **0 read failures**; and pypdf **agrees with v1.7 on 282/282 (100%)** classic
+PDFs — a flawless oracle.
+
+**Step 2 — stdlib decoder, validated against the oracle.** Falsify-first
+`tests/test_v1_8.py`: byte-accurate object-stream fixtures (xref stream + page tree
+in an `/ObjStm`) that v1.7 nulls (asserted in-place) and pypdf reads. The decoder is
+gated by **exact agreement with pypdf** — on 371 real object-stream corpus PDFs the
+ported tier 2 **recovers 328, nulls 43 (scoped-out), and DISAGREES on 0**. It may
+return null where pypdf succeeds; it never returns a different value.
+
+**Step 3 — additive, zero regression.** On `corpora_infra`, `page_count != None`
+rises **355 → 653** (with pypdf) / **355 → 616** (stdlib fallback, no dep), and
+**0** of v1.7's non-null `page_count`/`producer` values changed. `producer` coverage
+rises 320 → 602 (pypdf also fills compressed `/Info`).
+
+**Step 4 — dependency-presence matrix.** Each fixture with pypdf importable AND
+force-absent (monkeypatch) → the cascade picks the right tier and the values agree
+(`test_pypdf_present_uses_tier1`, `test_pypdf_absent_falls_to_stdlib`).
+
+**Residual (documented):** 2 empty-password-encrypted object-stream PDFs stay null
+(the decode is gated on `not encrypted`; pypdf *could* decrypt them — a conservative
+scope choice). Tier 2 nulls ~12% of object-stream PDFs (exotic predictors/filters) —
+honest, never wrong.
+
+## 4. Review findings & resolution
+
+Four review legs (empirical sweep, in-house multi-agent `/code-review`, Gemini
+cross-model, PR bots + CI). _To be completed on the PR; all CONFIRMED findings fixed
+before merge._
+
+## 5. Backward Compatibility
+
+- New provisional `specialist_metadata.pdf.parser` (`pypdf`/`stdlib`/`none`). No
+  existing field removed/renamed/retyped. SCHEMA 1.6→1.7 (additive). LOGIC unchanged
+  → existing routing/values unchanged; `page_count`/`producer` are strictly additive
+  (null → value), never changed.
+- New optional dependency `pypdf` (`file-observer[pdf]`, BSD); core install adds
+  nothing. `ScanContext` records its version when present (like libmagic/chardet);
+  the stdlib fallback is deterministic by `LOGIC_VERSION`.
+- v1.0 public contract holds.

@@ -79,21 +79,26 @@ longer reports the stale (larger) superseded count, and a > 64 MB PDF is resolve
 by offset-seek rather than falling back to a window. `pdf.xref_type`
 (`classic`/`stream`/`none`, provisional) records which form was observed. Residuals:
 - **PDF 1.5+ object-stream / xref-stream** PDFs compress the cross-reference table
-  and often the page tree into streams. v1.7 reads the xref-stream's *plaintext*
-  dict (so `producer`/`/Info` are recovered when the `/Info` object is a regular
-  object), but the compressed offset table and object-stream page tree are **not
-  decoded** → `page_count` remains **null** (an honest "not observed", never a
-  wrong value), and `text_detected` may be `false` even for a text PDF. Decoding
-  these is deferred to **v1.8** (the optional per-format parser fork). On the
-  infra-standards corpus, **~57% of PDFs are xref-stream** — a sizeable null
-  population this lights up.
+  and often the page tree into streams (57% of the infra corpus). **v1.8 decodes
+  them** via a cascade — optional `pypdf` (tier 1) → a stdlib in-house decoder
+  (tier 2: zlib + PNG predictor + `/W` xref + `/ObjStm`) → null. So `page_count`
+  (and `/Info`, via pypdf) is now recovered for these PDFs **with or without** the
+  optional dependency. `pdf.parser` records the tier. Residuals:
+  - The stdlib fallback is **scoped to common cases** — it returns null (never a
+    wrong value; validated against pypdf as an oracle) on ~12% of object-stream
+    PDFs that use exotic predictors (avg/paeth/TIFF) or unusual `/W`. Installing
+    `file-observer[pdf]` (pypdf) recovers those too.
+  - **Empty-password-encrypted** object-stream PDFs stay null — the decode is gated
+    on `not encrypted` (pypdf could decrypt them; a conservative scope choice).
+  - PDFs **> 64 MB**: the stdlib decoder needs the whole file in memory (skips > 64
+    MB); pypdf still handles them.
+  - `text_detected` may still be `false` for an object-stream text PDF (the marker
+    window is byte-level — unchanged from v1.7).
 - A **broken/absent `startxref`** falls back to the v1.5 whole-file window scan
   (then to the head sample); a > 64 MB PDF with no followable anchor likewise.
 - Encrypted PDFs: `/Info` strings are encrypted, so they're reported as null.
 `requires_vision` is conservative: it flags a PDF only when text/font markers are
-absent AND image markers are present. Full extraction for object-stream PDFs would
-require a real PDF parser — deliberately out of scope for v1.7 (stdlib only), the
-v1.8 decision.
+absent AND image markers are present.
 
 ## Provenance vector reports what's observable, not ground truth (v1.6)
 
