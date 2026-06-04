@@ -67,8 +67,9 @@ explained by the `context`: dependency versions, Python version, platform, and
 that every machine produces byte-identical results regardless of environment.
 
 When a file cannot be `stat()`-ed (deleted mid-scan, a TOCTOU race, a special
-file), its degraded record reports `created_at` **and** `modified_at` as `null`
-— never the wall-clock scan time — so the manifest stays reproducible across runs
+file), its degraded record reports `created_at` as `null` and `modified_at` as
+`""` (empty string, matching the `checksum_sha256: ""` on the same record) —
+never the wall-clock scan time — so the manifest stays reproducible across runs
 even on that error path (v1.8.2).
 
 ## PDF metadata is read by following the file's structural index (v1.5 + v1.7)

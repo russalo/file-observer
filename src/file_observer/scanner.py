@@ -1812,9 +1812,10 @@ class Scanner:
                 mime_type="application/octet-stream",
                 size_bytes=0,
                 created_at=None,
-                modified_at=None,   # stat failed → mtime unknown; None (not wall-clock
-                                    # now_iso) keeps this degraded record deterministic
-                                    # so it doesn't perturb manifest_checksum (Gemini F2)
+                modified_at="",     # stat failed → mtime unknown. Deterministic "" (matches
+                                    # checksum_sha256="" on this degraded record) — NOT wall-clock
+                                    # now_iso, which broke manifest_checksum determinism. Stays a
+                                    # non-null str so the frozen contract is unchanged (Gemini F2).
                 checksum_sha256="",
                 stage_folder="",
                 directory_depth=0,
