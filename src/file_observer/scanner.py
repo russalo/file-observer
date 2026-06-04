@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.8.0
+    Version:    1.8.1
     Schema:     1.7
     Python:     >= 3.12
     Spec:       docs/v1.8.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.8.0"
-LOGIC_VERSION = "1.4.0"   # unchanged at v1.8 — object-stream decode is specialist extraction, not routing
+SCANNER_VERSION = "1.8.1"
+LOGIC_VERSION = "1.4.1"   # v1.8.1 — red-team hardening changed discovery (skip out-of-tree symlinks) + error handling (unreadable/long-name files → ErrorRecord, not crash)
 SCHEMA_VERSION = "1.7"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -248,6 +248,7 @@ SPECIALIST_TOOLS: dict[str, str] = {
 
 # Error code constants
 ERR_UNIVERSAL_STAT_FAILED = "universal_stat_failed"
+ERR_UNIVERSAL_READ_FAILED = "universal_read_failed"   # v1.8.1: open/read failed (permissions, etc.)
 ERR_UNSUPPORTED_EXTENSION = "unsupported_extension"
 ERR_MIME_TYPE_FALLBACK = "mime_type_fallback"
 ERR_BASELINE_DECODE_FAILED = "baseline_decode_failed"
@@ -1759,8 +1760,20 @@ class Scanner:
         )
 
     def iter_files(self, root: Path) -> Iterable[Path]:
+        root_resolved = root.resolve()
         for path in sorted(root.rglob("*")):
             if path.is_file():
+                # rglob/is_file() FOLLOW symlinks. A symlink whose target resolves
+                # OUTSIDE the scan tree would read that file's bytes/hash into the
+                # manifest (a tree-escape — e.g. /etc/passwd) and can break
+                # determinism if the target mutates. Enforce resolve()-containment,
+                # mirroring _is_safe_zip_entry for ZIP paths (red-team #6).
+                if path.is_symlink():
+                    try:
+                        if not path.resolve().is_relative_to(root_resolved):
+                            continue
+                    except OSError:
+                        continue   # broken/looping symlink → skip, never raise
                 rel = path.relative_to(root)
                 if self.config.exclude_hidden and any(
                     part.startswith(".") for part in rel.parts
@@ -1829,7 +1842,14 @@ class Scanner:
         provenance: dict[str, Any] = {}
         eff = self.config.effective_for(extension)
 
-        sample = self.read_sample(path)
+        # read_sample / hash_file do bare open() — an unreadable file (permissions,
+        # vanished, special file) must degrade to a FileRecord+ErrorRecord, not abort
+        # the whole scan (red-team #5; these calls sit outside the stat try above).
+        try:
+            sample = self.read_sample(path)
+        except OSError as exc:
+            errors.append(ErrorRecord(ERR_UNIVERSAL_READ_FAILED, str(exc), "universal"))
+            sample = b""
         mime_type, mime_prov = self.detect_mime(path, sample, errors)
         provenance["mime_type"] = asdict(mime_prov)
         mime_analysis = self.analyze_mime(path, mime_type, extension)
@@ -1839,7 +1859,11 @@ class Scanner:
             inputs=["mime_type"],
             detail={"detected": mime_analysis.detected_mime, "extension": mime_analysis.extension_mime},
         ))
-        checksum = self.hash_file(path)
+        try:
+            checksum = self.hash_file(path)
+        except OSError as exc:
+            errors.append(ErrorRecord(ERR_UNIVERSAL_READ_FAILED, str(exc), "universal"))
+            checksum = ""
         created_at = self.safe_created_at(stat)
         modified_at = self.ts_to_iso(stat.st_mtime)
         stage_folder = rel_path.parts[0] if len(rel_path.parts) > 1 else ""
@@ -2745,6 +2769,12 @@ class Scanner:
         or a TIFF predictor → the caller nulls (scoped out, never wrong)."""
         if predictor < 10:
             return None
+        # Bound `columns` (attacker-controlled via /Columns) BEFORE allocating —
+        # a row can never be wider than the inflated stream, and a row width ≥ 1.
+        # Without this an attacker /Columns drives a multi-GB bytearray(columns)
+        # allocation decoupled from the (capped) stream size (red-team #1/#3).
+        if columns < 1 or columns > len(raw):
+            return None
         stride = columns + 1
         out = bytearray()
         prev = bytearray(columns)
@@ -2777,6 +2807,7 @@ class Scanner:
         root_ref: int | None = None
         cur: int | None = offset
         seen: set[int] = set()
+        total_raw = 0   # aggregate inflated bytes across the /Prev chain (red-team #3)
         for _ in range(PDF_XREF_PREV_HOPS):
             if cur is None or cur in seen:
                 break
@@ -2791,6 +2822,9 @@ class Scanner:
                 break
             w = [int(wm.group(i)) for i in (1, 2, 3)]
             ew = sum(w)
+            if ew == 0:
+                break   # zero-width xref entries → the entry loop never advances and
+                        # runs the full attacker /Index count → unbounded (red-team #2)
             sm = re.search(rb"/Size\s+(\d+)", d)
             size = int(sm.group(1)) if sm else 0
             im = re.search(rb"/Index\s*\[([\d\s]+)\]", d)
@@ -2800,6 +2834,10 @@ class Scanner:
             raw = Scanner._safe_inflate(body)
             if raw is None:
                 break
+            total_raw += len(raw)
+            if total_raw > PDF_INFLATE_CAP:
+                break   # bound TOTAL work across the /Prev chain, not just per-stream
+                        # (32 hops × 64 MB would compose to ~2 GB of predictor work)
             pm = re.search(rb"/Predictor\s+(\d+)", d)
             if pm and int(pm.group(1)) > 1:
                 cm = re.search(rb"/Columns\s+(\d+)", d)
@@ -4457,7 +4495,14 @@ class Scanner:
             path.with_suffix(path.suffix + ".md"),
             path.with_name(path.stem + ".json"),
         ]
-        return any(c.exists() for c in candidates)
+        # A max-length base name makes the candidate exceed the 255-byte filesystem
+        # limit → `.exists()` raises OSError [Errno 36]. Treat any OSError as "no
+        # sidecar" so one pathological filename can't abort the whole scan (red-team
+        # #4) — same defensive stance as _zip_namelist.
+        try:
+            return any(c.exists() for c in candidates)
+        except OSError:
+            return False
 
     def run_specialist_probe(self, path: Path, extension: str, errors: list[ErrorRecord]) -> None:
         if extension == ".json":

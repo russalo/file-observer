@@ -58,7 +58,7 @@ class TestVersions:
         # SCHEMA 1.5 / method_version 1 and those don't regress.
         assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 6, 0)
         assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 5)
-        assert LOGIC_VERSION == "1.4.0"      # UNCHANGED through v1.7 — provenance + anchor reads are not routing
+        assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 4, 0)   # floor — LOGIC moves with patches
         assert PROVENANCE_METHOD_VERSION == 1
 
 
