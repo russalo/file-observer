@@ -65,10 +65,10 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
 | **Version** | `1.10.0` |
-| **Schema** | `1.7` |
+| **Schema** | `1.8` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 734 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
+| **Tests** | 783 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
 
 ---
 

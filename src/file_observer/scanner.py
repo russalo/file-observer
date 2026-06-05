@@ -866,9 +866,14 @@ FORMAT_OBSOLESCENCE: dict[str, str] = {
     ".pub": "at_risk", ".cdr": "at_risk",              # MS Publisher / CorelDRAW
 }
 # rules definition derived from the LIVE table so it cannot drift out of sync.
-PRESERVATION_RULES_DEFINITION = "preservation:format_obsolescence:" + ",".join(
-    f"{k}={v}" for k, v in sorted(FORMAT_OBSOLESCENCE.items())
-)
+def preservation_rules_fingerprint() -> str:
+    """v1.10: derive the preservation rules string from the LIVE FORMAT_OBSOLESCENCE
+    table on each call — matches the v1.6 provenance_rules_fingerprint pattern, so a
+    runtime table edit moves the rules_hash → identity_digest (the determinism contract
+    for rule-driven fields; in-house review v1.10)."""
+    return "preservation:format_obsolescence:" + ",".join(
+        f"{k}={v}" for k, v in sorted(FORMAT_OBSOLESCENCE.items())
+    )
 PRESERVATION_STATIC_TUNING: dict[str, Any] = {"tiers": ["current", "at_risk", "obsolete"]}
 FILENAME_DATE_PREFIX_RE = re.compile(r"^\d{4}[-_]\d{2}[-_]\d{2}")
 FILENAME_VERSION_MARKER_RE = re.compile(r"(?:^|[._\- ])v\d+[._]\d+", re.IGNORECASE)
@@ -1291,7 +1296,7 @@ class Scanner:
         """v1.10 (provisional): register the preservation vector. The obsolescence
         TABLE feeds the rules_hash (derived from the live table) so a table edit moves
         the identity_digest — the determinism contract for rule-driven fields."""
-        rules_hash = compute_rules_hash(PRESERVATION_RULES_DEFINITION)
+        rules_hash = compute_rules_hash(preservation_rules_fingerprint())
         tuning_hash = compute_tuning_hash(PRESERVATION_STATIC_TUNING)
         identity_digest = compute_vector_identity_digest(
             PRESERVATION_VECTOR_ID, PRESERVATION_METHOD_VERSION, rules_hash, tuning_hash,
@@ -3563,10 +3568,15 @@ class Scanner:
                         pass
                 # Clean string values
                 for key in ("title", "author", "application"):
-                    if isinstance(meta[key], bytes):
-                        meta[key] = meta[key].decode("cp1252", errors="replace").rstrip("\x00")
-                    elif isinstance(meta[key], str):
-                        meta[key] = meta[key].rstrip("\x00") or None
+                    v = meta[key]
+                    if isinstance(v, bytes):
+                        meta[key] = v.decode("cp1252", errors="replace").rstrip("\x00") or None
+                    elif isinstance(v, str):
+                        meta[key] = v.rstrip("\x00") or None
+                    else:
+                        meta[key] = None   # malformed SummaryInformation prop (datetime
+                                           # /int/…) → None, so non-str can't reach json
+                                           # serialization (in-house review v1.10).
                 return meta
             finally:
                 ole.close()
