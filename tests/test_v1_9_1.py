@@ -34,6 +34,16 @@ def test_stat_failure_top_level_path_unchanged(tmp_path):
     assert rec.path == "ghost.txt"
 
 
+def test_cwd_relative_path_preserved(tmp_path, monkeypatch):
+    # PR #48 (Gemini): a CWD-relative path passed directly to scan_file must not flatten
+    # when it resolves under the (absolute) source_dir — path.absolute() rescues it.
+    (tmp_path / "sub").mkdir()
+    monkeypatch.chdir(tmp_path)
+    s = Scanner(source_dir=tmp_path, config=ScannerConfig())   # source_dir → absolute
+    rec = s.scan_file(Path("sub/ghost.txt"))                   # CWD-relative ghost
+    assert rec.path == "sub/ghost.txt"
+
+
 def test_path_not_under_root_still_degrades_to_filename(tmp_path):
     # defensive fallback: if relative_to() itself fails (path not under source_dir),
     # degrade to the filename rather than crash

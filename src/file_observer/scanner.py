@@ -1923,7 +1923,11 @@ class Scanner:
         # a §1.18 requirement). Only fall back to the bare filename if relative_to
         # itself fails (path genuinely not under source_dir).
         try:
-            rel_path = path.relative_to(self.source_dir)
+            # source_dir is resolve()d-absolute in __init__ and iter_files yields
+            # absolute paths, so .absolute() is a no-op for the production flow (zero
+            # output change) — it only rescues a CWD-relative path passed directly to
+            # scan_file from flattening (Gemini PR #48). No I/O (unlike resolve()).
+            rel_path = path.absolute().relative_to(self.source_dir)
         except Exception:
             rel_path = Path(path.name)
         try:
