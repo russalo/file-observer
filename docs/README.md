@@ -34,7 +34,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.7",
-  "context": { "scanner_version": "1.9.0", "logic_version": "1.4.2", "...": "…" },
+  "context": { "scanner_version": "1.9.1", "logic_version": "1.4.3", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -64,7 +64,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.9.0` |
+| **Version** | `1.9.1` |
 | **Schema** | `1.7` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |

@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.9.0
+    Version:    1.9.1
     Schema:     1.7
     Python:     >= 3.12
     Spec:       docs/v1.8.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.9.0"
-LOGIC_VERSION = "1.4.2"   # v1.8.2 — stat-failure record's modified_at → "" (empty string; was wall-clock now_iso), restoring determinism on the degraded path (Gemini maestro-audit F2)
+SCANNER_VERSION = "1.9.1"
+LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
 SCHEMA_VERSION = "1.7"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -1917,12 +1917,23 @@ class Scanner:
     def scan_file(self, path: Path) -> FileRecord:
         errors: list[ErrorRecord] = []
 
+        # v1.9.1: compute rel_path defensively and SEPARATELY from the stat I/O, so a
+        # stat failure keeps the correct source-relative path (Gemini F2 — the old
+        # combined-try flattened a subdir file's path to its bare filename, a bug, not
+        # a §1.18 requirement). Only fall back to the bare filename if relative_to
+        # itself fails (path genuinely not under source_dir).
         try:
-            rel_path = path.relative_to(self.source_dir)
+            # source_dir is resolve()d-absolute in __init__ and iter_files yields
+            # absolute paths, so .absolute() is a no-op for the production flow (zero
+            # output change) — it only rescues a CWD-relative path passed directly to
+            # scan_file from flattening (Gemini PR #48). No I/O (unlike resolve()).
+            rel_path = path.absolute().relative_to(self.source_dir)
+        except Exception:
+            rel_path = Path(path.name)
+        try:
             stat = path.stat()
         except Exception as exc:
-            # Universal tier failure — return a minimal record per §1.18
-            rel_path = Path(path.name)
+            # Universal tier failure — return a minimal record per §1.18 (path preserved)
             errors.append(ErrorRecord(
                 code=ERR_UNIVERSAL_STAT_FAILED,
                 message=str(exc),
