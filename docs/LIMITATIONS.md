@@ -84,6 +84,14 @@ explained by the `context`: dependency versions, Python version, platform, and
 `logic_version`. Determinism is a contract *within* a context, not a promise
 that every machine produces byte-identical results regardless of environment.
 
+**Parallelism does not affect output (v1.9).** `--workers N` scans files in
+parallel across processes, but the manifest is **byte-identical regardless of N** —
+`--workers` and `--progress` are runtime-only controls, never recorded in the
+manifest, and the per-file pass is order-preserving. The cost is memory: each
+worker holds the per-file footprint (a PDF may be read whole, capped 64 MB), so a
+high `--workers` on a corpus of large files can use up to ~`N ×` that transient
+memory. Lower `--workers` if memory-constrained; output is unchanged either way.
+
 When a file cannot be `stat()`-ed (deleted mid-scan, a TOCTOU race, a special
 file), its degraded record reports `created_at` as `null` and `modified_at` as
 `""` (empty string, matching the `checksum_sha256: ""` on the same record) —
