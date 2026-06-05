@@ -18,7 +18,7 @@ The scanner has five distinct things that carry versions. They are independent �
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.9.1`
+**Current:** `1.10.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic — code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent �
 - MAJOR (x.0 → x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `1.7`
+**Current:** `1.8`
 **Note:** This IS a public contract field. As of v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, since v0.9)
@@ -64,9 +64,9 @@ The scanner has five distinct things that carry versions. They are independent �
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.9.1 | Internal |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.10.0 | Internal |
 | Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.3 | Internal* |
-| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.7 | **Public** |
+| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.8 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
 
@@ -169,6 +169,31 @@ When LOGIC_VERSION or SCHEMA_VERSION bump, those constants update independently 
 
 **Internal rule:** Don't skip stages. Don't approve a draft without renaming. Don't merge an implementation without compliance. Don't release without tests passing.
 
+### 3.1 Field stability ladder (candidate → provisional → stable, v1.10)
+
+Manifest fields graduate through tiers. The promotion criterion is **settled producing
+logic + evidence of value**, not age.
+
+- **candidate** *(below provisional)* — a held observation tracked + measured in the
+  review apparatus (`corpus_sweep.py`), **NOT in the manifest** (no contract status,
+  no scanner parser surface). Carries a held-reason, a cheap safe **sweep-side harvest**,
+  and a promotion trigger. Promote → provisional when the held reason is resolved AND the
+  harvest shows the signal is worth surfacing.
+- **provisional** (PUBLIC_CONTRACT §2.4) — in the manifest, "may change in a MINOR." Be
+  liberal admitting *cheap observe-only* fields (the v0.9 intent — provisional is how we
+  gather data); the bar that doesn't relax: observe-only, deterministic, never-crash/bounded
+  for any new parser path (v1.8.1).
+- **stable** — under the backward-compat policy; not removable/retypable without a MAJOR bump.
+
+**Candidate registry (v1.10):**
+| Candidate | Held because | Sweep-side harvest (not in the manifest) | Promotion trigger |
+|---|---|---|---|
+| CAD (DGN/DWG) | heavy new parser on untrusted binary | prevalence via `format_sig_dist` | enough real-corpus CAD to justify a red-teamed reader |
+| image EXIF | location/privacy sensitivity | EXIF-presence count (marker only, never GPS values) | demand + a settled observe-presence framing |
+| word-twisting provenance | data-gated on the tagged RPG corpus | the corpus tagging itself (external) | tagged corpus exists + hypothesis validates |
+
+A field enters at **candidate or provisional, never directly stable.**
+
 ---
 
 ## 4. Internal Tracking Inventory
@@ -215,7 +240,7 @@ This section is for **us**. It is the running list of everything File Observer c
 
 | Namespace | Fields |
 |---|---|
-| `pdf` | has_text_streams, page_count, title, author, producer, creator, creation_date, encrypted, pdf_version, sample_text_marker_density, **text_detected** (v1.5, provisional), **xref_type** (v1.7, provisional — classic/stream/none), **parser** (v1.8, provisional — pypdf/stdlib/none, the decode tier that filled an object-stream `page_count`/`/Info`) |
+| `pdf` | has_text_streams, page_count, title, author, producer, creator, creation_date, encrypted, pdf_version, sample_text_marker_density, **text_detected** (v1.5, STABLE v1.10), **xref_type** (v1.7, STABLE v1.10 — classic/stream/none), **parser** (v1.8, provisional — pypdf/stdlib/none, the decode tier that filled an object-stream `page_count`/`/Info`) |
 | `image` | width, height, bit_depth (PNG only) |
 | `email` | subject, from, to, date, message_id, has_attachments |
 | `spreadsheet` | sheet_names, header_rows (XLSX only), format (`biff` or `ooxml`), **application** (OOXML `app.xml`, v1.6) |
@@ -236,7 +261,7 @@ This section is for **us**. It is the running list of everything File Observer c
 
 ### 4.6 Quality block fields
 
-Core counters in `ScanQuality`: total_files, clean_files, degraded_files, error_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions, safety_flags, **chatlog_files** (v0.8). Plus `per_directory_summary[]` (v0.9, stable) and the v1.1 provisional additions: **duplicate_clusters** / duplicate_cluster_count / redundant_file_count and **specialist_stats** (per-tool attempted/succeeded/failed).
+Core counters in `ScanQuality`: total_files, clean_files, degraded_files, error_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions, safety_flags, **chatlog_files** (v0.8). Plus `per_directory_summary[]` (v0.9, stable) and the v1.1 additions (PROMOTED STABLE v1.10): **duplicate_clusters** / duplicate_cluster_count / redundant_file_count and **specialist_stats** (per-tool attempted/succeeded/failed).
 
 ### 4.7 Error codes
 

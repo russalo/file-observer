@@ -59,7 +59,7 @@ class TestVersions:
         assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 6, 0)
         assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 5)
         assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 4, 0)   # floor — LOGIC moves with patches
-        assert PROVENANCE_METHOD_VERSION == 1
+        assert PROVENANCE_METHOD_VERSION == 2   # v1.10: bumped 1→2 (OLE2 .doc/.xls producing-app input)
 
 
 class TestToolchainNormalization:
@@ -91,7 +91,7 @@ class TestProvenanceVector:
             "d.pdf": _pdf(b"HP Scan", text=False, image=True, year=2015),
         })
         v = _prov(m)
-        assert v is not None and v["method_version"] == 1 and v["scope"] == "corpus"
+        assert v is not None and v["method_version"] == 2 and v["scope"] == "corpus"
         s = v["summary"]
         tc = {t["name"]: t["count"] for t in s["toolchains"]}
         assert tc.get("Adobe PDF Library") == 2          # 9.0 + 17.0 normalized together

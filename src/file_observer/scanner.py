@@ -5,8 +5,8 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.9.1
-    Schema:     1.7
+    Version:    1.10.0
+    Schema:     1.8
     Python:     >= 3.12
     Spec:       docs/v1.8.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.9.1"
+SCANNER_VERSION = "1.10.0"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
-SCHEMA_VERSION = "1.7"
+SCHEMA_VERSION = "1.8"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -321,7 +321,7 @@ class ErrorRecord:
     code: str
     message: str
     stage: str
-    # v1.2: optional structured diagnostic (provisional). Default None so all
+    # v1.2: optional structured diagnostic (stable, promoted v1.10). Default None so all
     # existing ErrorRecord construction is unaffected.
     detail: dict[str, Any] | None = None
 
@@ -387,6 +387,8 @@ class FileRecord:
     reference_tokens: dict[str, int] | None = None
     # v0.10: filename pattern detection — boolean per subcategory, every file
     filename_patterns: dict[str, bool] | None = None
+    # v1.10 (provisional): format-preservation signal — {format_obsolescence, migration_recommended}
+    preservation: dict[str, Any] | None = None
     safety_flags: list[str] = field(default_factory=list)
     signal_provenance: dict[str, Any] = field(default_factory=dict)
     errors: list[ErrorRecord] = field(default_factory=list)
@@ -511,13 +513,13 @@ class ScanQuality:
     chatlog_files: int = 0
     # v0.9: per-directory aggregation — one entry per top-level subdirectory
     per_directory_summary: list[dict[str, Any]] = field(default_factory=list)
-    # v1.1 (provisional): duplicate detection — files grouped by identical
+    # v1.1 (stable, promoted v1.10): duplicate detection — files grouped by identical
     # checksum_sha256 (count >= 2). Each cluster: {checksum_sha256, size_bytes,
     # count, paths}. Sorted by count desc then checksum asc; paths sorted asc.
     duplicate_clusters: list[dict[str, Any]] = field(default_factory=list)
     duplicate_cluster_count: int = 0
     redundant_file_count: int = 0  # sum(count - 1) — copies a dedup pass could remove
-    # v1.1 (provisional): per-specialist quality — {tool: {attempted, succeeded,
+    # v1.1 (stable, promoted v1.10): per-specialist quality — {tool: {attempted, succeeded,
     # failed}}, keyed by semantic tool name, sorted keys. Empty when specialists
     # are disabled. The aggregate specialist_failures (above) is retained.
     specialist_stats: dict[str, dict[str, int]] = field(default_factory=dict)
@@ -841,6 +843,33 @@ FILENAME_PATTERNS_STATIC_TUNING = {
         "template_name", "uuid_filename", "copy_suffix",
     ]
 }
+
+# v1.10 (PROVISIONAL): format-preservation signal — a per-file obsolescence read
+# driven by a CLOSED, versioned table keyed on extension. Lookup-only (no parsing,
+# no new IO surface). Observe-only: it reports the *format's* preservation tier, not
+# a judgment about the file (same discipline as safety_flags). PREMIS-inspired.
+PRESERVATION_VECTOR_ID = "preservation"
+PRESERVATION_METHOD_VERSION = 1
+# Closed obsolescence table: extension → tier. Absent ⇒ "current". An edit MUST move
+# the rules_hash (→ identity_digest) — the table is the rule data (provenance pattern).
+FORMAT_OBSOLESCENCE: dict[str, str] = {
+    # obsolete — superseded, little/no modern tooling
+    ".wpd": "obsolete", ".wp": "obsolete",            # WordPerfect
+    ".wks": "obsolete", ".wq1": "obsolete",           # Lotus / Quattro Pro
+    ".sxw": "obsolete", ".sxc": "obsolete",           # OpenOffice.org 1.x
+    ".swf": "obsolete",                                # Flash (EOL 2020)
+    ".rm": "obsolete", ".ram": "obsolete",             # RealMedia
+    # at_risk — proprietary / legacy but still encountered in real corpora
+    ".doc": "at_risk", ".xls": "at_risk", ".ppt": "at_risk",   # legacy OLE2 Office
+    ".dwg": "at_risk", ".dgn": "at_risk",              # proprietary CAD
+    ".eps": "at_risk",                                 # legacy encapsulated PostScript
+    ".pub": "at_risk", ".cdr": "at_risk",              # MS Publisher / CorelDRAW
+}
+# rules definition derived from the LIVE table so it cannot drift out of sync.
+PRESERVATION_RULES_DEFINITION = "preservation:format_obsolescence:" + ",".join(
+    f"{k}={v}" for k, v in sorted(FORMAT_OBSOLESCENCE.items())
+)
+PRESERVATION_STATIC_TUNING: dict[str, Any] = {"tiers": ["current", "at_risk", "obsolete"]}
 FILENAME_DATE_PREFIX_RE = re.compile(r"^\d{4}[-_]\d{2}[-_]\d{2}")
 FILENAME_VERSION_MARKER_RE = re.compile(r"(?:^|[._\- ])v\d+[._]\d+", re.IGNORECASE)
 FILENAME_NUMBERED_REVISION_RE = re.compile(r"[-_ ]\(\d+\)|[-_ ]\d+$")
@@ -865,7 +894,7 @@ AUTHOR_AGGREGATE_EXCLUDED_VALUES = {"", "unknown", "user", "none", "null", "n/a"
 # v1.6: production-provenance vector. Complements author_aggregate (WHO authored);
 # this is WHAT-TOOL / WHEN / digitization. Corpus-scoped, pure observation.
 PROVENANCE_VECTOR_ID = "provenance"
-PROVENANCE_METHOD_VERSION = 1
+PROVENANCE_METHOD_VERSION = 2   # v1.10: OLE2 .doc/.xls producing-app now feeds toolchains
 PROVENANCE_RULES_DEFINITION = (
     "harvest:pdf.producer|pdf.creator|pdf.creation_date|{document,spreadsheet}.application;"
     "normalize:toolchain_table(closed,first_match,version_stripped_passthrough);"
@@ -1085,6 +1114,8 @@ class Scanner:
             "template_name": 0, "uuid_filename": 0, "copy_suffix": 0,
         }
         self._filename_patterns_files_with_any: int = 0
+        self._preservation_applied_count: int = 0
+        self._preservation_tier_sums: dict[str, int] = {"current": 0, "at_risk": 0, "obsolete": 0}
         # v1.9: the per-file pass (scan_file) is pure and parallelizable. Discovery
         # yields a deterministic (sorted) path order; the records come back in that
         # SAME order (serial preserves it; ProcessPoolExecutor.map preserves input
@@ -1111,6 +1142,7 @@ class Scanner:
         self._register_chatlog_vector()
         self._register_reference_tokens_vector()
         self._register_filename_patterns_vector()
+        self._register_preservation_vector()
 
         # Run corpus-scoped vectors after the file walk completes
         self._run_corpus_vectors(records)
@@ -1249,6 +1281,33 @@ class Scanner:
                         has_any = True
                 if has_any:
                     self._reference_tokens_files_with_any += 1
+            pres = rec.preservation
+            if pres is not None:
+                self._preservation_applied_count += 1
+                tier = pres.get("format_obsolescence", "current")
+                self._preservation_tier_sums[tier] = self._preservation_tier_sums.get(tier, 0) + 1
+
+    def _register_preservation_vector(self) -> None:
+        """v1.10 (provisional): register the preservation vector. The obsolescence
+        TABLE feeds the rules_hash (derived from the live table) so a table edit moves
+        the identity_digest — the determinism contract for rule-driven fields."""
+        rules_hash = compute_rules_hash(PRESERVATION_RULES_DEFINITION)
+        tuning_hash = compute_tuning_hash(PRESERVATION_STATIC_TUNING)
+        identity_digest = compute_vector_identity_digest(
+            PRESERVATION_VECTOR_ID, PRESERVATION_METHOD_VERSION, rules_hash, tuning_hash,
+        )
+        self._vector_registry.register(VectorRecord(
+            vector_id=PRESERVATION_VECTOR_ID,
+            method_version=PRESERVATION_METHOD_VERSION,
+            scope="file",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=None,
+            identity_digest=identity_digest,
+            applied_to_count=self._preservation_applied_count,
+            summary=dict(self._preservation_tier_sums),
+        ))
 
     def _accumulate_chatlog_summary(self, meta: dict[str, Any]) -> None:
         """Accumulate chatlog metadata into corpus-level summary accumulators."""
@@ -1579,6 +1638,13 @@ class Scanner:
             "copy_suffix": bool(FILENAME_COPY_SUFFIX_RE.search(stem)),
         }
 
+    def _extract_preservation(self, extension: str) -> dict[str, Any]:
+        """v1.10 (provisional): closed-table format-obsolescence lookup by extension.
+        Pure, lookup-only (no parsing, no IO). Absent ⇒ 'current'. Observe-only — it
+        reports the format's preservation tier, never a verdict about the file."""
+        tier = FORMAT_OBSOLESCENCE.get(extension.lower(), "current")
+        return {"format_obsolescence": tier, "migration_recommended": tier == "obsolete"}
+
     def _build_summary(self, manifest: 'ScanManifest') -> str:
         """v0.10: build a human-readable scan summary from manifest data."""
         s = manifest.stats
@@ -1656,6 +1722,15 @@ class Scanner:
             top_dirs = sorted(q.per_directory_summary, key=lambda d: -d["total_files"])[:3]
             dir_strs = [f"{d['directory'] or '(root)'} ({d['total_files']:,})" for d in top_dirs]
             lines.append("Largest directories: " + ", ".join(dir_strs) + ".")
+
+        # v1.10 (provisional): surface top authors — pure re-display of the
+        # already-computed, already-sorted author_aggregate vector (no new data).
+        aa = next((v for v in manifest.vectors_collected
+                   if v.get("vector_id") == AUTHOR_AGGREGATE_VECTOR_ID), None)
+        top_authors = (aa or {}).get("summary", {}).get("top_authors") or []
+        if top_authors:
+            who = ", ".join(f"{name} ({count})" for name, count in top_authors[:5])
+            lines.append(f"Top authors: {who}.")
 
         return "\n\n".join(lines)
 
@@ -1975,6 +2050,7 @@ class Scanner:
                 ),
                 specialist_metadata=None,
                 filename_patterns=fp,
+                preservation=self._extract_preservation(path.suffix),
                 signal_provenance={},
                 errors=errors,
             )
@@ -2380,6 +2456,7 @@ class Scanner:
             is_chatlog=is_chatlog,
             reference_tokens=reference_tokens_result,
             filename_patterns=fp,
+            preservation=self._extract_preservation(path.suffix),
             safety_flags=safety_flags,
             signal_provenance=provenance,
             errors=errors,
@@ -2808,7 +2885,7 @@ class Scanner:
         # pdf_version: search the head (tolerate a leading BOM / whitespace before %PDF-).
         ver_match = re.search(rb"%PDF-(\d+\.\d+)", sample[:1024])
         meta["pdf_version"] = ver_match.group(1).decode("ascii") if ver_match else None
-        # v1.5 (provisional): born-digital-vs-image signal over the marker region
+        # v1.5 (stable, promoted v1.10): born-digital-vs-image signal over the marker region
         # (same window as requires_vision). Object-stream PDFs that compress their
         # /Font refs remain a documented residual.
         meta["text_detected"] = (b"/Font" in region
@@ -3377,7 +3454,18 @@ class Scanner:
                             pos += 4 + rec_len
                     except Exception:
                         pass
-                return {"sheet_names": sheet_names, "format": "biff"}
+                # v1.10: producing app from OLE2 SummaryInformation (PIDSI_APPNAME=18)
+                application = None
+                if ole.exists("\x05SummaryInformation"):
+                    try:
+                        app = ole.getproperties("\x05SummaryInformation").get(18)
+                        if isinstance(app, bytes):
+                            application = app.decode("cp1252", errors="replace").rstrip("\x00") or None
+                        elif isinstance(app, str):
+                            application = app.rstrip("\x00") or None
+                    except Exception:
+                        pass
+                return {"sheet_names": sheet_names, "format": "biff", "application": application}
             finally:
                 ole.close()
         except Exception:
@@ -3462,18 +3550,19 @@ class Scanner:
             ole = olefile.OleFileIO(str(path))
             try:
                 meta: dict[str, Any] = {
-                    "title": None, "author": None,
+                    "title": None, "author": None, "application": None,
                 }
-                # OLE2 SummaryInformation: 2=Title, 4=Author
+                # OLE2 SummaryInformation: 2=Title, 4=Author, 18=PIDSI_APPNAME (creating app, v1.10)
                 if ole.exists("\x05SummaryInformation"):
                     try:
                         props = ole.getproperties("\x05SummaryInformation")
                         meta["title"] = props.get(2)
                         meta["author"] = props.get(4)
+                        meta["application"] = props.get(18)
                     except Exception:
                         pass
                 # Clean string values
-                for key in ("title", "author"):
+                for key in ("title", "author", "application"):
                     if isinstance(meta[key], bytes):
                         meta[key] = meta[key].decode("cp1252", errors="replace").rstrip("\x00")
                     elif isinstance(meta[key], str):
