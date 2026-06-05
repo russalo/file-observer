@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.8.2
+    Version:    1.9.0
     Schema:     1.7
     Python:     >= 3.12
     Spec:       docs/v1.8.0_RFC_Specification.md (current)
@@ -78,7 +78,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.8.2"
+SCANNER_VERSION = "1.9.0"
 LOGIC_VERSION = "1.4.2"   # v1.8.2 — stat-failure record's modified_at → None (was wall-clock now_iso), restoring determinism on the degraded path (Gemini maestro-audit F2)
 SCHEMA_VERSION = "1.7"
 
@@ -970,6 +970,11 @@ class ScannerConfig:
     extension_overrides: dict[str, dict[str, Any]] = field(default_factory=dict)
     signing_key: str | None = None
     signing_key_id: str | None = None
+    workers: int = 1   # v1.9: parallel per-file scan worker processes (1 = serial).
+                       # Runtime-only — NOT recorded in the manifest (no causal link to
+                       # output; excluded from meta.config in scan(), like signing_key).
+    progress: bool = False   # v1.9: force the stderr progress indicator (else TTY-auto).
+                             # Runtime-only — stderr only, never touches the manifest.
 
     def effective_for(self, extension: str) -> dict[str, Any]:
         """Resolve effective config values for a given extension."""
@@ -985,6 +990,23 @@ class ScannerConfig:
         # Enforce: baseline_max_bytes >= sample_size
         base["baseline_max_bytes"] = max(base["baseline_max_bytes"], self.sample_size)
         return base
+
+
+# --- v1.9 parallel scan: module-level worker plumbing (must be importable so a
+# ProcessPoolExecutor worker can reference it). Each worker process builds ONE
+# Scanner via the initializer (a clean libmagic cookie per process) and runs the
+# pure scan_file; results pickle back to the parent in input order. ---
+_WORKER_SCANNER: "Scanner | None" = None
+
+
+def _worker_init(source_dir: Path, config: "ScannerConfig") -> None:
+    global _WORKER_SCANNER
+    _WORKER_SCANNER = Scanner(source_dir=source_dir, config=config)
+
+
+def _worker_scan_file(path_str: str) -> "FileRecord":
+    assert _WORKER_SCANNER is not None
+    return _WORKER_SCANNER.scan_file(Path(path_str))
 
 
 class Scanner:
@@ -1054,10 +1076,19 @@ class Scanner:
             "template_name": 0, "uuid_filename": 0, "copy_suffix": 0,
         }
         self._filename_patterns_files_with_any: int = 0
-        records: list[FileRecord] = []
-        for path in self.iter_files(self.source_dir):
-            rec = self.scan_file(path)
-            records.append(rec)
+        # v1.9: the per-file pass (scan_file) is pure and parallelizable. Discovery
+        # yields a deterministic (sorted) path order; the records come back in that
+        # SAME order (serial preserves it; ProcessPoolExecutor.map preserves input
+        # order regardless of completion). The corpus counters + chatlog accumulation
+        # are then derived here, serially, over that ordered record list — so the
+        # manifest is byte-identical for any worker count.
+        import sys as _sys
+        self._progress_on = bool(self.config.progress) or (
+            hasattr(_sys.stderr, "isatty") and _sys.stderr.isatty())
+        paths = list(self.iter_files(self.source_dir))
+        records = self._scan_paths(paths)
+        self._aggregate_file_counters(records)
+        for rec in records:
             # Track chatlog vector applied set: both is_chatlog files and email body hits
             if rec.is_chatlog:
                 self._chatlog_applied_count += 1
@@ -1080,7 +1111,7 @@ class Scanner:
             scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
             source_dir=str(self.source_dir),
-            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id")},
+            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress")},
         )
         stats = self._compute_stats(records)
         quality = self._compute_quality(records)
@@ -1118,6 +1149,83 @@ class Scanner:
                 "value": sig,
             }
         return manifest
+
+    def _scan_paths(self, paths: list[Path]) -> list[FileRecord]:
+        """Scan each path → FileRecord, preserving input order. v1.9: serial by
+        default; a process pool runs the pure per-file pass when ``config.workers`` > 1.
+        Either way the record list is identical (``scan_file`` is pure; the pool
+        preserves input order) — the byte-identical-across-workers contract."""
+        workers = max(1, int(self.config.workers or 1))
+        total = len(paths)
+        if workers > 1 and total > 1:
+            return self._scan_paths_parallel(paths, workers, total)
+        out: list[FileRecord] = []
+        for i, p in enumerate(paths, 1):
+            out.append(self.scan_file(p))
+            self._emit_progress(i, total)
+        self._emit_progress(total, total, final=True)
+        return out
+
+    def _scan_paths_parallel(self, paths: list[Path], workers: int, total: int) -> list[FileRecord]:
+        """Process-pool the pure per-file pass. ``ProcessPoolExecutor.map`` yields
+        results in input order regardless of completion order, so the record list
+        equals the serial one. Never-crash: any pool failure (a worker death, or a
+        sandboxed env that forbids fork/exec) falls back to a serial rescan, where
+        ``scan_file``'s in-band ErrorRecord handles the offending file. Progress is
+        emitted by the PARENT as results arrive (workers never print)."""
+        from concurrent.futures import ProcessPoolExecutor
+        path_strs = [str(p) for p in paths]
+        chunksize = max(1, total // (workers * 8))
+        try:
+            out: list[FileRecord] = []
+            with ProcessPoolExecutor(max_workers=workers,
+                                     initializer=_worker_init,
+                                     initargs=(self.source_dir, self.config)) as ex:
+                for i, rec in enumerate(ex.map(_worker_scan_file, path_strs, chunksize=chunksize), 1):
+                    out.append(rec)
+                    self._emit_progress(i, total)
+            self._emit_progress(total, total, final=True)
+            return out
+        except Exception:
+            return [self.scan_file(p) for p in paths]
+
+    def _emit_progress(self, done: int, total: int, final: bool = False) -> None:
+        """v1.9: a throttled ``done/total`` line to STDERR only — never stdout, the
+        manifest, or any checksummed value (determinism-safe by construction). Shown
+        when ``config.progress`` or stderr is a TTY; throttled to ~1% steps."""
+        if not getattr(self, "_progress_on", False) or total <= 0:
+            return
+        step = max(1, total // 100)
+        if not final and done % step != 0:
+            return
+        import sys
+        print(f"  scanning {done}/{total} files…",
+              end=("\n" if final else "\r"), file=sys.stderr, flush=True)
+
+    def _aggregate_file_counters(self, records: list[FileRecord]) -> None:
+        """Derive the per-file corpus counters (filename_patterns + reference_tokens)
+        from the completed records. v1.9: these were incremented inside ``scan_file``;
+        moving them here makes ``scan_file`` pure (parallel-safe) without changing any
+        value — the sums/counts are order-independent and read identical fields."""
+        for rec in records:
+            fp = rec.filename_patterns
+            if fp is not None:
+                self._filename_patterns_applied_count += 1
+                if any(fp.values()):
+                    self._filename_patterns_files_with_any += 1
+                for subcat, matched in fp.items():
+                    if matched:
+                        self._filename_patterns_sums[subcat] = self._filename_patterns_sums.get(subcat, 0) + 1
+            rt = rec.reference_tokens
+            if rt is not None:
+                self._reference_tokens_applied_count += 1
+                has_any = False
+                for subcat, count in rt.items():
+                    self._reference_tokens_sums[subcat] = self._reference_tokens_sums.get(subcat, 0) + count
+                    if count > 0:
+                        has_any = True
+                if has_any:
+                    self._reference_tokens_files_with_any += 1
 
     def _accumulate_chatlog_summary(self, meta: dict[str, Any]) -> None:
         """Accumulate chatlog metadata into corpus-level summary accumulators."""
@@ -1798,13 +1906,9 @@ class Scanner:
                 stage="universal",
             ))
             # v0.10: filename_patterns still runs on error path (only needs filename)
+            # v1.9: scan_file is PURE — corpus counters are derived from the records
+            # afterwards (_aggregate_file_counters), so the per-file pass can parallelize.
             fp = self._extract_filename_patterns(path.name)
-            self._filename_patterns_applied_count += 1
-            if any(fp.values()):
-                self._filename_patterns_files_with_any += 1
-                for subcat, matched in fp.items():
-                    if matched:
-                        self._filename_patterns_sums[subcat] = self._filename_patterns_sums.get(subcat, 0) + 1
             return FileRecord(
                 path=rel_path.as_posix(),
                 filename=path.name,
@@ -2003,15 +2107,8 @@ class Scanner:
                     ref_tokens = self._extract_reference_tokens(text)
                     # Will be set on the FileRecord below via reference_tokens_result
                     reference_tokens_result = ref_tokens
-                    # Accumulate for corpus summary
-                    self._reference_tokens_applied_count += 1
-                    has_any = False
-                    for subcat, count in ref_tokens.items():
-                        self._reference_tokens_sums[subcat] = self._reference_tokens_sums.get(subcat, 0) + count
-                        if count > 0:
-                            has_any = True
-                    if has_any:
-                        self._reference_tokens_files_with_any += 1
+                    # v1.9: corpus counters derived later (_aggregate_file_counters) so
+                    # scan_file stays pure — see the result on the FileRecord below.
                     provenance["reference_tokens"] = asdict(ProvenanceEntry(
                         layer="derived",
                         method="_extract_reference_tokens",
@@ -2116,15 +2213,8 @@ class Scanner:
         safety_flags = self.detect_safety_flags(extension, sample, zip_entries)
 
         # v0.10: filename_patterns vector — runs on every file
+        # v1.9: corpus counters derived later (_aggregate_file_counters); scan_file is pure.
         fp = self._extract_filename_patterns(path.name)
-        self._filename_patterns_applied_count += 1
-        has_any_fp = False
-        for subcat, matched in fp.items():
-            if matched:
-                self._filename_patterns_sums[subcat] = self._filename_patterns_sums.get(subcat, 0) + 1
-                has_any_fp = True
-        if has_any_fp:
-            self._filename_patterns_files_with_any += 1
 
         if self.config.enable_specialists:
             try:
@@ -4773,6 +4863,8 @@ def main() -> None:
     parser.add_argument("--format", choices=["json", "jsonl"], default="json", help="Output format (default: json)")
     parser.add_argument("--ignore-file", default=None, help="Path to ignore file (default: .scannerignore in source dir)")
     parser.add_argument("--previous-manifest", default=None, help="Path to previous manifest for delta comparison")
+    parser.add_argument("--workers", type=int, default=1, metavar="N", help="Parallel scan worker processes (default: 1 = serial). Output is byte-identical regardless of N.")
+    parser.add_argument("--progress", action="store_true", help="Show a scan progress indicator on stderr (auto-on when stderr is a TTY)")
     parser.add_argument("--profile", choices=list(SCAN_PROFILES.keys()), default=None, help="Named scan profile (fast_sort, general, deep_extract)")
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
@@ -4800,6 +4892,8 @@ def main() -> None:
         ignore_file=args.ignore_file,
         previous_manifest=args.previous_manifest,
         extension_overrides=ext_overrides,
+        workers=args.workers,
+        progress=args.progress,
     )
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()
