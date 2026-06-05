@@ -179,6 +179,18 @@ Scan N's delta.previous_manifest_checksum == Scan N-1's manifest_checksum
 
 A break in the chain indicates a missed scan or tampering.
 
+### 1.11 Re-ingest worklist (`delta.rescan_candidates`)
+
+When delta scanning is enabled, `delta.rescan_candidates` is a **sorted list of
+paths** that (a) still exist in the current scan and (b) had a specialist
+extraction failure (`specialist_probe_failed`) in the **previous** manifest. It is
+the **re-ingest worklist**: the files a downstream consumer should re-process —
+for example after a File Observer upgrade that may now extract a format the prior
+version couldn't, or after fixing a corrupt source. It carries no opinion on *why*
+the prior attempt failed (the per-file `errors` hold that); it only points at what
+is worth another look. Empty when there is no previous manifest or nothing
+previously failed. Stable as part of the `delta` object.
+
 ---
 
 ## 2. What Consumers Should NOT Rely On
