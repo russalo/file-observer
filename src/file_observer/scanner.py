@@ -1005,8 +1005,17 @@ def _worker_init(source_dir: Path, config: "ScannerConfig") -> None:
 
 
 def _worker_scan_file(path_str: str) -> "FileRecord":
-    assert _WORKER_SCANNER is not None
+    if _WORKER_SCANNER is None:   # explicit (not assert — survives python -O)
+        raise RuntimeError("worker Scanner not initialized")
     return _WORKER_SCANNER.scan_file(Path(path_str))
+
+
+def _main_is_importable() -> bool:
+    """True if __main__ can be re-imported by a spawn/forkserver worker (it has a
+    module spec or a file). False for stdin/notebook/interactive entry points, where
+    a non-fork pool would fail noisily — the caller degrades to serial quietly."""
+    import __main__
+    return getattr(__main__, "__spec__", None) is not None or hasattr(__main__, "__file__")
 
 
 class Scanner:
@@ -1174,20 +1183,34 @@ class Scanner:
         ``scan_file``'s in-band ErrorRecord handles the offending file. Progress is
         emitted by the PARENT as results arrive (workers never print)."""
         from concurrent.futures import ProcessPoolExecutor
+        import multiprocessing as _mp
+        # Portability guard (PR #46 / codex): a non-fork start method (spawn/forkserver
+        # on Windows/macOS) re-imports __main__ in each worker; from an unimportable
+        # entry point (stdin/notebook) that fails noisily. Skip the pool quietly →
+        # serial (correct output, just not parallel). Linux defaults to fork → proceeds.
+        if _mp.get_start_method() != "fork" and not _main_is_importable():
+            return [self.scan_file(p) for p in paths]
         path_strs = [str(p) for p in paths]
         chunksize = max(1, total // (workers * 8))
+        out: list[FileRecord] = []
         try:
-            out: list[FileRecord] = []
             with ProcessPoolExecutor(max_workers=workers,
                                      initializer=_worker_init,
                                      initargs=(self.source_dir, self.config)) as ex:
-                for i, rec in enumerate(ex.map(_worker_scan_file, path_strs, chunksize=chunksize), 1):
-                    out.append(rec)
-                    self._emit_progress(i, total)
+                try:
+                    for i, rec in enumerate(ex.map(_worker_scan_file, path_strs, chunksize=chunksize), 1):
+                        out.append(rec)
+                        self._emit_progress(i, total)
+                except Exception:
+                    ex.shutdown(wait=False, cancel_futures=True)  # don't block on a broken pool
+                    raise
             self._emit_progress(total, total, final=True)
             return out
         except Exception:
-            return [self.scan_file(p) for p in paths]
+            # never-crash: ex.map yields in input order, so the records already in `out`
+            # match paths[:len(out)] exactly — finish the REMAINDER serially → the result
+            # is byte-identical to a full serial scan, without rescanning what succeeded.
+            return out + [self.scan_file(p) for p in paths[len(out):]]
 
     def _emit_progress(self, done: int, total: int, final: bool = False) -> None:
         """v1.9: a throttled ``done/total`` line to STDERR only — never stdout, the

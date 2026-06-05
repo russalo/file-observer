@@ -50,3 +50,20 @@ def test_workers_not_recorded_in_manifest():
 
 def test_default_workers_is_one():
     assert ScannerConfig().workers == 1
+
+
+def test_pool_failure_falls_back_to_serial_byte_identical(monkeypatch):
+    # never-crash: if the process pool can't run (sandbox forbids fork, BrokenProcessPool,
+    # unimportable entry point), the scan must complete with a byte-identical manifest.
+    import concurrent.futures
+    base = Scanner(source_dir=FIXTURES,
+                   config=ScannerConfig(enable_specialists=True, workers=1)).scan()
+
+    def _boom(*a, **k):
+        raise OSError("pool unavailable")
+    monkeypatch.setattr(concurrent.futures, "ProcessPoolExecutor", _boom)
+
+    m = Scanner(source_dir=FIXTURES,
+                config=ScannerConfig(enable_specialists=True, workers=4)).scan()
+    assert m.manifest_checksum == base.manifest_checksum
+    assert [f.path for f in m.files] == [f.path for f in base.files]
