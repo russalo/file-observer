@@ -51,7 +51,7 @@ succeeded/failed counts for the *actual* scan):
 | Tier | Specialist (format → fields) | Why |
 |---|---|---|
 | **Mature** | `image_structure` (PNG/JPEG → width/height/bit_depth); `spreadsheet_structure` (XLSX → sheet_names/header_rows/application); `document_extraction` (DOCX → title/author/word_count/heading_count/application); `email_envelope` (EML → headers; MSG → headers/date via MAPI) | Deterministic header / OOXML-ZIP / stdlib reads, validated on real corpora (e.g. MSG ~99.9% on 3,220 real files). |
-| **Good (dep- or form-gated)** | `pdf_extraction` `page_count`/producer | Read by following the PDF's own index (v1.7) + decoding object streams (v1.8): **mature with `pypdf`**; the stdlib fallback recovers most object-stream PDFs but nulls ~12% (exotic predictors) and `/Info` (producer/title) — never a wrong value, just null. |
+| **Good (dep- or form-gated)** | `pdf_extraction` (PDF → page_count/producer) | Read by following the PDF's own index (v1.7) + decoding object streams (v1.8): **mature with `pypdf`**; the stdlib fallback recovers most object-stream PDFs but nulls ~12% (exotic predictors) and `/Info` (producer/title) — never a wrong value, just null. |
 | **Best-effort** | `spreadsheet_structure` (XLS → sheet_names via OLE2/BIFF8); `document_extraction` (DOC → title/author via OLE2 SummaryInformation; RTF → title/author via `{\info}` regex on the sample) | Legacy binary containers / a sample-bounded regex — lower and more variable coverage than their OOXML siblings. |
 | **Heuristic** | `chatlog_signals` (content-detected `is_chatlog` + turn/speaker structure) | A content heuristic with documented false-positive/negative classes (see "Chatlog detection" below), not a structural guarantee. |
 
