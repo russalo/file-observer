@@ -25,7 +25,7 @@ The scanner has five distinct things that carry versions. They are independent â
 **Where it lives:** `LOGIC_VERSION` constant in `src/file_observer/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `1.4.2`
+**Current:** `1.4.3`
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -64,8 +64,8 @@ The scanner has five distinct things that carry versions. They are independent â
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.9.0 | Internal |
-| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.2 | Internal* |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.9.1 | Internal |
+| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.4.3 | Internal* |
 | Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.7 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |

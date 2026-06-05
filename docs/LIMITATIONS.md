@@ -96,7 +96,9 @@ When a file cannot be `stat()`-ed (deleted mid-scan, a TOCTOU race, a special
 file), its degraded record reports `created_at` as `null` and `modified_at` as
 `""` (empty string, matching the `checksum_sha256: ""` on the same record) —
 never the wall-clock scan time — so the manifest stays reproducible across runs
-even on that error path (v1.8.2).
+even on that error path (v1.8.2). Its `path` is the full **source-relative** path
+(e.g. `sub/file.txt`), consistent with every normal record (v1.9.1; earlier it was
+flattened to the bare filename on that path).
 
 ## PDF metadata is read by following the file's structural index (v1.5 + v1.7)
 
