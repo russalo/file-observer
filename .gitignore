@@ -59,3 +59,6 @@ outbox/
 # OS
 .DS_Store
 Thumbs.db
+
+# review-apparatus canonical-tree marker (local safety guard; not public)
+.review-canonical
