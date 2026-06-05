@@ -79,7 +79,7 @@ except ImportError:
 
 
 SCANNER_VERSION = "1.9.0"
-LOGIC_VERSION = "1.4.2"   # v1.8.2 — stat-failure record's modified_at → None (was wall-clock now_iso), restoring determinism on the degraded path (Gemini maestro-audit F2)
+LOGIC_VERSION = "1.4.2"   # v1.8.2 — stat-failure record's modified_at → "" (empty string; was wall-clock now_iso), restoring determinism on the degraded path (Gemini maestro-audit F2)
 SCHEMA_VERSION = "1.7"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
