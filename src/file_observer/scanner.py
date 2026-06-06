@@ -1120,13 +1120,29 @@ def run_watch(source_dir: Path, config: "ScannerConfig") -> int:
         full_dict = _json.loads(full_json)
         # write the FULL manifest to a tempfile for the next iteration's delta source;
         # the stream emit (below) strips files[] per the include flag.
+        # encoding=utf-8 explicit (manifest_to_json uses ensure_ascii=False; Windows
+        # default locale CP1252 would otherwise raise on non-ASCII — gemini PR #51).
+        # try/except so a write/close failure doesn't leak a delete=False tempfile
+        # on disk (gemini PR #51).
         tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False,
-                                          prefix="watch_manifest_")
-        tmp.write(full_json); tmp.close()
+                                          prefix="watch_manifest_", encoding="utf-8")
+        try:
+            tmp.write(full_json); tmp.close()
+        except Exception:
+            try: tmp.close()
+            except Exception: pass
+            try: Path(tmp.name).unlink()
+            except OSError: pass
+            raise
         return full_dict, tmp.name
 
-    def _emit(manifest_dict: dict) -> None:
-        out = _strip_files_for_stream(manifest_dict, config.watch_include_files)
+    def _emit(manifest_dict: dict, force_include_files: bool = False) -> None:
+        # force_include_files: anchor the initial emit with files[] so consumers see
+        # pre-existing state at watch-start (the RFC §4.2 "anchor the stream" intent;
+        # without it the first emit carries neither files[] nor an added:[] delta
+        # because there's no previous_manifest to diff against — codex PR #51).
+        include = config.watch_include_files or force_include_files
+        out = _strip_files_for_stream(manifest_dict, include)
         sys.stdout.write(_json.dumps(out, separators=(",", ":")) + "\n")
         sys.stdout.flush()
 
@@ -1134,9 +1150,13 @@ def run_watch(source_dir: Path, config: "ScannerConfig") -> int:
     last_tmp: str | None = None
     try:
         # Initial scan: anchors the stream so consumers see world-state at watch-start.
+        # force_include_files=True so the first emit carries the full FileRecord set
+        # even when --watch-include-files isn't passed (codex PR #51 — without this,
+        # the first emit has no files[] AND no `delta.added` because there's nothing
+        # to diff against, leaving consumers blind to pre-existing files).
         try:
             md, last_tmp = _one_scan(prev_path)
-            _emit(md)
+            _emit(md, force_include_files=True)
             prev_path = last_tmp
         except Exception as exc:
             print(f"file-observer: initial scan failed: {exc!r}", file=sys.stderr)
@@ -1157,6 +1177,7 @@ def run_watch(source_dir: Path, config: "ScannerConfig") -> int:
                 break
             if not changes:
                 continue
+            new_tmp = None
             try:
                 md, new_tmp = _one_scan(prev_path)
                 _emit(md)
@@ -1167,7 +1188,14 @@ def run_watch(source_dir: Path, config: "ScannerConfig") -> int:
                 prev_path = new_tmp
                 last_tmp = new_tmp
             except Exception as exc:
-                # never-crash: per-rescan error → stderr log, continue
+                # never-crash: per-rescan error → stderr log, continue.
+                # If _one_scan succeeded but _emit (or anything after) raised,
+                # new_tmp was created but never swapped in — unlink it here so a
+                # long-running watch doesn't accumulate orphaned tempfiles
+                # (gemini PR #51, e.g. BrokenPipeError on stdout close).
+                if new_tmp:
+                    try: Path(new_tmp).unlink()
+                    except OSError: pass
                 print(f"file-observer: rescan failed: {type(exc).__name__}: {exc}",
                       file=sys.stderr)
                 continue

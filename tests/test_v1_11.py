@@ -108,18 +108,44 @@ def test_watch_flags_excluded_from_meta_config(tmp_path):
 def test_watch_include_files_opts_in(tmp_path):
     (tmp_path / "a.txt").write_text("a")
     (tmp_path / "b.txt").write_text("b")
-    # Default: files[] excluded
+    # Default: files[] is INCLUDED on the initial emit (anchors the stream so
+    # consumers see pre-existing state — codex PR #51); excluded on subsequent
+    # rescans triggered by FS events, where the `delta` block carries the change.
     proc = _spawn_watch(tmp_path)
     try:
         emits = _read_n_emits(proc, 1)
-        assert emits and emits[0]["files"] == []
+        assert emits and len(emits[0]["files"]) == 2   # anchor includes files
     finally:
         _stop(proc)
-    # With flag: files[] included
+    # With flag: files[] included on every emit
     proc = _spawn_watch(tmp_path, include_files=True)
     try:
         emits = _read_n_emits(proc, 1)
         assert emits and len(emits[0]["files"]) == 2
+    finally:
+        _stop(proc)
+
+
+@skip_no_watchfiles
+def test_watch_initial_emit_anchors_with_files(tmp_path):
+    """Codex PR #51 — without files[] AND without delta.added on the first emit,
+    consumers can't see pre-existing files. The fix: anchor the initial emit with
+    files[] even when --watch-include-files is off."""
+    (tmp_path / "x.txt").write_text("x")
+    (tmp_path / "y.txt").write_text("y")
+    proc = _spawn_watch(tmp_path)   # NOTE: --watch-include-files NOT passed
+    try:
+        emits = _read_n_emits(proc, 1)
+        assert emits, "no initial emit"
+        # The contract: consumers see pre-existing files via files[] OR delta.added
+        first = emits[0]
+        has_files = len(first.get("files", [])) >= 2
+        delta = first.get("delta") or {}
+        has_added = len(delta.get("added", [])) >= 2 if delta else False
+        assert has_files or has_added, (
+            f"initial emit anchors NOTHING: files={len(first.get('files', []))} "
+            f"delta={delta}"
+        )
     finally:
         _stop(proc)
 

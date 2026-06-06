@@ -68,7 +68,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 | **Schema** | `1.8` |
 | **Python** | `>= 3.12` |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 789 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
+| **Tests** | 790 passed; ran clean (zero fatal errors) — see "Validated at scale" below |
 
 ---
 
