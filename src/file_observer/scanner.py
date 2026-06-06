@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.10.0
+    Version:    1.11.0
     Schema:     1.8
     Python:     >= 3.12
     Spec:       docs/v1.8.0_RFC_Specification.md (current)
@@ -78,7 +78,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.10.0"
+SCANNER_VERSION = "1.11.0"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
 SCHEMA_VERSION = "1.8"
 
@@ -1009,6 +1009,10 @@ class ScannerConfig:
                        # output; excluded from meta.config in scan(), like signing_key).
     progress: bool = False   # v1.9: force the stderr progress indicator (else TTY-auto).
                              # Runtime-only — stderr only, never touches the manifest.
+    watch: bool = False             # v1.11: enable the watch loop (trigger rescan on FS events).
+    watch_debounce_ms: int = 200    # v1.11: debounce window for batching FS events.
+    watch_include_files: bool = False  # v1.11: include files[] in each stream emit.
+                                    # All three: runtime-only — NOT in meta.config.
 
     def effective_for(self, extension: str) -> dict[str, Any]:
         """Resolve effective config values for a given extension."""
@@ -1050,6 +1054,158 @@ def _main_is_importable() -> bool:
     a non-fork pool would fail noisily — the caller degrades to serial quietly."""
     import __main__
     return getattr(__main__, "__spec__", None) is not None or hasattr(__main__, "__file__")
+
+
+# --- v1.11 watch driver: a continuous trigger loop. Each iteration runs ONE
+# Scanner.scan() against the current filesystem state; emitting the manifest as
+# one JSONL line on stdout. Determinism contract carried through: each emitted
+# scan is byte-identical to a one-shot file-observer invocation against the same
+# FS state (verified in tests/test_v1_11.py). ---
+
+def _strip_files_for_stream(manifest_dict: dict, include_files: bool) -> dict:
+    """Default emit excludes files[] to keep the stream small; the `delta` block
+    is the load-bearing field. `--watch-include-files` opts back in."""
+    if not include_files:
+        manifest_dict = {**manifest_dict, "files": []}
+    return manifest_dict
+
+
+def run_watch(source_dir: Path, config: "ScannerConfig") -> int:
+    """v1.11: --watch driver. Returns the exit code (0 on clean shutdown via
+    SIGTERM/SIGINT; non-zero only on startup failure)."""
+    import json as _json
+    import signal
+    import sys
+    import tempfile
+    import threading
+    from dataclasses import asdict
+    from concurrent.futures import ProcessPoolExecutor
+
+    try:
+        from watchfiles import watch as _watchfiles_watch
+    except ImportError:
+        print("file-observer: --watch requires the [watch] extra "
+              "(install: pip install 'file-observer[watch]')", file=sys.stderr)
+        return 2
+
+    stop = threading.Event()
+    def _on_signal(signum, frame):
+        stop.set()
+    signal.signal(signal.SIGINT, _on_signal)
+    signal.signal(signal.SIGTERM, _on_signal)
+
+    # Kept-warm pool: build ONCE if workers > 1, reuse across rescans (avoids the
+    # ProcessPoolExecutor cold-spawn cost per event the RFC §3.1/4.3 calls out).
+    workers = max(1, int(config.workers or 1))
+    pool = None
+    if workers > 1:
+        import multiprocessing as _mp
+        if _mp.get_start_method() == "fork" or _main_is_importable():
+            pool = ProcessPoolExecutor(
+                max_workers=workers,
+                initializer=_worker_init,
+                initargs=(source_dir, config),
+            )
+
+    def _one_scan(prev_manifest_path: str | None) -> tuple[dict, str]:
+        """Run one Scanner.scan() with optional kept-warm pool; write the manifest
+        to a tempfile (the next iteration's previous_manifest), return the dict."""
+        cfg = ScannerConfig(**{**asdict(config), "previous_manifest": prev_manifest_path})
+        s = Scanner(source_dir=source_dir, config=cfg)
+        if pool is not None:
+            s._external_pool = pool  # _scan_paths_parallel will pick this up
+        m = s.scan()
+        # serialise via manifest_to_json (handles dataclass tree)
+        full_json = manifest_to_json(m)
+        full_dict = _json.loads(full_json)
+        # write the FULL manifest to a tempfile for the next iteration's delta source;
+        # the stream emit (below) strips files[] per the include flag.
+        # encoding=utf-8 explicit (manifest_to_json uses ensure_ascii=False; Windows
+        # default locale CP1252 would otherwise raise on non-ASCII — gemini PR #51).
+        # try/except so a write/close failure doesn't leak a delete=False tempfile
+        # on disk (gemini PR #51).
+        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False,
+                                          prefix="watch_manifest_", encoding="utf-8")
+        try:
+            tmp.write(full_json); tmp.close()
+        except Exception:
+            try: tmp.close()
+            except Exception: pass
+            try: Path(tmp.name).unlink()
+            except OSError: pass
+            raise
+        return full_dict, tmp.name
+
+    def _emit(manifest_dict: dict, force_include_files: bool = False) -> None:
+        # force_include_files: anchor the initial emit with files[] so consumers see
+        # pre-existing state at watch-start (the RFC §4.2 "anchor the stream" intent;
+        # without it the first emit carries neither files[] nor an added:[] delta
+        # because there's no previous_manifest to diff against — codex PR #51).
+        include = config.watch_include_files or force_include_files
+        out = _strip_files_for_stream(manifest_dict, include)
+        sys.stdout.write(_json.dumps(out, separators=(",", ":")) + "\n")
+        sys.stdout.flush()
+
+    prev_path: str | None = None  # delta-vs-empty on the initial emit (§4.2)
+    last_tmp: str | None = None
+    try:
+        # Initial scan: anchors the stream so consumers see world-state at watch-start.
+        # force_include_files=True so the first emit carries the full FileRecord set
+        # even when --watch-include-files isn't passed (codex PR #51 — without this,
+        # the first emit has no files[] AND no `delta.added` because there's nothing
+        # to diff against, leaving consumers blind to pre-existing files).
+        try:
+            md, last_tmp = _one_scan(prev_path)
+            _emit(md, force_include_files=True)
+            prev_path = last_tmp
+        except Exception as exc:
+            print(f"file-observer: initial scan failed: {exc!r}", file=sys.stderr)
+            return 3
+
+        # The event loop. watchfiles debounces internally (we pass the configured ms).
+        # rust_timeout=int(debounce*5) gives us a periodic wake even when no events fire
+        # so SIGTERM is honoured promptly.
+        debounce_ms = max(50, int(config.watch_debounce_ms))
+        for changes in _watchfiles_watch(
+            str(source_dir),
+            stop_event=stop,
+            debounce=debounce_ms,
+            rust_timeout=max(500, debounce_ms * 5),
+            yield_on_timeout=True,
+        ):
+            if stop.is_set():
+                break
+            if not changes:
+                continue
+            new_tmp = None
+            try:
+                md, new_tmp = _one_scan(prev_path)
+                _emit(md)
+                # rotate: delete the previous tempfile, swap in the new one
+                if last_tmp:
+                    try: Path(last_tmp).unlink()
+                    except OSError: pass
+                prev_path = new_tmp
+                last_tmp = new_tmp
+            except Exception as exc:
+                # never-crash: per-rescan error → stderr log, continue.
+                # If _one_scan succeeded but _emit (or anything after) raised,
+                # new_tmp was created but never swapped in — unlink it here so a
+                # long-running watch doesn't accumulate orphaned tempfiles
+                # (gemini PR #51, e.g. BrokenPipeError on stdout close).
+                if new_tmp:
+                    try: Path(new_tmp).unlink()
+                    except OSError: pass
+                print(f"file-observer: rescan failed: {type(exc).__name__}: {exc}",
+                      file=sys.stderr)
+                continue
+        return 0
+    finally:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+        if last_tmp:
+            try: Path(last_tmp).unlink()
+            except OSError: pass
 
 
 class Scanner:
@@ -1157,7 +1313,7 @@ class Scanner:
             scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
             source_dir=str(self.source_dir),
-            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress")},
+            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress", "watch", "watch_debounce_ms", "watch_include_files")},
         )
         stats = self._compute_stats(records)
         quality = self._compute_quality(records)
@@ -1204,7 +1360,7 @@ class Scanner:
         workers = max(1, int(self.config.workers or 1))
         total = len(paths)
         if workers > 1 and total > 1:
-            return self._scan_paths_parallel(paths, workers, total)
+            return self._scan_paths_parallel(paths, workers, total, external_pool=getattr(self, "_external_pool", None))
         out: list[FileRecord] = []
         for i, p in enumerate(paths, 1):
             out.append(self.scan_file(p))
@@ -1212,13 +1368,18 @@ class Scanner:
         self._emit_progress(total, total, final=True)
         return out
 
-    def _scan_paths_parallel(self, paths: list[Path], workers: int, total: int) -> list[FileRecord]:
+    def _scan_paths_parallel(self, paths: list[Path], workers: int, total: int,
+                              external_pool=None) -> list[FileRecord]:
         """Process-pool the pure per-file pass. ``ProcessPoolExecutor.map`` yields
         results in input order regardless of completion order, so the record list
         equals the serial one. Never-crash: any pool failure (a worker death, or a
         sandboxed env that forbids fork/exec) falls back to a serial rescan, where
         ``scan_file``'s in-band ErrorRecord handles the offending file. Progress is
-        emitted by the PARENT as results arrive (workers never print)."""
+        emitted by the PARENT as results arrive (workers never print).
+
+        v1.11: ``external_pool`` (a long-lived ``ProcessPoolExecutor``) reuses one
+        warm pool across many calls (e.g. ``--watch``). When provided, this method
+        neither builds nor shuts down the pool; the caller owns its lifecycle."""
         from concurrent.futures import ProcessPoolExecutor
         import multiprocessing as _mp
         # Portability guard (PR #46 / codex): a non-fork start method (spawn/forkserver
@@ -1231,16 +1392,27 @@ class Scanner:
         chunksize = max(1, total // (workers * 8))
         out: list[FileRecord] = []
         try:
-            with ProcessPoolExecutor(max_workers=workers,
-                                     initializer=_worker_init,
-                                     initargs=(self.source_dir, self.config)) as ex:
+            if external_pool is not None:
+                # v1.11: caller-managed kept-warm pool; don't construct/destroy.
+                ex = external_pool
                 try:
                     for i, rec in enumerate(ex.map(_worker_scan_file, path_strs, chunksize=chunksize), 1):
                         out.append(rec)
                         self._emit_progress(i, total)
                 except Exception:
-                    ex.shutdown(wait=False, cancel_futures=True)  # don't block on a broken pool
+                    # don't shut down the caller's pool — they own it; let them deal
                     raise
+            else:
+                with ProcessPoolExecutor(max_workers=workers,
+                                         initializer=_worker_init,
+                                         initargs=(self.source_dir, self.config)) as ex:
+                    try:
+                        for i, rec in enumerate(ex.map(_worker_scan_file, path_strs, chunksize=chunksize), 1):
+                            out.append(rec)
+                            self._emit_progress(i, total)
+                    except Exception:
+                        ex.shutdown(wait=False, cancel_futures=True)  # don't block on a broken pool
+                        raise
             self._emit_progress(total, total, final=True)
             return out
         except Exception:
@@ -4998,6 +5170,9 @@ def main() -> None:
     parser.add_argument("--previous-manifest", default=None, help="Path to previous manifest for delta comparison")
     parser.add_argument("--workers", type=int, default=1, metavar="N", help="Parallel scan worker processes (default: 1 = serial). Output is byte-identical regardless of N.")
     parser.add_argument("--progress", action="store_true", help="Show a scan progress indicator on stderr (auto-on when stderr is a TTY)")
+    parser.add_argument("--watch", action="store_true", help="Continuous mode: rescan on FS events and emit each delta as one JSONL line on stdout. Each emitted scan is byte-identical to a one-shot invocation at the same FS state (v1.11)")
+    parser.add_argument("--watch-debounce-ms", type=int, default=200, metavar="N", help="Debounce window for batching FS events in --watch mode (default: 200ms)")
+    parser.add_argument("--watch-include-files", action="store_true", help="Include files[] in each --watch emit (default: excluded to keep the stream small; the `delta` field carries what changed)")
     parser.add_argument("--profile", choices=list(SCAN_PROFILES.keys()), default=None, help="Named scan profile (fast_sort, general, deep_extract)")
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
@@ -5027,7 +5202,23 @@ def main() -> None:
         extension_overrides=ext_overrides,
         workers=args.workers,
         progress=args.progress,
+        watch=args.watch,
+        watch_debounce_ms=args.watch_debounce_ms,
+        watch_include_files=args.watch_include_files,
     )
+
+    # v1.11: --watch is a stream-to-stdout trigger loop; it does NOT take the
+    # one-shot path that writes a manifest file to disk. Conflicting flags
+    # (--output, --format jsonl) are rejected.
+    if config.watch:
+        if args.output is not None:
+            print("file-observer: --watch is incompatible with --output (the stream goes to stdout)", file=sys.stderr)
+            sys.exit(2)
+        if config.format != "json":
+            print(f"file-observer: --watch is incompatible with --format {config.format} (stream is JSONL of deltas)", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(run_watch(source_dir=Path(args.source), config=config))
+
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()
 

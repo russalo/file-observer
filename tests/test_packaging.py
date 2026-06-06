@@ -37,7 +37,7 @@ def test_canonical_top_level_api():
 
     import file_observer
 
-    assert file_observer.__version__ == "1.10.0"
+    assert file_observer.__version__ == "1.11.0"
     assert "Scanner" in file_observer.__all__
 
 
@@ -69,7 +69,7 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.10.0"
+    assert SCANNER_VERSION == "1.11.0"
     assert SCHEMA_VERSION == "1.8"  # v1.10.0: promotions + new provisional fields
     assert LOGIC_VERSION == "1.4.3"  # v1.9.1 — stat-failure path preserved
 

@@ -70,6 +70,11 @@ range of common binary formats before falling back to extension inference. Optio
 - **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`)
 - **defusedxml** — hardened XML parsing (stdlib fallback is used if absent, with
   a documented risk)
+- **pypdf** (`file-observer[pdf]`) — object-stream PDF `page_count`/`/Info`
+  (tier 1; the stdlib fallback recovers most common cases when absent)
+- **watchfiles** (`file-observer[watch]`) — backend for `--watch` continuous
+  mode. When absent, `--watch` prints an actionable error and exits; one-shot
+  scans are unaffected.
 
 When an optional dependency is missing, the related signals are reduced or
 skipped — the scan still completes. The manifest's `context` records dependency
@@ -91,6 +96,16 @@ manifest, and the per-file pass is order-preserving. The cost is memory: each
 worker holds the per-file footprint (a PDF may be read whole, capped 64 MB), so a
 high `--workers` on a corpus of large files can use up to ~`N ×` that transient
 memory. Lower `--workers` if memory-constrained; output is unchanged either way.
+
+**`--watch` does not change output (v1.11).** `--watch` runs file-observer
+continuously, rescanning on FS events and emitting each scan's delta as one
+JSONL line on stdout. The contract: **each individual scan in the stream is
+byte-identical to a one-shot `file-observer` invocation against the same
+filesystem state.** `--watch`, `--watch-debounce-ms`, and
+`--watch-include-files` are runtime-only — never recorded in the manifest. The
+stream itself is non-deterministic *across runs* by design (filesystem events
+are temporal), but every emitted scan is fully deterministic for its trigger
+moment.
 
 When a file cannot be `stat()`-ed (deleted mid-scan, a TOCTOU race, a special
 file), its degraded record reports `created_at` as `null` and `modified_at` as
