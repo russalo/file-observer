@@ -129,7 +129,7 @@ We review promptly. If you don't hear back within a few days, ping us.
 
 ## Code conventions
 
-- **Single module** — all logic in `src/scanner/scanner.py`
+- **Single module** — all logic in `src/file_observer/scanner.py`
 - **Dataclasses** for all structured data
 - **Signal provenance** on every derived field
 - **Bounded observation** — specialists declare deviations explicitly
@@ -141,7 +141,7 @@ We review promptly. If you don't hear back within a few days, ping us.
 ## Reporting bugs
 
 Open an issue with:
-- File Observer version (check `SCANNER_VERSION` in `src/scanner/scanner.py`)
+- File Observer version (check `SCANNER_VERSION` in `src/file_observer/scanner.py`)
 - Python version and platform
 - Steps to reproduce
 - Expected vs actual behavior
