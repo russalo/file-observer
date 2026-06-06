@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "file-observer"
 version = "1.11.0"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
-readme = "docs/README.md"
+readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "AGPL-3.0-or-later"}
 authors = [
@@ -47,7 +47,7 @@ dev = ["pytest", "PyYAML", "olefile", "defusedxml", "pypdf", "watchfiles"]
 Homepage = "https://github.com/russalo/file-observer"
 Repository = "https://github.com/russalo/file-observer"
 Issues = "https://github.com/russalo/file-observer/issues"
-Documentation = "https://github.com/russalo/file-observer/blob/main/docs/README.md"
+Documentation = "https://github.com/russalo/file-observer/blob/main/README.md"
 Changelog = "https://github.com/russalo/file-observer/blob/main/docs/HISTORY.md"
 
 [project.scripts]
