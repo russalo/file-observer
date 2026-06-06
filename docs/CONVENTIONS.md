@@ -113,7 +113,7 @@ When LOGIC_VERSION or SCHEMA_VERSION bump, those constants update independently 
 
 ### 2.3 Other Documents
 
-- `docs/README.md` — user-facing project README
+- `README.md` (repo root) — user-facing project README (also rendered on PyPI via `pyproject.toml`)
 - `docs/HISTORY.md` — running index of all versions, specs, and compliance reports (with links to archived items post-v1.0)
 - `docs/CONVENTIONS.md` — this file (internal)
 - `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments
@@ -297,7 +297,7 @@ Empty.
 Required before merge:
 - [ ] `docs/v{VERSION}.0_RFC_Specification.md` — approved spec
 - [ ] `docs/COMPLIANCE-v{VERSION}.md` — compliance report
-- [ ] `docs/README.md` — version, schema, feature table updated
+- [ ] `README.md` (repo root) — version, schema, feature table updated
 - [ ] `docs/HISTORY.md` — new version row added; "Drafts in Flight" updated
 - [ ] `CLAUDE.md` — spec references and roadmap updated
 - [ ] `docs/CONVENTIONS.md` (this file) — tracking inventory updated for any new specialists, fields, signatures, flags, error codes, vectors
