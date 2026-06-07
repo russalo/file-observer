@@ -1,26 +1,37 @@
 """v1.12.0 — post-v1.5 PDF arc residual closure (falsify-first).
 
 Two residuals closed:
-  (A) Owner-permission-locked encrypted PDFs: the v1.11 dispatch had a
-      `not meta["encrypted"]` gate that skipped the cascade entirely; pypdf
-      itself already handles empty-password decrypt. v1.12 relaxes the gate
-      and surfaces `pdf.permission_flags_bypassed: bool` (provisional,
-      SCHEMA 1.8 → 1.9).
-  (B) Uncompressed xref-stream PDFs: the stdlib decoder's `_pdf_stream_body`
-      assumed Flate compression. PDFs that emit `/Filter`-absent xref streams
-      (42 on corpora_infra; e.g. WSDOT standard plans) nulled page_count.
-      v1.12 adds the no-filter path to `_pdf_xref_stream_map`.
+  (A) Owner-permission-locked encrypted PDFs. The v1.11 dispatch had a
+      `not meta["encrypted"]` gate that skipped the cascade. pypdf itself
+      handles empty-password decrypt via `reader.decrypt("")`. v1.12 relaxes
+      the gate and surfaces a new `extraction_permission_bypassed` value in
+      `FileRecord.safety_flags` (the cross-format disclosure surface) when
+      the primary EXTRACT permission (ISO 32000 bit 5) was not set in
+      `user_access_permissions` but metadata was extracted anyway. No SCHEMA
+      bump — safety_flags is already a stable list[str] field since v0.7.
+  (B) Uncompressed xref-stream PDFs. `_pdf_xref_stream_map` previously called
+      `_safe_inflate(body)` unconditionally; the no-filter case (42 PDFs on
+      corpora_infra) now uses the raw body, with the v1.8.1 bounded-observation
+      discipline preserved (aggregate `total_raw >= PDF_INFLATE_CAP` cap +
+      `/Length`-bounded `_pdf_stream_body`).
 
-The original §3.3 framing (PNG predictor extension) was data-pivoted on
-2026-06-07: `scratch/measure_predictor_gap.py` returned 0 predictor-gap PDFs
-on corpora_infra. The actual residuals are uncompressed-xref, not exotic-
-predictor. Falsify-first did its job. See v1.12 RFC §3.3 + §6.1.
+The leg-1 in-house swarm review identified 15 findings; this test module
+encodes the falsification for each fix. The critical bugs were:
+  - Wrong permission bit checked (#15, EXTRACT_TEXT_AND_GRAPHICS bit 10 →
+    primary EXTRACT bit 5).
+  - page_count overwrite without null guard (#2/#7) — encrypted classic-xref
+    PDFs would have their v1.7-anchor page_count silently overwritten by
+    pypdf's `len(reader.pages)`, breaking the byte-identical contract.
+  - cryptography not in ScanContext.dependencies (#3/#8) — Pillar-1 violation;
+    same install can produce different manifests based on crypto presence.
+  - No oracle parity gate on the no-filter xref-stream path (#9).
+  - Strict `>` rather than `>=` on PDF_INFLATE_CAP cap (#10) — 64MB no-filter
+    body slipped on first iteration.
 """
 from __future__ import annotations
 
 import io
 import struct
-import zlib
 from pathlib import Path
 
 import pytest
@@ -33,6 +44,10 @@ from file_observer.scanner import (
 )
 
 pypdf = pytest.importorskip("pypdf")
+# v1.12 fixtures: AES-256 encrypt requires the cryptography package; without it,
+# pypdf raises DependencyError during fixture construction. importorskip cleanly
+# (leg-1 review #13) instead of FAIL-as-regression.
+pytest.importorskip("cryptography")
 from pypdf.constants import UserAccessPermissions  # noqa: E402
 
 
@@ -41,17 +56,16 @@ from pypdf.constants import UserAccessPermissions  # noqa: E402
 # ---------------------------------------------------------------------------
 
 def _encrypted_pdf(extract_allowed: bool, user_password: str = "") -> bytes:
-    """AES-256 encrypted PDF with the EXTRACT bit set or cleared.
+    """AES-256 encrypted PDF with the primary EXTRACT bit (ISO 32000 bit 5,
+    pypdf `UserAccessPermissions.EXTRACT = 16`) set or cleared.
 
     Caltrans-2025 shape: empty user password, owner password set, AES-256.
-    When `extract_allowed=False`, the EXTRACT_TEXT_AND_GRAPHICS bit is cleared
-    — the consumer scenario for `permission_flags_bypassed=true`.
     """
     w = pypdf.PdfWriter()
     w.add_blank_page(width=200, height=200)
     w.add_blank_page(width=200, height=200)
     perms = (
-        UserAccessPermissions.PRINT | UserAccessPermissions.EXTRACT_TEXT_AND_GRAPHICS
+        UserAccessPermissions.PRINT | UserAccessPermissions.EXTRACT
         if extract_allowed
         else UserAccessPermissions.PRINT
     )
@@ -67,16 +81,7 @@ def _encrypted_pdf(extract_allowed: bool, user_password: str = "") -> bytes:
 
 
 def _uncompressed_xref_pdf(npages: int = 3) -> bytes:
-    """A minimal PDF with an UNCOMPRESSED xref stream (no /Filter) — the v1.8
-    stdlib decoder skipped these (Flate-only). Page tree is regular objects;
-    the xref stream's body is the raw entry bytes per the /W widths.
-
-    Built from the v1.8 fixture skeleton, simplified: the page tree is NOT
-    in an /ObjStm (so v1.7's anchor reader can still produce a value via
-    classic mechanisms — but we craft the file with ONLY an xref-stream
-    trailer to force the cascade through `_pdf_xref_stream_map`).
-    """
-    # Catalog + Pages + N Page objects, then an xref STREAM with no /Filter.
+    """A minimal PDF with an UNCOMPRESSED xref stream (no /Filter)."""
     page_nums = list(range(3, 3 + npages))
     kids = b"[" + b" ".join(b"%d 0 R" % n for n in page_nums) + b"]"
     objs: list[tuple[int, bytes]] = [
@@ -94,17 +99,12 @@ def _uncompressed_xref_pdf(npages: int = 3) -> bytes:
     size = xnum + 1
 
     def e(t: int, a: int, b: int) -> bytes:
-        # /W [1 2 1] — type 1 byte, offset 2 bytes, gen/index 1 byte
         return struct.pack(">B", t) + struct.pack(">H", a) + struct.pack(">B", b)
 
-    rows = {
-        0: e(0, 0, 0),
-        xnum: e(1, offs[xnum], 0),
-    }
+    rows = {0: e(0, 0, 0), xnum: e(1, offs[xnum], 0)}
     for o, _ in objs:
         rows[o] = e(1, offs[o], 0)
     xref_raw = b"".join(rows[i] for i in range(size))
-    # NO /Filter — raw uncompressed bytes
     out += b"%d 0 obj\n<< /Type /XRef /W [1 2 1] /Size %d /Root 1 0 R /Length %d >>\nstream\n" % (
         xnum, size, len(xref_raw),
     )
@@ -114,80 +114,130 @@ def _uncompressed_xref_pdf(npages: int = 3) -> bytes:
     return bytes(out)
 
 
+def _uncompressed_xref_with_filter_in_title() -> bytes:
+    """v1.12 leg-1 review #14: a PDF whose xref-stream dict has NO `/Filter` key
+    but contains the substring `/Filter` inside a /Title or similar string value.
+    The substring check `b"/Filter" not in d` would mis-classify this; the
+    key-presence regex `re.search(rb"/Filter\\s*[/\\[]", d)` must not match."""
+    # We can't easily put a /Title inside an xref-stream dict in a clean way that
+    # pypdf accepts, so we directly construct an xref-stream dict with a literal-
+    # string Producer containing the substring "/Filter". The xref-stream itself
+    # has no compression filter, so the v1.12 patched path MUST take the
+    # raw-body branch.
+    page_count = 2
+    page_nums = [3, 4]
+    kids = b"[" + b" ".join(b"%d 0 R" % n for n in page_nums) + b"]"
+    objs: list[tuple[int, bytes]] = [
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, b"<< /Type /Pages /Kids %s /Count %d >>" % (kids, page_count)),
+        (3, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>"),
+        (4, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>"),
+    ]
+    out = bytearray(b"%PDF-1.5\n%\xe2\xe3\xcf\xd3\n")
+    offs: dict[int, int] = {}
+    for num, b in objs:
+        offs[num] = len(out)
+        out += b"%d 0 obj\n%s\nendobj\n" % (num, b)
+    xnum = 5
+    offs[xnum] = len(out)
+    size = xnum + 1
+
+    def e(t: int, a: int, b: int) -> bytes:
+        return struct.pack(">B", t) + struct.pack(">H", a) + struct.pack(">B", b)
+
+    rows = {0: e(0, 0, 0), xnum: e(1, offs[xnum], 0)}
+    for o, _ in objs:
+        rows[o] = e(1, offs[o], 0)
+    xref_raw = b"".join(rows[i] for i in range(size))
+    # The xref-stream dict carries a /Producer with a literal string containing
+    # the substring `/Filter` — a v1.11-substring check would false-positive.
+    out += (
+        b"%d 0 obj\n<< /Type /XRef /W [1 2 1] /Size %d /Root 1 0 R "
+        b"/Producer (Generated by tool that documents /Filter usage) "
+        b"/Length %d >>\nstream\n" % (xnum, size, len(xref_raw))
+    )
+    out += xref_raw + b"\nendstream\nendobj\n"
+    out += b"startxref\n%d\n%%%%EOF" % offs[xnum]
+    return bytes(out)
+
+
 def _write(tmp_path: Path, name: str, data: bytes) -> Path:
     p = tmp_path / name
     p.write_bytes(data)
     return p
 
 
-def _scan_one(path: Path) -> dict:
+def _scan_one(path: Path):
     cfg = ScannerConfig(enable_specialists=True)
     s = Scanner(source_dir=path.parent, config=cfg)
     m = s.scan()
     for rec in m.files:
         if rec.path == path.name:
-            return (rec.specialist_metadata or {}).get("pdf") or {}
+            return rec
     raise AssertionError(f"file {path.name} not found in manifest")
 
 
 # ---------------------------------------------------------------------------
-# (A) Owner-permission-locked encrypted PDFs
+# (A) Owner-permission-locked encrypted PDFs — disclosure via safety_flags
 # ---------------------------------------------------------------------------
 
 class TestEncryptedDecode:
     def test_encrypted_extract_allowed_recovers_metadata(self, tmp_path):
-        """An empty-user-password AES-256 PDF with EXTRACT permitted — Caltrans
-        shape. Should recover page_count + producer; permission_flags_bypassed=False."""
+        """Empty-user-pw AES-256 PDF with EXTRACT permitted (Caltrans shape):
+        recover page_count + producer; no `extraction_permission_bypassed` flag."""
         data = _encrypted_pdf(extract_allowed=True)
         p = _write(tmp_path, "extract_allowed.pdf", data)
-        pdf = _scan_one(p)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
         assert pdf["page_count"] == 2, f"expected 2 pages, got {pdf.get('page_count')!r}"
         assert pdf["encrypted"] is True
-        assert pdf.get("permission_flags_bypassed") is False, (
-            f"extract was permitted; bypass should be false; got {pdf.get('permission_flags_bypassed')!r}"
-        )
         assert pdf.get("parser") == "pypdf"
+        # Disclosure is on safety_flags now, NOT a pdf-namespaced bool (leg-1 #12)
+        assert "permission_flags_bypassed" not in pdf, (
+            "v1.12: the pdf.permission_flags_bypassed field was REMOVED — promoted to safety_flags"
+        )
+        assert "extraction_permission_bypassed" not in rec.safety_flags, (
+            f"extract permitted; safety flag should be absent; got {rec.safety_flags!r}"
+        )
 
-    def test_encrypted_extract_denied_recovers_with_bypass_flag(self, tmp_path):
-        """An empty-user-password AES-256 PDF with EXTRACT denied. Observe-with-
-        disclosure: metadata recovered AND permission_flags_bypassed=True."""
+    def test_encrypted_extract_denied_recovers_with_safety_flag(self, tmp_path):
+        """Empty-user-pw AES-256 PDF with primary EXTRACT bit (bit 5) cleared:
+        observe-with-disclosure — metadata recovered AND
+        `extraction_permission_bypassed` appears in safety_flags."""
         data = _encrypted_pdf(extract_allowed=False)
         p = _write(tmp_path, "extract_denied.pdf", data)
-        pdf = _scan_one(p)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
         assert pdf["page_count"] == 2
         assert pdf["encrypted"] is True
-        assert pdf.get("permission_flags_bypassed") is True, (
-            f"extract denied but we extracted; bypass should be true; got {pdf.get('permission_flags_bypassed')!r}"
-        )
         assert pdf.get("parser") == "pypdf"
+        assert "extraction_permission_bypassed" in rec.safety_flags, (
+            f"extract denied but we extracted; flag missing; safety_flags={rec.safety_flags!r}"
+        )
+        # Field must NOT appear in the pdf namespace (leg-1 #12)
+        assert "permission_flags_bypassed" not in pdf
 
-    def test_real_password_pdf_nulls_cleanly(self, tmp_path):
-        """A PDF requiring a real (non-empty) user password — we MUST NOT prompt;
-        cascade returns None cleanly. (Classic-xref encrypted PDFs may still yield
-        page_count from the v1.7 anchor — that's expected. The cascade's job here
-        is to not crash, not to magically extract /Info that's truly encrypted.)"""
+    def test_real_password_pdf_does_not_bypass(self, tmp_path):
+        """PDF requiring a real (non-empty) user password — MUST NOT prompt;
+        cascade returns None cleanly; no bypass disclosure (we never got in)."""
         data = _encrypted_pdf(extract_allowed=True, user_password="not-empty-pwd")
         p = _write(tmp_path, "real_password.pdf", data)
-        pdf = _scan_one(p)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
         assert pdf["encrypted"] is True
-        # Producer is unrecoverable without the real password — cascade nulls clean.
         assert pdf.get("producer") is None, (
             f"real-password PDF: producer should be null; got {pdf.get('producer')!r}"
         )
-        # parser='none' means pypdf's empty-password decrypt failed → short-circuited.
-        assert pdf.get("parser") in (None, "none"), (
-            f"expected parser=none on failed-decrypt; got {pdf.get('parser')!r}"
-        )
-        # Never set bypass=True on a PDF we couldn't decrypt.
-        assert pdf.get("permission_flags_bypassed") is False
+        assert pdf.get("parser") in (None, "none")
+        assert "extraction_permission_bypassed" not in rec.safety_flags
 
-    def test_unencrypted_pdf_bypass_field_false(self, tmp_path):
-        """Sanity: an unencrypted PDF should never have bypass=True."""
+    def test_unencrypted_pdf_no_bypass_flag(self, tmp_path):
+        """Sanity: an unencrypted PDF never gets the bypass disclosure."""
         p = _write(tmp_path, "plain.pdf", _uncompressed_xref_pdf(npages=2))
-        pdf = _scan_one(p)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
         assert pdf["encrypted"] is False
-        # The field MUST be present (provisional) but always false for non-encrypted
-        assert pdf.get("permission_flags_bypassed") is False
+        assert "extraction_permission_bypassed" not in rec.safety_flags
 
 
 # ---------------------------------------------------------------------------
@@ -196,50 +246,96 @@ class TestEncryptedDecode:
 
 class TestUncompressedXrefStream:
     def test_uncompressed_xref_recovers_page_count(self, tmp_path):
-        """An xref STREAM with no /Filter — v1.11 nulls page_count via _pdf_xref_stream_map's
-        Flate-only assumption; v1.12 recovers via the patched no-filter path. The recovery
-        runs through the v1.7 structural anchor (which uses _pdf_xref_stream_map), so the
-        cascade may not be needed — parser='none' with page_count populated is the win."""
+        """An xref STREAM with no /Filter — v1.11 nulled via the Flate-only
+        assumption; v1.12 recovers via the patched no-filter path."""
         data = _uncompressed_xref_pdf(npages=5)
         p = _write(tmp_path, "uncompressed_xref.pdf", data)
-        pdf = _scan_one(p)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
         assert pdf["xref_type"] == "stream"
-        assert pdf["page_count"] == 5, (
-            f"uncompressed xref-stream should recover page_count=5; got {pdf.get('page_count')!r}"
-        )
+        assert pdf["page_count"] == 5
 
     def test_uncompressed_xref_oracle_parity_with_pypdf(self, tmp_path):
-        """Stdlib path on uncompressed xref MUST agree with pypdf where pypdf gives
-        a value. Same oracle gate as v1.8. Calls the instance method via Scanner()."""
-        data = _uncompressed_xref_pdf(npages=7)
-        p = _write(tmp_path, "uncompressed_xref_oracle.pdf", data)
+        """v1.12 leg-1 review #9: the no-filter xref-stream path MUST agree
+        with pypdf, same as v1.8's Flate-path parity test."""
+        for npages in (3, 7, 13):
+            data = _uncompressed_xref_pdf(npages=npages)
+            p = _write(tmp_path, f"oracle_{npages}.pdf", data)
 
-        # pypdf truth
-        with open(p, "rb") as fh:
-            reader = pypdf.PdfReader(fh, strict=False)
-            pypdf_pages = len(reader.pages)
-        assert pypdf_pages == 7  # sanity on the fixture
+            with open(p, "rb") as fh:
+                reader = pypdf.PdfReader(fh, strict=False)
+                pypdf_pages = len(reader.pages)
+            assert pypdf_pages == npages
 
-        # Stdlib truth via the scanner (instance method)
-        scanner = Scanner(source_dir=p.parent, config=ScannerConfig(enable_specialists=True))
-        stdlib_result = scanner._pdf_via_stdlib(p, whole=data)
-        assert stdlib_result is not None, "stdlib MUST recover uncompressed xref stream"
-        assert stdlib_result["page_count"] == 7, (
-            f"stdlib disagrees with pypdf on uncompressed xref: stdlib={stdlib_result['page_count']!r} pypdf={pypdf_pages!r}"
+            scanner = Scanner(source_dir=p.parent, config=ScannerConfig(enable_specialists=True))
+            stdlib_result = scanner._pdf_via_stdlib(p, whole=data)
+            assert stdlib_result is not None, f"stdlib failed on uncompressed-xref n={npages}"
+            assert stdlib_result["page_count"] == pypdf_pages, (
+                f"oracle disagreement n={npages}: stdlib={stdlib_result['page_count']!r} pypdf={pypdf_pages!r}"
+            )
+
+    def test_filter_substring_in_dict_value_does_not_mis_classify(self, tmp_path):
+        """v1.12 leg-1 review #14: a literal-string value containing the substring
+        '/Filter' (with no actual /Filter KEY) must take the raw-body branch
+        (`re.search(rb"/Filter\\s*[/\\[]", d)` is False — key-followed-by-/ or [)."""
+        data = _uncompressed_xref_with_filter_in_title()
+        p = _write(tmp_path, "filter_substring.pdf", data)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
+        assert pdf["page_count"] == 2, (
+            f"PDF with '/Filter' in a string value should still recover via no-filter path; got {pdf.get('page_count')!r}"
         )
 
 
 # ---------------------------------------------------------------------------
-# Version bumps (the cheap pin)
+# v1.12 contract: page_count NEVER overwritten by cascade on existing value
+# ---------------------------------------------------------------------------
+
+class TestPageCountNeverOverwritten:
+    def test_anchor_page_count_preserved_through_cascade(self, tmp_path):
+        """v1.12 leg-1 review #2/#7: an encrypted classic-xref PDF where the
+        v1.7 anchor reads page_count from plaintext /Count MUST NOT have it
+        overwritten when the v1.12 relaxed gate fires the cascade. The merge
+        is strict null-fill for ALL fields, page_count included."""
+        data = _encrypted_pdf(extract_allowed=True)
+        p = _write(tmp_path, "encrypted_classic.pdf", data)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
+        # Both the v1.7 anchor and the cascade agree on 2 pages for this fixture
+        # — the test asserts the recovered value is correct AND consistent.
+        assert pdf["page_count"] == 2
+
+
+# ---------------------------------------------------------------------------
+# Capability-locked determinism: cryptography in ScanContext.dependencies
+# ---------------------------------------------------------------------------
+
+class TestScanContextDependencies:
+    def test_cryptography_in_dependencies(self, tmp_path):
+        """v1.12 leg-1 review #3/#8: pypdf needs cryptography for AES-256/V5
+        decrypt; without it, manifest output diverges on encrypted PDFs.
+        cryptography MUST be in ScanContext.dependencies for Pillar-1."""
+        (tmp_path / "empty.txt").write_text("hello")
+        cfg = ScannerConfig(enable_specialists=True)
+        m = Scanner(source_dir=tmp_path, config=cfg).scan()
+        deps = m.context.dependencies
+        assert "cryptography" in deps, f"cryptography missing from deps: {list(deps.keys())}"
+        # In this test env, cryptography IS available
+        assert deps["cryptography"]["available"] is True
+
+
+# ---------------------------------------------------------------------------
+# Version bumps
 # ---------------------------------------------------------------------------
 
 class TestVersionBumps:
     def test_scanner_version_is_1_12_0(self):
-        assert SCANNER_VERSION == "1.12.0", f"SCANNER_VERSION should be 1.12.0, got {SCANNER_VERSION!r}"
+        assert SCANNER_VERSION == "1.12.0", f"got {SCANNER_VERSION!r}"
 
-    def test_schema_version_is_1_9(self):
-        # Permission_flags_bypassed is a new provisional field → SCHEMA bump
-        assert SCHEMA_VERSION == "1.9", f"SCHEMA_VERSION should be 1.9, got {SCHEMA_VERSION!r}"
+    def test_schema_version_unchanged_at_1_8(self):
+        """v1.12 promotes the disclosure to safety_flags (existing stable list[str])
+        rather than adding a new pdf-namespaced bool — no SCHEMA bump (leg-1 #12)."""
+        assert SCHEMA_VERSION == "1.8", f"got {SCHEMA_VERSION!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +349,10 @@ CORPUS = Path("/srv/projects/pkplab/scanner-corpora/corpora_infra")
 class TestCorpusInvariants:
     def test_caltrans_owner_locked_pdfs_recover(self):
         """The 2 Caltrans owner-locked PDFs recover producer + page_count.
-        Both have EXTRACT permitted, so permission_flags_bypassed=False."""
+        The corrected EXTRACT bit (#15 fix) revealed that Caltrans has bit 5
+        (primary EXTRACT) CLEARED while bit 10 (the deprecated accessibility
+        override) is set — i.e. they're exactly the bypass-disclosure case.
+        v1.12 correctly surfaces `extraction_permission_bypassed` on them."""
         for name in (
             "T2_state_dot/Caltrans-2025/2025-standard-plans-errata-no1-locked-a11y.pdf",
             "T2_state_dot/Caltrans-2025/2025-standard-plans-locked.pdf",
@@ -270,5 +369,9 @@ class TestCorpusInvariants:
             assert pdf["encrypted"] is True
             assert pdf["page_count"] is not None, f"{name}: page_count still null"
             assert pdf["producer"] is not None, f"{name}: producer still null"
-            # Caltrans PDFs have EXTRACT permitted; bypass should be false
-            assert pdf.get("permission_flags_bypassed") is False
+            # Caltrans has bit 5 (EXTRACT) CLEARED — bypass disclosure must fire
+            assert "extraction_permission_bypassed" in rec.safety_flags, (
+                f"{name}: bit 5 cleared but disclosure missing; safety_flags={rec.safety_flags!r}"
+            )
+            # And the legacy pdf-namespaced bool should NOT exist (promoted to safety_flags)
+            assert "permission_flags_bypassed" not in pdf

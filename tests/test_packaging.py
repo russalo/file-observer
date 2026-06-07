@@ -70,7 +70,7 @@ def test_canonical_submodule_constants_unchanged():
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
     assert SCANNER_VERSION == "1.12.0"
-    assert SCHEMA_VERSION == "1.9"  # v1.12.0: new provisional pdf.permission_flags_bypassed
+    assert SCHEMA_VERSION == "1.8"  # v1.12: disclosure went to existing safety_flags (list[str]) — no schema bump
     assert LOGIC_VERSION == "1.4.3"  # v1.9.1 — stat-failure path preserved (v1.12 is pure specialist extraction)
 
 

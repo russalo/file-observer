@@ -6,7 +6,7 @@ extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
     Version:    1.12.0
-    Schema:     1.9
+    Schema:     1.8
     Python:     >= 3.12
     Spec:       docs/v1.12.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
@@ -80,7 +80,7 @@ except ImportError:
 
 SCANNER_VERSION = "1.12.0"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
-SCHEMA_VERSION = "1.9"
+SCHEMA_VERSION = "1.8"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -254,6 +254,7 @@ ERR_MIME_TYPE_FALLBACK = "mime_type_fallback"
 ERR_BASELINE_DECODE_FAILED = "baseline_decode_failed"
 ERR_SPECIALIST_PROBE_FAILED = "specialist_probe_failed"
 ERR_JSON_PARSE_FAILED = "json_parse_failed"
+ERR_PDF_ENCRYPTION_UNSUPPORTED = "pdf_encryption_unsupported"  # v1.12: AES decrypt failed (cryptography missing)
 
 BINARY_MIME_PREFIXES = ("image/", "audio/", "video/")
 BINARY_MIME_TYPES = {
@@ -1965,6 +1966,15 @@ class Scanner:
             deps["pypdf"] = {"available": True, "version": getattr(pypdf, "__version__", "unknown")}
         else:
             deps["pypdf"] = {"available": False, "version": None}
+        # cryptography (v1.12): pypdf needs it to decrypt AES-256/V5 PDFs (the Caltrans
+        # 2025 spec class). Without it, AES decrypt raises DependencyError → no producer
+        # / page_count / extraction_permission_bypassed on those PDFs. Same Pillar-1
+        # logic as pypdf — leg-1 review #3/#8.
+        try:
+            import cryptography as _crypto
+            deps["cryptography"] = {"available": True, "version": getattr(_crypto, "__version__", "unknown")}
+        except ImportError:
+            deps["cryptography"] = {"available": False, "version": None}
 
         return ScanContext(
             logic_version=LOGIC_VERSION,
@@ -2548,6 +2558,24 @@ class Scanner:
                         stage="specialist",
                     ))
                 if raw_metadata is not None:
+                    # v1.12 (leg-1 review #3/#8 + #12): pop transient PDF specialist
+                    # markers BEFORE the metadata is registered in the manifest.
+                    # - `_safety_extras` → merged into FileRecord.safety_flags
+                    #   (cross-format stable surface; promotes the v1.12 disclosure
+                    #   from a narrow `pdf.permission_flags_bypassed` bool).
+                    # - `_pdf_encryption_unsupported` → emits an ErrorRecord per
+                    #   v1.12 RFC §4.1 (cryptography-absent on AES-encrypted PDF).
+                    if extension == ".pdf":
+                        for flag in raw_metadata.pop("_safety_extras", []) or []:
+                            if flag not in safety_flags:
+                                safety_flags.append(flag)
+                        safety_flags = sorted(safety_flags)
+                        if raw_metadata.pop("_pdf_encryption_unsupported", False):
+                            errors.append(ErrorRecord(
+                                code=ERR_PDF_ENCRYPTION_UNSUPPORTED,
+                                message="pypdf raised DependencyError on AES decrypt; install file-observer[pdf] (now includes cryptography) to recover producer/page_count on AES-256/V5 PDFs",
+                                stage="specialist",
+                            ))
                     ns = SPECIALIST_NAMESPACE.get(extension)
                     if ns:
                         specialist_metadata = {ns: raw_metadata}
@@ -3015,11 +3043,10 @@ class Scanner:
             or b"BT\n" in region or b"BT\r\n" in region or b"BT\r" in region
         )
         meta["encrypted"] = b"/Encrypt" in full
-        # v1.12 provisional: disclosed when we extracted metadata from a PDF whose
-        # owner-permission EXTRACT_TEXT_AND_GRAPHICS flag was NOT set. Default False;
-        # the pypdf cascade may set True (see _pdf_via_pypdf). Observe-with-disclosure
-        # — v1.12 RFC §3.1(c) + §3.4(a). Cross-format precedent: v0.7 safety_flags.
-        meta["permission_flags_bypassed"] = False
+        # v1.12 disclosure ("extraction_permission_bypassed") surfaces via
+        # FileRecord.safety_flags, NOT a pdf-namespaced field — leg-1 review #12.
+        # The pypdf cascade may emit it via meta["_safety_extras"] (transient;
+        # scan_file pops it before constructing the FileRecord).
         # v1.7: follow the structural anchor (startxref → latest trailer → root →
         # page tree), dispatched via STRUCTURAL_ANCHORS. Precise on incremental
         # updates (the root count, not the max over superseded fragments) and on
@@ -3084,28 +3111,39 @@ class Scanner:
         # ADDITIVE ONLY: it fills nulls, never overrides a value v1.7 produced.
         # `parser` records which tier produced a recovered value (none = not used).
         meta["parser"] = "none"
-        # v1.12 §3.1(c) PIVOTED: relax the original `not meta["encrypted"]` gate. The
-        # pypdf cascade (_pdf_via_pypdf) handles empty-password decrypt internally
-        # (decrypts and reads /Info + page tree even when content streams are
-        # encrypted); the v1.7 anchor reader skips PDF strings on encrypted PDFs (so
-        # /Info comes back null even on classic-xref encrypted PDFs). Running the
-        # cascade when EITHER page_count is null OR the PDF is encrypted (with any
-        # /Info field null) lets the cascade fill the gaps for both stream-xref-
-        # encrypted (Caltrans 2025 specs, corpora_infra) AND classic-xref-encrypted
-        # PDFs. Strictly additive — line 3088-3090 merge only fills nulls.
-        info_null = any(meta.get(k) is None for k in ("producer", "creator", "title", "author"))
-        if meta["page_count"] is None or (meta["encrypted"] and info_null):
+        # v1.12 §3.1(c): relax the original `not meta["encrypted"]` gate. pypdf
+        # handles empty-password decrypt internally and reads /Info + page tree even
+        # when content streams are encrypted; the v1.7 anchor reader skips PDF
+        # strings on encrypted PDFs (so /Info comes back null even on classic-xref
+        # encrypted PDFs). Run the cascade when page_count is null OR the PDF is
+        # encrypted. Note: `info_null` is structurally always True when encrypted
+        # (line 3060-3064 forces /Info to None on encryption), so checking
+        # `meta["encrypted"]` alone is equivalent and clearer (leg-1 review #4).
+        #
+        # CRITICAL: the merge below MUST be a strict null-fill for EVERY field —
+        # leg-1 review #2/#7 caught that v1.11 page_count from the v1.7 anchor
+        # could be overwritten by pypdf's `len(reader.pages)` when the cascade
+        # fires on classic-xref encrypted PDFs, breaking the byte-identical
+        # contract for non-residual PDFs. The `meta.get(k) is None` guard
+        # protects every populated field — page_count included.
+        if meta["page_count"] is None or meta["encrypted"]:
             decoded = self._pdf_decode_compressed(path, whole)
             if decoded:
                 meta["parser"] = decoded["parser"]
-                if decoded.get("page_count") is not None:
-                    meta["page_count"] = decoded["page_count"]
-                for k in ("title", "author", "producer", "creator", "creation_date"):
+                # Strict null-fill for ALL fields (leg-1 review #2/#7): the merge
+                # NEVER overrides a value v1.7 produced; only fills nulls.
+                for k in ("page_count", "title", "author", "producer", "creator", "creation_date"):
                     if meta.get(k) is None and decoded.get(k) is not None:
                         meta[k] = decoded[k]
-                # v1.12 provisional: disclose if owner-permission EXTRACT bit was not set.
+                # v1.12 disclosure (transient — popped before serialization in scan_file):
+                # promoted from a pdf-namespaced bool to a safety_flags entry per
+                # leg-1 review #12. Surfaced via _safety_extras for scan_file pickup.
                 if decoded.get("permission_flags_bypassed"):
-                    meta["permission_flags_bypassed"] = True
+                    meta.setdefault("_safety_extras", []).append("extraction_permission_bypassed")
+                # v1.12 RFC §4.1: cryptography-absent on an AES-encrypted PDF triggers
+                # an ErrorRecord (leg-1 review #3/#8). Marker is popped + emitted in scan_file.
+                if decoded.get("_pdf_encryption_unsupported"):
+                    meta["_pdf_encryption_unsupported"] = True
         return meta
 
     def _pdf_decode_compressed(self, path: Path, whole: bytes | None) -> dict[str, Any] | None:
@@ -3239,17 +3277,31 @@ class Scanner:
             # on engineering-spec PDFs (42 PDFs on corpora_infra; e.g. WSDOT specs).
             # Body is already the raw entry bytes per /W — skip the Flate inflate.
             # _pdf_stream_body bounds `body` by declared /Length or endstream locator,
-            # so the v1.8.1 bounded-observation discipline applies unchanged.
-            if b"/Filter" not in d:
+            # so the v1.8.1 bounded-observation discipline applies; the aggregate
+            # PDF_INFLATE_CAP cap (>= test below) bounds the /Prev chain too.
+            #
+            # /Filter detection MUST match the KEY, not a substring (leg-1 review #14):
+            # a legitimate /Title or /Producer literal-string containing "Filter" would
+            # false-positive a `b"/Filter" not in d` substring check. The PDF syntax for
+            # a dictionary key /Filter is followed by either a name (`/FlateDecode`) or
+            # an array (`[/FlateDecode ...]`) per ISO 32000 §7.3.7 — the regex below
+            # captures both shapes and rejects /Filter-in-a-string-value cases.
+            if not re.search(rb"/Filter\s*[/\[]", d):
                 raw = body
             else:
                 raw = Scanner._safe_inflate(body)
             if raw is None:
                 break
             total_raw += len(raw)
-            if total_raw > PDF_INFLATE_CAP:
+            if total_raw >= PDF_INFLATE_CAP:
                 break   # bound TOTAL work across the /Prev chain, not just per-stream
-                        # (32 hops × 64 MB would compose to ~2 GB of predictor work)
+                        # (32 hops × 64 MB would compose to ~2 GB of predictor work).
+                        # `>=` not `>` — leg-1 review #10: with strict `>`, a single
+                        # 64MB uncompressed xref stream (PDF_INFLATE_CAP == 64MB)
+                        # slips on the FIRST iteration and runs predictor+entry loops
+                        # over the full 64MB. The v1.8 Flate path was protected
+                        # only because `_safe_inflate` refused mid-truncation; the
+                        # v1.12 no-filter path needs the explicit ≥ to bound disk reads.
             pm = re.search(rb"/Predictor\s+(\d+)", d)
             if pm and int(pm.group(1)) > 1:
                 cm = re.search(rb"/Columns\s+(\d+)", d)
@@ -3379,6 +3431,17 @@ class Scanner:
             if getattr(reader, "is_encrypted", False):
                 try:
                     decrypt_result = reader.decrypt("")          # empty-password (owner-only) PDFs
+                except pypdf.errors.DependencyError:
+                    # v1.12: cryptography is required for AES-256/V5 decrypt; if absent,
+                    # pypdf raises DependencyError. RFC §4.1 mandates a structured
+                    # ErrorRecord on this exact case — emit a transient event marker so
+                    # _extract_pdf_metadata / scan_file can surface it. The marker is
+                    # popped before serialization (never appears in the manifest).
+                    return {"parser": "pypdf", "page_count": None,
+                            "title": None, "author": None, "producer": None,
+                            "creator": None, "creation_date": None,
+                            "permission_flags_bypassed": False,
+                            "_pdf_encryption_unsupported": True}
                 except Exception:
                     return None
                 # v1.12 §3.1(c): if decrypt returned 0 (no/wrong password) the PDF needs
@@ -3387,16 +3450,23 @@ class Scanner:
                 # whose value is 0 for failure. Compare against the int explicitly.
                 if int(decrypt_result) == 0:
                     return None
-                # v1.12 §3.4(a) disclosure: surface when extraction-permission flag is
-                # NOT set in user_access_permissions, but we extract anyway. (Caltrans
-                # 2025 PDFs DO have the bit set, so bypass stays False there.)
+                # v1.12 §3.4(a) disclosure: surface when the primary EXTRACT permission
+                # (bit 5 — ISO 32000 Table 22 §7.6.4.2) is NOT set in
+                # user_access_permissions but we extract metadata anyway. Pypdf names
+                # the constant `EXTRACT` (value 16); `EXTRACT_TEXT_AND_GRAPHICS` (bit 10,
+                # value 512) is the accessibility override that PDF 2.0 deprecates to
+                # "shall always be 1" — that bit is NOT the right gate for disclosure.
                 try:
                     from pypdf.constants import UserAccessPermissions
                     perms = getattr(reader, "user_access_permissions", None)
-                    if perms is not None and UserAccessPermissions.EXTRACT_TEXT_AND_GRAPHICS not in perms:
+                    if perms is not None and UserAccessPermissions.EXTRACT not in perms:
                         permission_flags_bypassed = True
+                except ImportError:
+                    pass    # UserAccessPermissions absent on an unusually-old pypdf
+                except AttributeError:
+                    pass    # the EXTRACT member isn't on this pypdf's enum
                 except Exception:
-                    pass    # missing UserAccessPermissions on a hostile/exotic reader
+                    pass    # never-crash: any hostile/exotic reader state nulls cleanly
             out: dict[str, Any] = {"parser": "pypdf", "page_count": None,
                                    "title": None, "author": None, "producer": None,
                                    "creator": None, "creation_date": None,
@@ -3417,6 +3487,13 @@ class Scanner:
                 pass
             if out["page_count"] is None and all(
                     out[k] is None for k in ("title", "author", "producer", "creator", "creation_date")):
+                # v1.12 (leg-1 #5/#6): if we successfully decrypted an extract-denied PDF
+                # but pypdf returned no usable metadata, the bypass DISCLOSURE must still
+                # survive — returning None would let the cascade fall through to stdlib
+                # (which doesn't carry the bypass key) and silently lose the audit signal.
+                # Return the (otherwise empty) dict so the bypass flag propagates.
+                if permission_flags_bypassed:
+                    return out
                 return None                      # nothing useful → let the cascade continue
             return out
         except Exception:
