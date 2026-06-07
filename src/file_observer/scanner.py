@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.12.0
+    Version:    1.12.1
     Schema:     1.8
     Python:     >= 3.12
     Spec:       docs/v1.12.0_RFC_Specification.md (current)
@@ -78,7 +78,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.12.0"
+SCANNER_VERSION = "1.12.1"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
 SCHEMA_VERSION = "1.8"
 
@@ -1919,6 +1919,22 @@ class Scanner:
         return "\n\n".join(lines)
 
     def _build_context(self) -> ScanContext:
+        # v1.12.1 red-team S5.3: a dependency's `__version__` attribute may be a
+        # non-string Mock-shaped object (verified empirically — a hostile dependency
+        # install, a monkeypatched test environment, or a packaging anomaly). Storing
+        # it raw breaks `compute_manifest_checksum`'s `json.dumps`, which surfaces
+        # at scan-time as a Pillar-1 contract break (manifest emission fails).
+        # Coerce defensively at the storage boundary; on any coercion failure fall
+        # back to "unknown" rather than crash.
+        def _dep_version_str(v: object) -> str:
+            if v is None:
+                return "unknown"
+            try:
+                s = str(v)
+            except Exception:
+                return "unknown"
+            return s if isinstance(s, str) else "unknown"
+
         deps: dict[str, dict[str, Any]] = {}
         # magic / libmagic
         if magic:
@@ -1934,25 +1950,25 @@ class Scanner:
                     magic_ver = "unknown"
             except Exception:
                 magic_ver = "unknown"
-            deps["magic"] = {"available": True, "version": magic_ver}
+            deps["magic"] = {"available": True, "version": _dep_version_str(magic_ver)}
         else:
             deps["magic"] = {"available": False, "version": None}
         # chardet
         if chardet:
             chardet_ver = getattr(chardet, "__version__", "unknown")
-            deps["chardet"] = {"available": True, "version": chardet_ver}
+            deps["chardet"] = {"available": True, "version": _dep_version_str(chardet_ver)}
         else:
             deps["chardet"] = {"available": False, "version": None}
         # PyYAML
         if yaml:
             yaml_ver = getattr(yaml, "__version__", "unknown")
-            deps["yaml"] = {"available": True, "version": yaml_ver}
+            deps["yaml"] = {"available": True, "version": _dep_version_str(yaml_ver)}
         else:
             deps["yaml"] = {"available": False, "version": None}
         # olefile
         if olefile:
             olefile_ver = getattr(olefile, "__version__", "unknown")
-            deps["olefile"] = {"available": True, "version": olefile_ver}
+            deps["olefile"] = {"available": True, "version": _dep_version_str(olefile_ver)}
         else:
             deps["olefile"] = {"available": False, "version": None}
         # defusedxml
@@ -1962,14 +1978,14 @@ class Scanner:
                 dxml_ver = getattr(defusedxml, "__version__", "unknown")
             except Exception:
                 dxml_ver = "unknown"
-            deps["defusedxml"] = {"available": True, "version": dxml_ver}
+            deps["defusedxml"] = {"available": True, "version": _dep_version_str(dxml_ver)}
         else:
             deps["defusedxml"] = {"available": False, "version": None}
         # pypdf (v1.8): its presence/version changes object-stream page_count/Info
         # (and the `pdf.parser` tier), so it MUST be in the context that explains
         # cross-environment variance — capability-locked determinism (review catch).
         if pypdf is not None:
-            deps["pypdf"] = {"available": True, "version": getattr(pypdf, "__version__", "unknown")}
+            deps["pypdf"] = {"available": True, "version": _dep_version_str(getattr(pypdf, "__version__", "unknown"))}
         else:
             deps["pypdf"] = {"available": False, "version": None}
         # cryptography (v1.12): pypdf needs it to decrypt AES-256/V5 PDFs (the Caltrans
@@ -1978,7 +1994,7 @@ class Scanner:
         # logic as pypdf — leg-1 review #3/#8.
         try:
             import cryptography as _crypto
-            deps["cryptography"] = {"available": True, "version": getattr(_crypto, "__version__", "unknown")}
+            deps["cryptography"] = {"available": True, "version": _dep_version_str(getattr(_crypto, "__version__", "unknown"))}
         except ImportError:
             deps["cryptography"] = {"available": False, "version": None}
 
