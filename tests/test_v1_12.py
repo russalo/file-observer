@@ -114,6 +114,45 @@ def _uncompressed_xref_pdf(npages: int = 3) -> bytes:
     return bytes(out)
 
 
+def _xref_pdf_with_explicit_filter(filter_name: bytes, npages: int = 3) -> bytes:
+    """An xref STREAM whose dict declares `/Filter /<filter_name>` (e.g. `/None`
+    or `/Identity` — both legal PDF declarations of NO compression). The body is
+    raw entry bytes per /W. v1.12 PR #55 leg-4 Gemini review: the original v1.12
+    `/Filter not in d` substring check failed on these; the round-3 fix matches
+    explicitly for compression filter names."""
+    page_nums = list(range(3, 3 + npages))
+    kids = b"[" + b" ".join(b"%d 0 R" % n for n in page_nums) + b"]"
+    objs: list[tuple[int, bytes]] = [
+        (1, b"<< /Type /Catalog /Pages 2 0 R >>"),
+        (2, b"<< /Type /Pages /Kids %s /Count %d >>" % (kids, npages)),
+    ]
+    objs += [(n, b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>") for n in page_nums]
+    out = bytearray(b"%PDF-1.5\n%\xe2\xe3\xcf\xd3\n")
+    offs: dict[int, int] = {}
+    for num, b in objs:
+        offs[num] = len(out)
+        out += b"%d 0 obj\n%s\nendobj\n" % (num, b)
+    xnum = max(o for o, _ in objs) + 1
+    offs[xnum] = len(out)
+    size = xnum + 1
+
+    def e(t: int, a: int, b: int) -> bytes:
+        return struct.pack(">B", t) + struct.pack(">H", a) + struct.pack(">B", b)
+
+    rows = {0: e(0, 0, 0), xnum: e(1, offs[xnum], 0)}
+    for o, _ in objs:
+        rows[o] = e(1, offs[o], 0)
+    xref_raw = b"".join(rows[i] for i in range(size))
+    out += (
+        b"%d 0 obj\n<< /Type /XRef /W [1 2 1] /Filter /%s "
+        b"/Size %d /Root 1 0 R /Length %d >>\nstream\n"
+        % (xnum, filter_name, size, len(xref_raw))
+    )
+    out += xref_raw + b"\nendstream\nendobj\n"
+    out += b"startxref\n%d\n%%%%EOF" % offs[xnum]
+    return bytes(out)
+
+
 def _uncompressed_xref_with_filter_in_title() -> bytes:
     """v1.12 leg-1 review #14: a PDF whose xref-stream dict has NO `/Filter` key
     but contains the substring `/Filter` inside a /Title or similar string value.
@@ -273,6 +312,27 @@ class TestUncompressedXrefStream:
             assert stdlib_result["page_count"] == pypdf_pages, (
                 f"oracle disagreement n={npages}: stdlib={stdlib_result['page_count']!r} pypdf={pypdf_pages!r}"
             )
+
+    def test_filter_explicit_none_recovers(self, tmp_path):
+        """PR #55 leg-4 Gemini review: a PDF declaring `/Filter /None` (legal PDF
+        syntax for "no compression") MUST recover via the raw-body path. v1.12
+        original regex (`/Filter not in d`) would route it to inflate → fail → null."""
+        data = _xref_pdf_with_explicit_filter(b"None", npages=4)
+        p = _write(tmp_path, "filter_none.pdf", data)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
+        assert pdf["page_count"] == 4, (
+            f"/Filter /None should recover via raw-body path; got page_count={pdf.get('page_count')!r}"
+        )
+
+    def test_filter_explicit_identity_recovers(self, tmp_path):
+        """PR #55 leg-4: same shape with `/Filter /Identity` — another legal PDF
+        no-op filter declaration."""
+        data = _xref_pdf_with_explicit_filter(b"Identity", npages=6)
+        p = _write(tmp_path, "filter_identity.pdf", data)
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
+        assert pdf["page_count"] == 6
 
     def test_filter_substring_in_dict_value_does_not_mis_classify(self, tmp_path):
         """v1.12 leg-1 review #14: a literal-string value containing the substring

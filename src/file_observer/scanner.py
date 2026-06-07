@@ -3319,15 +3319,24 @@ class Scanner:
             # PDF_INFLATE_CAP cap (>= test below) bounds the /Prev chain too.
             #
             # /Filter detection MUST match the KEY, not a substring (leg-1 review #14):
-            # a legitimate /Title or /Producer literal-string containing "Filter" would
-            # false-positive a `b"/Filter" not in d` substring check. The PDF syntax for
-            # a dictionary key /Filter is followed by either a name (`/FlateDecode`) or
-            # an array (`[/FlateDecode ...]`) per ISO 32000 §7.3.7 — the regex below
-            # captures both shapes and rejects /Filter-in-a-string-value cases.
-            if not re.search(rb"/Filter\s*[/\[]", d):
-                raw = body
+            # a literal-string containing "/Filter" elsewhere in the dict would
+            # false-positive a substring check. The PDF syntax for a dictionary key
+            # /Filter is followed by either a name (`/FlateDecode`) or an array
+            # (`[/FlateDecode ...]`) per ISO 32000 §7.3.7.
+            #
+            # The raw-body path applies WHEN: (a) no /Filter key, or (b) /Filter
+            # names an identity / no-op filter (`/None` or `/Identity`) — leg-4
+            # Gemini Code Assist review on PR #55 caught the /None + /Identity case.
+            # If /Filter is present AND names a real compression filter (FlateDecode
+            # is the only one we decode in stdlib; LZW/DCT/etc. fall through to
+            # _safe_inflate which fails cleanly → null), take the inflate path.
+            filter_match = re.search(rb"/Filter\s*[/\[]\s*/?([A-Za-z][A-Za-z0-9]*)", d)
+            if filter_match is None:
+                raw = body                                  # no /Filter — raw bytes
+            elif filter_match.group(1) in (b"None", b"Identity"):
+                raw = body                                  # explicit no-op filter
             else:
-                raw = Scanner._safe_inflate(body)
+                raw = Scanner._safe_inflate(body)           # compression filter declared
             if raw is None:
                 break
             total_raw += len(raw)
