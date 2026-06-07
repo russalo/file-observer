@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.11.0
-    Schema:     1.8
+    Version:    1.12.0
+    Schema:     1.9
     Python:     >= 3.12
-    Spec:       docs/v1.8.0_RFC_Specification.md (current)
+    Spec:       docs/v1.12.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.11.0"
+SCANNER_VERSION = "1.12.0"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
-SCHEMA_VERSION = "1.8"
+SCHEMA_VERSION = "1.9"
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -3015,6 +3015,11 @@ class Scanner:
             or b"BT\n" in region or b"BT\r\n" in region or b"BT\r" in region
         )
         meta["encrypted"] = b"/Encrypt" in full
+        # v1.12 provisional: disclosed when we extracted metadata from a PDF whose
+        # owner-permission EXTRACT_TEXT_AND_GRAPHICS flag was NOT set. Default False;
+        # the pypdf cascade may set True (see _pdf_via_pypdf). Observe-with-disclosure
+        # — v1.12 RFC §3.1(c) + §3.4(a). Cross-format precedent: v0.7 safety_flags.
+        meta["permission_flags_bypassed"] = False
         # v1.7: follow the structural anchor (startxref → latest trailer → root →
         # page tree), dispatched via STRUCTURAL_ANCHORS. Precise on incremental
         # updates (the root count, not the max over superseded fragments) and on
@@ -3079,7 +3084,17 @@ class Scanner:
         # ADDITIVE ONLY: it fills nulls, never overrides a value v1.7 produced.
         # `parser` records which tier produced a recovered value (none = not used).
         meta["parser"] = "none"
-        if meta["page_count"] is None and not meta["encrypted"]:
+        # v1.12 §3.1(c) PIVOTED: relax the original `not meta["encrypted"]` gate. The
+        # pypdf cascade (_pdf_via_pypdf) handles empty-password decrypt internally
+        # (decrypts and reads /Info + page tree even when content streams are
+        # encrypted); the v1.7 anchor reader skips PDF strings on encrypted PDFs (so
+        # /Info comes back null even on classic-xref encrypted PDFs). Running the
+        # cascade when EITHER page_count is null OR the PDF is encrypted (with any
+        # /Info field null) lets the cascade fill the gaps for both stream-xref-
+        # encrypted (Caltrans 2025 specs, corpora_infra) AND classic-xref-encrypted
+        # PDFs. Strictly additive — line 3088-3090 merge only fills nulls.
+        info_null = any(meta.get(k) is None for k in ("producer", "creator", "title", "author"))
+        if meta["page_count"] is None or (meta["encrypted"] and info_null):
             decoded = self._pdf_decode_compressed(path, whole)
             if decoded:
                 meta["parser"] = decoded["parser"]
@@ -3088,6 +3103,9 @@ class Scanner:
                 for k in ("title", "author", "producer", "creator", "creation_date"):
                     if meta.get(k) is None and decoded.get(k) is not None:
                         meta[k] = decoded[k]
+                # v1.12 provisional: disclose if owner-permission EXTRACT bit was not set.
+                if decoded.get("permission_flags_bypassed"):
+                    meta["permission_flags_bypassed"] = True
         return meta
 
     def _pdf_decode_compressed(self, path: Path, whole: bytes | None) -> dict[str, Any] | None:
@@ -3217,7 +3235,15 @@ class Scanner:
             index = [int(x) for x in im.group(1).split()] if im else [0, size]
             if root_ref is None:
                 root_ref = Scanner._pdf_obj_ref(d, b"/Root")
-            raw = Scanner._safe_inflate(body)
+            # v1.12 §3.3 PIVOTED: uncompressed xref streams (no /Filter) are common
+            # on engineering-spec PDFs (42 PDFs on corpora_infra; e.g. WSDOT specs).
+            # Body is already the raw entry bytes per /W — skip the Flate inflate.
+            # _pdf_stream_body bounds `body` by declared /Length or endstream locator,
+            # so the v1.8.1 bounded-observation discipline applies unchanged.
+            if b"/Filter" not in d:
+                raw = body
+            else:
+                raw = Scanner._safe_inflate(body)
             if raw is None:
                 break
             total_raw += len(raw)
@@ -3349,14 +3375,32 @@ class Scanner:
         try:
             source: Any = io.BytesIO(whole) if whole is not None else str(path)
             reader = pypdf.PdfReader(source, strict=False)
+            permission_flags_bypassed = False
             if getattr(reader, "is_encrypted", False):
                 try:
-                    reader.decrypt("")          # empty-password (owner-only) PDFs
+                    decrypt_result = reader.decrypt("")          # empty-password (owner-only) PDFs
                 except Exception:
                     return None
+                # v1.12 §3.1(c): if decrypt returned 0 (no/wrong password) the PDF needs
+                # a real password — we MUST NOT prompt; cascade returns None cleanly.
+                # pypdf <5 returned 0/1/2 int; pypdf 6+ returns a PasswordType enum
+                # whose value is 0 for failure. Compare against the int explicitly.
+                if int(decrypt_result) == 0:
+                    return None
+                # v1.12 §3.4(a) disclosure: surface when extraction-permission flag is
+                # NOT set in user_access_permissions, but we extract anyway. (Caltrans
+                # 2025 PDFs DO have the bit set, so bypass stays False there.)
+                try:
+                    from pypdf.constants import UserAccessPermissions
+                    perms = getattr(reader, "user_access_permissions", None)
+                    if perms is not None and UserAccessPermissions.EXTRACT_TEXT_AND_GRAPHICS not in perms:
+                        permission_flags_bypassed = True
+                except Exception:
+                    pass    # missing UserAccessPermissions on a hostile/exotic reader
             out: dict[str, Any] = {"parser": "pypdf", "page_count": None,
                                    "title": None, "author": None, "producer": None,
-                                   "creator": None, "creation_date": None}
+                                   "creator": None, "creation_date": None,
+                                   "permission_flags_bypassed": permission_flags_bypassed}
             try:
                 out["page_count"] = len(reader.pages)
             except Exception:
