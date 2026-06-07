@@ -132,6 +132,7 @@ The `safety_flags` array contains stable string tokens. Each token represents an
 | `has_macros` | DOCX ZIP entries | DOCX contains `vbaProject.bin` (requires `enable_specialists`) |
 | `has_ole_objects` | RTF sample | RTF contains `\objemb` or `\objlink` |
 | `has_external_references` | XML sample | XML contains `<!ENTITY` with `SYSTEM` or `PUBLIC` |
+| `extraction_permission_bypassed` | PDF pypdf cascade (v1.12) | Owner-permission-locked encrypted PDF: the primary `EXTRACT` bit (ISO 32000 Table 22, `UserAccessPermissions.EXTRACT`) was NOT set in `user_access_permissions` but file-observer extracted metadata anyway (observe-with-disclosure — file-observer reads metadata regardless of permission flags; this token records when the owner's extract-restriction was bypassed). Requires the `[pdf]` extra (now includes `cryptography`). |
 
 **Important:**
 - Flags report **structural indicators**, not interpretations. The scanner does not decide whether a file is dangerous — it reports what's in the bytes.

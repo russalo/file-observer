@@ -325,6 +325,92 @@ class TestScanContextDependencies:
 
 
 # ---------------------------------------------------------------------------
+# v1.12 round-2 leg-1 #6 (+ Gemini leg-2 minor): the DependencyError path
+# ---------------------------------------------------------------------------
+
+class TestEncryptionUnsupportedPath:
+    """Pin the cryptography-absent branch: pypdf raises DependencyError on AES
+    decrypt → marker propagates → scan_file emits ERR_PDF_ENCRYPTION_UNSUPPORTED,
+    `pdf.parser` is NOT mis-stamped to 'pypdf' (round-2 leg-1 #2-#10), and the
+    aggregate quality counters reflect the failure (round-2 leg-1 #11/#12)."""
+
+    def test_dependency_error_emits_error_record_and_counts(self, tmp_path, monkeypatch):
+        from file_observer import scanner as scanner_mod
+        from file_observer.scanner import ERR_PDF_ENCRYPTION_UNSUPPORTED
+
+        # Build a real AES-256 encrypted PDF first (in this test env cryptography
+        # IS present, so the fixture builder works). Then monkeypatch the live
+        # `_pdf_via_pypdf` path so that on this scan, `reader.decrypt("")` raises
+        # the pypdf DependencyError — simulating the cryptography-absent install.
+        data = _encrypted_pdf(extract_allowed=False)
+        p = _write(tmp_path, "encrypted_no_crypto.pdf", data)
+
+        # Make decrypt() raise pypdf.errors.DependencyError when the cascade runs.
+        DepErr = pypdf.errors.DependencyError
+        orig_pdf_reader = pypdf.PdfReader
+
+        class _BlockingReader(orig_pdf_reader):
+            def decrypt(self, password):  # type: ignore[override]
+                raise DepErr("cryptography>=3.1 is required for AES algorithm")
+
+        monkeypatch.setattr(pypdf, "PdfReader", _BlockingReader)
+
+        rec = _scan_one(p)
+        pdf = (rec.specialist_metadata or {}).get("pdf") or {}
+
+        # 1. ErrorRecord emitted with the correct code (round-2 leg-1 #6)
+        codes = [e.code for e in (rec.errors or [])]
+        assert ERR_PDF_ENCRYPTION_UNSUPPORTED in codes, (
+            f"expected ERR_PDF_ENCRYPTION_UNSUPPORTED in errors; got {codes!r}"
+        )
+        # 2. Transient marker MUST NOT leak into the manifest (#3/#8 plumbing)
+        assert "_pdf_encryption_unsupported" not in pdf
+        # 3. The "parser" field MUST NOT be mis-stamped as 'pypdf' when pypdf
+        #    recovered nothing (round-2 leg-1 #2/#3/#5/#7/#8/#10)
+        assert pdf.get("parser") in (None, "none"), (
+            f"parser mis-attributed: should not be 'pypdf' when pypdf raised "
+            f"DependencyError and recovered no fields; got {pdf.get('parser')!r}"
+        )
+
+    def test_quality_specialist_failures_counts_pdf_encryption_unsupported(self, tmp_path, monkeypatch):
+        """Round-2 leg-1 #11/#12: ERR_PDF_ENCRYPTION_UNSUPPORTED MUST be counted
+        in ScanQuality.specialist_failures + per-directory failures + the
+        specialist_stats[tool].failed bucket."""
+        from file_observer.scanner import ERR_PDF_ENCRYPTION_UNSUPPORTED
+
+        data = _encrypted_pdf(extract_allowed=False)
+        p = _write(tmp_path, "encrypted.pdf", data)
+
+        DepErr = pypdf.errors.DependencyError
+        orig_pdf_reader = pypdf.PdfReader
+
+        class _BlockingReader(orig_pdf_reader):
+            def decrypt(self, password):  # type: ignore[override]
+                raise DepErr("cryptography>=3.1 is required for AES algorithm")
+
+        monkeypatch.setattr(pypdf, "PdfReader", _BlockingReader)
+
+        cfg = ScannerConfig(enable_specialists=True)
+        m = Scanner(source_dir=tmp_path, config=cfg).scan()
+
+        # Top-level aggregate
+        assert m.quality.specialist_failures >= 1, (
+            f"specialist_failures should reflect the AES-decrypt failure; got {m.quality.specialist_failures}"
+        )
+        # specialist_stats[pdf_extraction].failed
+        stats = m.quality.specialist_stats.get("pdf_extraction") or {}
+        assert stats.get("failed", 0) >= 1, (
+            f"specialist_stats[pdf_extraction].failed should reflect the AES-decrypt failure; got {stats!r}"
+        )
+        # per-directory aggregate
+        per_dir = m.quality.per_directory_summary
+        total_dir_failures = sum(d.get("specialist_failures", 0) for d in per_dir)
+        assert total_dir_failures >= 1, (
+            f"per-directory specialist_failures should reflect the AES-decrypt failure; got {per_dir!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Version bumps
 # ---------------------------------------------------------------------------
 

@@ -7,8 +7,8 @@ declared bounds, deterministically. This document states plainly what it does
 ## It does not make threat or content judgments
 
 `safety_flags` (`has_javascript`, `has_macros`, `has_ole_objects`,
-`has_external_references`) are **structural observations, not threat
-assessments**. A flag means "this structure was observed," not "this file is
+`has_external_references`, `extraction_permission_bypassed` — v1.12) are
+**structural observations, not threat assessments**. A flag means "this structure was observed," not "this file is
 dangerous." File Observer never quarantines, scores, or verdicts a file. Apply
 your own threat model to the observations.
 
