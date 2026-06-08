@@ -20,7 +20,6 @@ import io
 import json
 import struct
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -28,7 +27,6 @@ from file_observer.scanner import (
     Scanner,
     ScannerConfig,
     SCANNER_VERSION,
-    ERR_PDF_ENCRYPTION_UNSUPPORTED,
     manifest_to_json,
 )
 
@@ -314,9 +312,7 @@ class TestCascadeMergeHardening:
         as "no data" and the merge falls through to stdlib, possibly
         overwriting a meaningful 0."""
         # Construct a non-encrypted PDF; force pypdf to return page_count=0.
-        # Use a class wrapping the raw scanner method.
-        from file_observer.scanner import Scanner
-        # Build a plain PDF
+        # (Scanner is already imported at module top — no local import needed.)
         data = _xref_pdf(filter_decl=None, npages=2)
         p = _write(tmp_path, "plain.pdf", data)
 
@@ -450,24 +446,34 @@ class TestCryptographyFallback:
             pass
 
     def test_S5_3_weird_cryptography_version(self, tmp_path, monkeypatch):
-        """v1.12.1 S5.3: cryptography.__version__ is a Mock-shaped object.
-        The getattr(..., "unknown") fallback handles missing __version__.
-        Verify a hostile shape doesn't crash _build_context."""
+        """v1.12.1 S5.3 + Codex P2: cryptography.__version__ is a bare object()
+        whose `str(v)` yields the default repr "<object at 0x...>" — embedding
+        a memory address. The fix MUST normalize this to "unknown" so manifest
+        emission is (a) JSON-safe AND (b) deterministic across processes.
+        Verifies both: no crash + stable "unknown" value (not the address-bearing
+        repr)."""
         import cryptography
 
-        class _WeirdVersion:
-            def __str__(self):
-                return "weird-version-string"
+        # A bare object — its str() is "<object object at 0x...>" with a memory
+        # address that varies across processes. This is the EXACT case Codex P2
+        # flagged.
+        monkeypatch.setattr(cryptography, "__version__", object())
 
-        monkeypatch.setattr(cryptography, "__version__", _WeirdVersion())
-        # Scan must not crash; context entry must be populated (string-coerced)
         (tmp_path / "trivial.txt").write_text("hello")
         cfg = ScannerConfig(enable_specialists=True)
         m = Scanner(source_dir=tmp_path, config=cfg).scan()
         deps = m.context.dependencies
         assert "cryptography" in deps
-        # The version field should not crash JSON serialization
+        # JSON-safe (no crash on manifest serialization)
         json.dumps(deps)
+        # Pillar-1: the version MUST be "unknown", NOT the address-bearing repr.
+        # If we stored "<object object at 0x7f...>", `manifest_checksum` would
+        # be non-deterministic across processes.
+        cv = deps["cryptography"]["version"]
+        assert cv == "unknown", (
+            f"hostile-version coercion failed: got {cv!r} — address-bearing reprs "
+            f"break Pillar-1 across processes; must normalize to 'unknown'"
+        )
 
 
 # ===========================================================================

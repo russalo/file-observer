@@ -1919,13 +1919,18 @@ class Scanner:
         return "\n\n".join(lines)
 
     def _build_context(self) -> ScanContext:
-        # v1.12.1 red-team S5.3: a dependency's `__version__` attribute may be a
-        # non-string Mock-shaped object (verified empirically — a hostile dependency
-        # install, a monkeypatched test environment, or a packaging anomaly). Storing
-        # it raw breaks `compute_manifest_checksum`'s `json.dumps`, which surfaces
-        # at scan-time as a Pillar-1 contract break (manifest emission fails).
-        # Coerce defensively at the storage boundary; on any coercion failure fall
-        # back to "unknown" rather than crash.
+        # v1.12.1 red-team S5.3 + Codex P2 (PR #56): a dependency's `__version__`
+        # attribute may be a non-string object (hostile install, monkeypatched test
+        # env, packaging anomaly). Two issues:
+        #   1. Storing it raw breaks `compute_manifest_checksum`'s `json.dumps` →
+        #      Pillar-1 contract break (manifest emission fails).
+        #   2. Coercing via `str()` is NOT sufficient — for Mock/bare-object cases,
+        #      `str(v)` returns the default repr like "<Mock id='...'>" or
+        #      "<class at 0x...>" which embeds a memory address. The address varies
+        #      across processes → `manifest_checksum` becomes non-deterministic →
+        #      same Pillar-1 break in a different shape.
+        # The combined fix: try `str()`, but reject angle-bracket-bounded results
+        # (the universal shape of default object reprs) and fall back to "unknown".
         def _dep_version_str(v: object) -> str:
             if v is None:
                 return "unknown"
@@ -1933,7 +1938,12 @@ class Scanner:
                 s = str(v)
             except Exception:
                 return "unknown"
-            return s if isinstance(s, str) else "unknown"
+            # Default object reprs are uniformly "<...>" — catches Mock, bare object(),
+            # any class without a custom __str__. Real version strings ("1.2.3",
+            # "48.0.0", "0.7.1-dev") never have this shape.
+            if s.startswith("<") and s.endswith(">"):
+                return "unknown"
+            return s
 
         deps: dict[str, dict[str, Any]] = {}
         # magic / libmagic
