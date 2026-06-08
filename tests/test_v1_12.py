@@ -475,8 +475,10 @@ class TestEncryptionUnsupportedPath:
 # ---------------------------------------------------------------------------
 
 class TestVersionBumps:
-    def test_scanner_version_is_1_12_0(self):
-        assert SCANNER_VERSION == "1.12.0", f"got {SCANNER_VERSION!r}"
+    def test_scanner_version_is_1_12_x(self):
+        # v1.12.1 patch bumps to 1.12.1; pin to the 1.12.x line rather than the
+        # exact patch (test_v1_12_1.py owns the exact patch-version pin).
+        assert SCANNER_VERSION.startswith("1.12."), f"got {SCANNER_VERSION!r}"
 
     def test_schema_version_unchanged_at_1_8(self):
         """v1.12 promotes the disclosure to safety_flags (existing stable list[str])
