@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.12.1
+    Version:    1.12.2
     Schema:     1.8
     Python:     >= 3.12
     Spec:       docs/v1.12.0_RFC_Specification.md (current)
@@ -78,7 +78,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.12.1"
+SCANNER_VERSION = "1.12.2"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
 SCHEMA_VERSION = "1.8"
 
@@ -255,6 +255,8 @@ ERR_BASELINE_DECODE_FAILED = "baseline_decode_failed"
 ERR_SPECIALIST_PROBE_FAILED = "specialist_probe_failed"
 ERR_JSON_PARSE_FAILED = "json_parse_failed"
 ERR_PDF_ENCRYPTION_UNSUPPORTED = "pdf_encryption_unsupported"  # v1.12: AES decrypt failed (cryptography missing)
+ERR_XML_PARSE_FAILED = "xml_parse_failed"    # v1.12.2: was an inline literal; centralized
+ERR_TOML_PARSE_FAILED = "toml_parse_failed"  # v1.12.2: was an inline literal; centralized
 # v1.12 round-2 leg-1 #11/#12: error codes that count as a specialist-stage
 # FAILURE for aggregate counters (ScanQuality.specialist_failures,
 # per_directory specialist_failures, specialist_stats[tool].failed).
@@ -2492,7 +2494,7 @@ class Scanner:
                             xml_fromstring(text)
                         except Exception as xml_exc:
                             errors.append(ErrorRecord(
-                                code="xml_parse_failed",
+                                code=ERR_XML_PARSE_FAILED,
                                 message=f"XML parsing failed: {type(xml_exc).__name__}",
                                 stage="structural",
                             ))
@@ -2510,7 +2512,7 @@ class Scanner:
                                 tomllib.loads(text)
                             except Exception as toml_exc:
                                 errors.append(ErrorRecord(
-                                    code="toml_parse_failed",
+                                    code=ERR_TOML_PARSE_FAILED,
                                     message=f"TOML parsing failed: {type(toml_exc).__name__}",
                                     stage="structural",
                                 ))
