@@ -555,5 +555,7 @@ class TestRedTeamDeterminism:
 # ===========================================================================
 
 def test_v1_12_1_version_bump():
-    """v1.12.1 patch bumps SCANNER_VERSION to 1.12.1; LOGIC + SCHEMA unchanged."""
-    assert SCANNER_VERSION == "1.12.1", f"got {SCANNER_VERSION!r}"
+    """v1.12.1 shipped the red-team hardening on the 1.12.x line. Pin to the
+    1.12.x line rather than the exact patch (later patches bump it; the exact
+    current-version pin lives in test_packaging.py)."""
+    assert SCANNER_VERSION.startswith("1.12."), f"got {SCANNER_VERSION!r}"
