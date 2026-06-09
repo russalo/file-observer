@@ -17,7 +17,7 @@ contract: it fails if anyone reintroduces an inline error-code literal.
 """
 from __future__ import annotations
 
-import re
+import ast
 from pathlib import Path
 
 from file_observer.scanner import (
@@ -44,16 +44,31 @@ def test_no_inline_error_code_literals():
     literal. This is what makes the error-code surface enumerable from one
     place. Fails if anyone writes `code="..."` or `ErrorRecord("...", ...)`
     with a literal instead of a constant.
+
+    Uses AST inspection (not regex): only actual `ErrorRecord(...)` call nodes
+    are examined, so the check is immune to false positives from comments /
+    docstrings / unrelated calls and to formatting variation (PR #58 leg-4
+    Gemini finding). The same AST pattern is reused for the v1.13
+    provenance-trigger guard.
     """
-    source = SCANNER_PY.read_text(encoding="utf-8")
+    tree = ast.parse(SCANNER_PY.read_text(encoding="utf-8"), filename=str(SCANNER_PY))
 
-    # Pattern 1: keyword form `code="literal"` (a string literal, not a NAME)
-    kw_literals = re.findall(r'code=("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')', source)
+    offenders = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "ErrorRecord"):
+            continue
+        # Positional form: ErrorRecord("literal", ...) — code is the first arg
+        if node.args:
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                offenders.append(f"positional code={first.value!r} (line {first.lineno})")
+        # Keyword form: ErrorRecord(code="literal", ...)
+        for kw in node.keywords:
+            if kw.arg == "code" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                offenders.append(f"keyword code={kw.value.value!r} (line {kw.value.lineno})")
 
-    # Pattern 2: positional ErrorRecord("literal", ...) — first arg a string literal
-    pos_literals = re.findall(r'ErrorRecord\(\s*("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')', source)
-
-    offenders = kw_literals + pos_literals
     assert offenders == [], (
         f"inline error-code string literal(s) found in scanner.py: {offenders!r} — "
         "every ErrorRecord code must use an ERR_* module constant (v1.12.2 contract; "
