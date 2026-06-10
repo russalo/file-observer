@@ -672,7 +672,8 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
     "image": ["width", "height", "bit_depth"],
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
-    "email": ["subject", "from", "to", "date", "message_id", "has_attachments"],
+    "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
+              "body_chatlog"],  # v0.9 cross-cut: emitted when an email body is chatlog-shaped (v1.13 leg-1 #4)
     "chatlog": [
         "turn_count", "speaker_labels", "speaker_turn_counts",
         "speaker_turn_chars", "alternation", "content_shape",
@@ -5291,13 +5292,56 @@ def manifest_to_json(manifest: ScanManifest) -> str:
 # ---------------------------------------------------------------------------
 
 def _dataclass_field_map(cls: type) -> list[dict[str, str]]:
-    """[{name, type}] for a dataclass's fields, in declaration order."""
+    """[{name, type}] for a dataclass's fields, in declaration order. With
+    `from __future__ import annotations` (this module) f.type is the verbatim
+    source string of the annotation."""
     import dataclasses as _dc
     out = []
     for f in _dc.fields(cls):
         t = f.type if isinstance(f.type, str) else getattr(f.type, "__name__", str(f.type))
         out.append({"name": f.name, "type": str(t)})
     return out
+
+
+def _referenced_dataclass_names(type_str: str) -> list[str]:
+    """Names from a type-annotation string that resolve to module-level
+    dataclasses (e.g. `DeltaRecord | None` → ['DeltaRecord'];
+    `list[FileRecord]` → ['FileRecord']). Used to recurse the manifest tree so
+    `--schema` documents EVERY nested block, not just the top-level dataclasses
+    (v1.13 leg-1 #3 — the COMPLETE claim must hold)."""
+    import dataclasses as _dc
+    import re as _re
+    g = globals()
+    out = []
+    for token in _re.findall(r"[A-Za-z_][A-Za-z0-9_]*", type_str):
+        obj = g.get(token)
+        if isinstance(obj, type) and _dc.is_dataclass(obj):
+            out.append(token)
+    return out
+
+
+def _collect_manifest_dataclasses() -> dict[str, list[dict[str, str]]]:
+    """Transitively walk the dataclass tree rooted at ScanManifest, expanding
+    every nested dataclass-typed field. Deterministic (sorted output). This is
+    what makes the manifest description COMPLETE — context/meta/stats/
+    routing_summary/delta and any future nested block are documented, not left
+    as opaque type names (v1.13 leg-1 #3)."""
+    import dataclasses as _dc
+    seen: dict[str, list[dict[str, str]]] = {}
+    queue = [ScanManifest]
+    while queue:
+        cls = queue.pop()
+        name = cls.__name__
+        if name in seen:
+            continue
+        fields = _dataclass_field_map(cls)
+        seen[name] = fields
+        for f in fields:
+            for ref in _referenced_dataclass_names(f["type"]):
+                obj = globals().get(ref)
+                if isinstance(obj, type) and _dc.is_dataclass(obj) and ref not in seen:
+                    queue.append(obj)
+    return {k: seen[k] for k in sorted(seen)}
 
 
 def build_schema_document() -> dict[str, Any]:
@@ -5327,12 +5371,8 @@ def build_schema_document() -> dict[str, Any]:
         "scanner_version": SCANNER_VERSION,
         "logic_version": LOGIC_VERSION,
         "schema_version": SCHEMA_VERSION,
-        "manifest": {
-            "ScanManifest": _dataclass_field_map(ScanManifest),
-            "FileRecord": _dataclass_field_map(FileRecord),
-            "ScanQuality": _dataclass_field_map(ScanQuality),
-            "StructuralRecord": _dataclass_field_map(StructuralRecord),
-        },
+        # Every dataclass reachable from ScanManifest, expanded (v1.13 leg-1 #3).
+        "manifest": _collect_manifest_dataclasses(),
         "specialists": {
             "tools": dict(sorted(SPECIALIST_TOOLS.items())),
             "namespaces": dict(sorted(SPECIALIST_NAMESPACE.items())),
@@ -5368,6 +5408,12 @@ def schema_to_markdown(doc: dict[str, Any]) -> str:
              f"regenerate. This describes the COMPLETE output surface the build "
              f"can emit, independent of any particular scan.")
     L.append("")
+    # GFM cell escaping: a literal `|` inside a cell (even within backticks) is
+    # a column delimiter and breaks the row. Union types like `DeltaRecord | None`
+    # must escape it (v1.13 leg-1 #2).
+    def _cell(s: str) -> str:
+        return s.replace("|", "\\|")
+
     L.append("## Manifest structure")
     for cls_name, fields in doc["manifest"].items():
         L.append(f"### `{cls_name}`")
@@ -5375,7 +5421,7 @@ def schema_to_markdown(doc: dict[str, Any]) -> str:
         L.append("| field | type |")
         L.append("|---|---|")
         for f in fields:
-            L.append(f"| `{f['name']}` | `{f['type']}` |")
+            L.append(f"| `{_cell(f['name'])}` | `{_cell(f['type'])}` |")
         L.append("")
     L.append("## Specialists")
     L.append("")
@@ -5655,14 +5701,27 @@ def main() -> None:
     parser.add_argument("--profile", choices=list(SCAN_PROFILES.keys()), default=None, help="Named scan profile (fast_sort, general, deep_extract)")
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
-    parser.add_argument("--schema", action="store_true", help="Print the complete output-surface description (every field, specialist, vector, safety_flag, error code, provenance trigger, format signature, preservation tier) and exit. Does NOT scan. (v1.13)")
-    parser.add_argument("--schema-format", choices=["json", "md"], default="json", help="Format for --schema output (default: json)")
+    parser.add_argument("--schema", action="store_true", help="Print the complete output-surface description (every field, specialist, vector, safety_flag, error code, provenance trigger, format signature, preservation tier) and exit. Does NOT scan. Use --schema-format json|md (default json). (v1.13)")
+    parser.add_argument("--schema-format", choices=["json", "md"], default="json", help="Format for --schema output: json (default) or md. Only meaningful with --schema.")
     args = parser.parse_args()
 
     # v1.13: --schema short-circuits the scan path entirely (like --help). It
     # introspects the installed build's output surface; no source dir is read,
-    # no manifest is produced.
+    # no manifest is produced. Validate flag compatibility symmetric with --watch
+    # (v1.13 leg-1 #1/#5/#6/#7/#11): --schema is a non-scanning surface, so a
+    # source dir or any scan-only / streaming flag passed alongside it is a
+    # mistake — reject loudly rather than silently discard.
     if args.schema:
+        conflicts = []
+        if args.source not in (".", None):
+            conflicts.append(f"a source directory ({args.source!r})")
+        if args.output is not None:
+            conflicts.append("--output")
+        if args.watch:
+            conflicts.append("--watch")
+        if conflicts:
+            print(f"file-observer: --schema does not scan; remove {', '.join(conflicts)}", file=sys.stderr)
+            sys.exit(2)
         doc = build_schema_document()
         if args.schema_format == "md":
             sys.stdout.write(schema_to_markdown(doc) + "\n")

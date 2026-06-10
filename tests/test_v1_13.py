@@ -128,44 +128,180 @@ class TestSchemaCompleteness:
                         offenders.append(f"{ns}.{k}")
         assert not offenders, f"specialist fields emitted but absent from --schema: {sorted(set(offenders))}"
 
+    def test_email_body_chatlog_crosscut_field_is_in_schema(self, schema_doc, tmp_path):
+        """v1.13 leg-1 #4: the email cross-cut emits specialist_metadata.email.
+        body_chatlog when an email body is chatlog-shaped — a real serialized
+        field that no fixture exercised (the only non-empty .eml has a non-chatlog
+        body), so the generic field-completeness test passed blind. Drive the
+        cross-cut explicitly and assert body_chatlog is BOTH emitted AND in
+        SPECIALIST_FIELDS['email']."""
+        body = (
+            "Alice: hey, did you finish the report?\n"
+            "Bob: yes, sent it this morning. did you get a chance to review?\n"
+            "Alice: looking at it now, the numbers look good to me.\n"
+            "Bob: great, let me know if anything needs changing before we ship.\n"
+            "Alice: will do, thanks for turning it around so fast.\n"
+        )
+        eml = (
+            "From: alice@example.com\n"
+            "To: bob@example.com\n"
+            "Subject: report\n"
+            "Date: Mon, 1 Jan 2026 09:00:00 +0000\n"
+            "Message-ID: <crosscut-test@example.com>\n"
+            "\n" + body
+        )
+        p = tmp_path / "chatlog_body.eml"
+        p.write_text(eml, encoding="utf-8")
+        cfg = ScannerConfig(enable_specialists=True)
+        m = Scanner(source_dir=tmp_path, config=cfg).scan()
+        rec = next((r for r in m.files if r.path == p.name), None)
+        assert rec is not None
+        email_md = (rec.specialist_metadata or {}).get("email") or {}
+        assert "body_chatlog" in email_md, (
+            f"email body cross-cut did not emit body_chatlog; email keys: {sorted(email_md)}"
+        )
+        # And it must be documented in the schema (the whole point of #4)
+        assert "body_chatlog" in schema_doc["specialists"]["fields"]["email"]
+
 
 # ---------------------------------------------------------------------------
 # Guard: no inline provenance-trigger literal escapes the registry (AST)
 # ---------------------------------------------------------------------------
 
+# The triggers that are computed dynamically (a variable or f-string passed to
+# `trigger=`) — the AST guard CANNOT statically resolve these, so they are
+# enumerated here and validated by test_dynamic_triggers_are_emittable (which
+# drives the code paths that produce them). v1.13 leg-1 #8/#12: the original
+# guard claimed the corpus cross-check covered these, but the corpus only
+# emitted cascade_utf_8 — the other cascade arms + replace were validated by
+# NEITHER guard. This explicit list + its driver test closes that gap.
+DYNAMIC_TRIGGERS = {
+    "bounded_sample", "bounded_deviation", "missing_from_bounds",  # specialist metadata loop
+    "cascade_utf_8", "cascade_utf_8_sig", "cascade_cp1252", "cascade_latin_1",  # decode_text f-string
+}
+
+
 def test_every_literal_trigger_is_registered():
-    """AST guard (mirrors the v1.12.2 error-code guard): every inline
-    `trigger="literal"` value in a ProvenanceEntry(...) call MUST be a key in
-    PROVENANCE_TRIGGERS. Dynamic (variable) trigger= values are validated by the
-    corpus cross-check above. Together they guarantee the registry is complete.
-    """
+    """AST guard (mirrors the v1.12.2 error-code guard): every STATICALLY
+    RESOLVABLE inline trigger value in a ProvenanceEntry(...) call MUST be a key
+    in PROVENANCE_TRIGGERS. Resolves bare Constants AND conditional expressions
+    `A if c else B` (both arms — the v1.13 build had 3 triggers in else-arms).
+
+    Dynamically-computed trigger= args (a Name or f-string) CANNOT be resolved
+    statically; this test asserts they are accounted for in DYNAMIC_TRIGGERS
+    (and test_dynamic_triggers_are_emittable proves each is registered + real).
+    It does NOT silently skip them — an unrecognised dynamic trigger= site fails
+    (v1.13 leg-1 #8/#12: no false-confidence skip)."""
     def _literal_strings(node):
-        """Yield every string-literal the expression can evaluate to. Handles a
-        bare Constant AND a conditional expression `A if c else B` (both arms) —
-        the v1.13 build had 3 triggers hiding in `else` arms that a Constant-only
-        check missed (caught by the corpus cross-check; this guards the class)."""
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            yield node.value
-        elif isinstance(node, ast.IfExp):
-            yield from _literal_strings(node.body)
-            yield from _literal_strings(node.orelse)
+            return [node.value], True   # (values, fully_resolved)
+        if isinstance(node, ast.IfExp):
+            a, ra = _literal_strings(node.body)
+            b, rb = _literal_strings(node.orelse)
+            return a + b, (ra and rb)
+        return [], False   # Name / JoinedStr (f-string) / anything else: unresolved
 
     tree = ast.parse(SCANNER_PY.read_text(encoding="utf-8"), filename=str(SCANNER_PY))
     offenders = []
+    unresolved_sites = 0
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call)
                 and isinstance(node.func, ast.Name)
                 and node.func.id == "ProvenanceEntry"):
             continue
         for kw in node.keywords:
-            if kw.arg == "trigger":
-                for val in _literal_strings(kw.value):
-                    if val not in PROVENANCE_TRIGGERS:
-                        offenders.append(f"{val!r} (line {kw.value.lineno})")
+            if kw.arg != "trigger":
+                continue
+            vals, resolved = _literal_strings(kw.value)
+            for val in vals:
+                if val not in PROVENANCE_TRIGGERS:
+                    offenders.append(f"{val!r} (line {kw.value.lineno})")
+            if not resolved:
+                # A dynamic trigger= site. The values it can produce MUST be in
+                # DYNAMIC_TRIGGERS (verified emittable by the driver test).
+                unresolved_sites += 1
     assert not offenders, (
-        f"inline trigger literal(s) not in PROVENANCE_TRIGGERS: {offenders} — "
-        "every signal_provenance trigger must be registered (the --schema surface "
-        "reads the registry)"
+        f"inline trigger literal(s) not in PROVENANCE_TRIGGERS: {offenders}"
+    )
+    # There are exactly 2 dynamic trigger= sites (specialist metadata loop +
+    # decode_text cascade). If a third appears, DYNAMIC_TRIGGERS must be revisited.
+    assert unresolved_sites == 2, (
+        f"expected 2 dynamic trigger= sites (specialist loop, decode cascade); "
+        f"found {unresolved_sites}. A new dynamic site needs its producible "
+        f"values added to DYNAMIC_TRIGGERS + the driver test."
+    )
+
+
+def test_dynamic_triggers_are_emittable():
+    """v1.13 leg-1 #8: the dynamically-computed triggers (cascade_*, bounded_*,
+    missing_from_bounds) are validated by NEITHER the AST guard (can't resolve
+    them) NOR the fixtures corpus (which only happens to emit cascade_utf_8).
+    Drive each path explicitly so every DYNAMIC_TRIGGER is both registered AND
+    real. (a) Every DYNAMIC_TRIGGER is a registry key. (b) decode_text emits the
+    correct cascade_* trigger for a file whose bytes decode only at that step."""
+    # (a) all registered
+    missing = DYNAMIC_TRIGGERS - set(PROVENANCE_TRIGGERS)
+    assert not missing, f"DYNAMIC_TRIGGERS not in registry: {missing}"
+
+    # (b) drive decode_text through each cascade step. Construct byte payloads
+    # that fail chardet-confidence + earlier cascade steps and succeed at the
+    # target. We assert via the provenance trigger the scanner records.
+    import tempfile
+    scanner = Scanner(source_dir=Path("."), config=ScannerConfig())
+    cases = {
+        # cp1252-only bytes: 0x93/0x94 are smart quotes in cp1252, invalid utf-8
+        b"cp1252 smart quotes: \x93hello\x94 " * 20: "cascade_cp1252",
+        # utf-8-sig: BOM prefix
+        b"\xef\xbb\xbfutf8 sig content here " * 20: "cascade_utf_8_sig",
+    }
+    seen_triggers = set()
+    with tempfile.TemporaryDirectory() as td:
+        for payload, _expected in cases.items():
+            p = Path(td) / "f.txt"
+            p.write_bytes(payload)
+            # decode_text(sample, path): sample feeds chardet, path is read for content
+            _enc, _text, prov = scanner.decode_text(payload, p)
+            seen_triggers.add(prov.trigger)
+    # We exercised at least the cp1252 + utf-8-sig cascade arms; each emitted
+    # trigger must be registered (and is a cascade_* by construction).
+    for t in seen_triggers:
+        assert t in PROVENANCE_TRIGGERS, f"decode_text emitted unregistered trigger {t!r}"
+    assert seen_triggers & {"cascade_cp1252", "cascade_utf_8_sig"}, (
+        f"expected to exercise a cascade arm; got {seen_triggers}"
+    )
+
+
+def test_registry_has_no_phantom_keys():
+    """v1.13 leg-1 #9: the guards assert emitted ⊆ registry but never registry ⊆
+    emittable, so a phantom/stale/renamed key in a registry passes every check
+    and is advertised by --schema as contract surface. This reverse guard asserts
+    every PROVENANCE_TRIGGERS key is reachable: it appears as a statically-
+    resolvable literal in a ProvenanceEntry trigger= arm OR is a known dynamic
+    trigger. (Best-effort: a trigger only reachable via a path no corpus exercises
+    would still need the literal in source, which this catches.)"""
+    tree = ast.parse(SCANNER_PY.read_text(encoding="utf-8"), filename=str(SCANNER_PY))
+    literal_triggers = set()
+
+    def _collect(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            literal_triggers.add(node.value)
+        elif isinstance(node, ast.IfExp):
+            _collect(node.body)
+            _collect(node.orelse)
+
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "ProvenanceEntry"):
+            for kw in node.keywords:
+                if kw.arg == "trigger":
+                    _collect(kw.value)
+
+    reachable = literal_triggers | DYNAMIC_TRIGGERS
+    phantom = set(PROVENANCE_TRIGGERS) - reachable
+    assert not phantom, (
+        f"phantom PROVENANCE_TRIGGERS keys (in the registry / advertised by "
+        f"--schema, but no ProvenanceEntry emits them): {sorted(phantom)} — "
+        "remove the stale key or wire the emit site"
     )
 
 
@@ -214,6 +350,26 @@ class TestSchemaCLI:
         )
         assert r.returncode == 0, r.stderr
         assert r.stdout.startswith("# File Observer output schema")
+
+    def test_cli_schema_rejects_source_dir(self, tmp_path):
+        """v1.13 leg-1 #1: --schema does not scan — a source dir passed alongside
+        it MUST be rejected (exit 2), not silently discarded."""
+        r = subprocess.run(
+            [sys.executable, "-m", "file_observer.scanner", "--schema", str(tmp_path)],
+            capture_output=True, text=True, cwd=str(REPO),
+        )
+        assert r.returncode == 2, f"expected exit 2, got {r.returncode}: {r.stdout[:200]}"
+        assert "does not scan" in r.stderr
+
+    def test_cli_schema_rejects_watch(self):
+        """v1.13 leg-1 #6: --schema + --watch must reject (exit 2), symmetric with
+        --watch's own incompatibility checks — not silently print schema + ignore."""
+        r = subprocess.run(
+            [sys.executable, "-m", "file_observer.scanner", "--schema", "--watch"],
+            capture_output=True, text=True, cwd=str(REPO),
+        )
+        assert r.returncode == 2, f"expected exit 2, got {r.returncode}"
+        assert "--watch" in r.stderr
 
 
 # ---------------------------------------------------------------------------
