@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.12.2
+    Version:    1.13.0
     Schema:     1.8
     Python:     >= 3.12
-    Spec:       docs/v1.12.0_RFC_Specification.md (current)
+    Spec:       docs/v1.13.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,7 +78,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.12.2"
+SCANNER_VERSION = "1.13.0"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
 SCHEMA_VERSION = "1.8"
 
@@ -263,6 +263,97 @@ ERR_TOML_PARSE_FAILED = "toml_parse_failed"  # v1.12.2: was an inline literal; c
 # Centralised so a future specialist-failure code is one edit away from being
 # observable in every counter.
 SPECIALIST_FAILURE_CODES = frozenset({ERR_SPECIALIST_PROBE_FAILED, ERR_PDF_ENCRYPTION_UNSUPPORTED})
+
+# v1.13: ERROR_CODES — the complete error-code surface, enumerable from one
+# place for `--schema`. Each ERR_* constant + a one-line description of what
+# emits it. Guard test (test_v1_13) asserts every ErrorRecord code is a key
+# here AND that no inline literal escapes (the v1.12.2 guard, AST-based).
+ERROR_CODES: dict[str, str] = {
+    ERR_UNIVERSAL_STAT_FAILED: "file stat() failed (deleted mid-scan / permissions / TOCTOU)",
+    ERR_UNIVERSAL_READ_FAILED: "file open/read failed after stat succeeded (permissions, handle errors)",
+    ERR_UNSUPPORTED_EXTENSION: "extension not in the specialist registry and not a recognized common type",
+    ERR_MIME_TYPE_FALLBACK: "MIME detection fell back to the extension guess (libmagic absent/null)",
+    ERR_BASELINE_DECODE_FAILED: "text decoding failed across the full charset cascade",
+    ERR_SPECIALIST_PROBE_FAILED: "a specialist probe or extraction raised / returned null",
+    ERR_JSON_PARSE_FAILED: "JSON parse error during the .json specialist probe",
+    ERR_PDF_ENCRYPTION_UNSUPPORTED: "AES-encrypted PDF and the cryptography package is absent",
+    ERR_XML_PARSE_FAILED: "XML parse failed during structural key extraction",
+    ERR_TOML_PARSE_FAILED: "TOML parse failed during structural key extraction",
+}
+
+# v1.13: SAFETY_FLAGS — the complete safety_flags vocabulary, enumerable from
+# one place for `--schema`. Structural indicators, NOT threat assessments
+# (see PUBLIC_CONTRACT.md §1.7). Guard test asserts detect_safety_flags emits
+# only keys present here.
+SAFETY_FLAGS: dict[str, str] = {
+    "has_javascript": "PDF contains /JS or /JavaScript markers",
+    "has_macros": "DOCX contains a vbaProject.bin (requires enable_specialists)",
+    "has_ole_objects": "RTF contains \\objemb or \\objlink",
+    "has_external_references": "XML contains <!ENTITY with SYSTEM or PUBLIC",
+    "extraction_permission_bypassed": "owner-locked encrypted PDF: EXTRACT permission not set but metadata extracted anyway (v1.12)",
+}
+
+# v1.13: PROVENANCE_TRIGGERS — the complete signal_provenance trigger surface,
+# enumerable from one place for `--schema`. Each trigger → {layer, method,
+# description}. This is the registry that replaces the scattered inline
+# trigger= literals as the source of truth (the literals remain at the emit
+# sites for readability; the AST guard test asserts every literal trigger
+# value is a key here, and the corpus cross-check asserts the dynamically-
+# computed triggers are registered too). Same "enumerable from one place"
+# discipline as ERROR_CODES + SAFETY_FLAGS.
+PROVENANCE_TRIGGERS: dict[str, dict[str, str]] = {
+    # MIME detection (detect_mime)
+    "libmagic":                 {"layer": "raw",     "method": "detect_mime",      "description": "MIME from libmagic (primary tier)"},
+    "magic_signature_fallback": {"layer": "derived", "method": "detect_mime",      "description": "MIME from the pure-Python magic-signature sniff (libmagic absent/null)"},
+    "extension_fallback":       {"layer": "derived", "method": "detect_mime",      "description": "MIME guessed from the extension (both content tiers failed)"},
+    # MIME-vs-extension analysis
+    "mismatch":                 {"layer": "derived", "method": "analyze_mime",     "description": "detected MIME differs from the extension-implied MIME"},
+    "match":                    {"layer": "derived", "method": "analyze_mime",     "description": "detected MIME matches the extension-implied MIME"},
+    # specialist tool registry routing
+    "registry_match":           {"layer": "derived", "method": "specialist_tools_registry", "description": "extension has a registered specialist tool"},
+    "registry_none":            {"layer": "derived", "method": "specialist_tools_registry", "description": "extension has no registered specialist tool"},
+    # chatlog content detection
+    "content_pattern_match":    {"layer": "derived", "method": "_detect_chatlog_pattern", "description": "content matched the chatlog detection rules"},
+    "content_pattern_none":     {"layer": "derived", "method": "_detect_chatlog_pattern", "description": "content did not match the chatlog detection rules"},
+    "chatlog_activation":       {"layer": "derived", "method": "content_detected_specialist", "description": "chatlog specialist activated on a content-detected match"},
+    # baseline text eligibility
+    "text_eligible":            {"layer": "derived", "method": "_extract_reference_tokens", "description": "file routed into the baseline text-analysis tier"},
+    # structural extraction
+    "markdown_h1":              {"layer": "derived", "method": "extract_md_title",  "description": "title from a Markdown H1"},
+    "html_title_tag":           {"layer": "derived", "method": "extract_html_title", "description": "title from an HTML <title> tag"},
+    "yaml_line_parse":          {"layer": "derived", "method": "extract_yaml_keys", "description": "document keys from YAML line parsing"},
+    "json_loads":               {"layer": "derived", "method": "extract_json_keys", "description": "document keys from json.loads"},
+    "xml_etree":                {"layer": "derived", "method": "extract_xml_keys",  "description": "document keys from XML ElementTree"},
+    "tomllib":                  {"layer": "derived", "method": "extract_toml_keys", "description": "document keys from tomllib"},
+    # specialist metadata extraction (dynamic: method is f"_{ext}_specialist",
+    # trigger chosen per is_deviation / null — method varies by extension)
+    "bounded_sample":           {"layer": "derived", "method": "_<ext>_specialist", "description": "specialist field extracted within the bounded sample"},
+    "bounded_deviation":        {"layer": "derived", "method": "_<ext>_specialist", "description": "specialist field extracted via a declared deviation read (e.g. ZIP central directory)"},
+    "missing_from_bounds":      {"layer": "derived", "method": "_<ext>_specialist", "description": "specialist field not observed within bounds (null, not absent)"},
+    "bounded_text":             {"layer": "derived", "method": "_extract_chatlog_metadata", "description": "specialist text field extracted within bounds"},
+    "email_body_crosscut":      {"layer": "derived", "method": "_extract_chatlog_metadata", "description": "email body cross-cut through the chatlog vector"},
+    # binary detection (detect_binary)
+    "unicode_bom":              {"layer": "derived", "method": "detect_binary",    "description": "treated as text via a UTF-16/UTF-32 BOM at offset 0"},
+    "nul_byte":                 {"layer": "derived", "method": "detect_binary",    "description": "binary: NUL byte in the sample"},
+    "mime_prefix_binary":       {"layer": "derived", "method": "detect_binary",    "description": "binary: image/ audio/ video/ MIME prefix"},
+    "known_binary_mime":        {"layer": "derived", "method": "detect_binary",    "description": "binary: a known-binary MIME type"},
+    "text_ratio_failure":       {"layer": "derived", "method": "detect_binary",    "description": "binary: printable-character ratio below threshold"},
+    "text_ratio_ok":            {"layer": "derived", "method": "detect_binary",    "description": "text: printable-character ratio above threshold"},
+    # requires_vision (detect_requires_vision)
+    "image_mime":               {"layer": "derived", "method": "detect_requires_vision", "description": "requires vision: image MIME"},
+    "pdf_text_detected":        {"layer": "derived", "method": "detect_requires_vision", "description": "PDF with detectable text — does NOT require vision"},
+    "pdf_image_only":           {"layer": "derived", "method": "detect_requires_vision", "description": "PDF with image markers and no text — requires vision"},
+    "pdf_no_markers":           {"layer": "derived", "method": "detect_requires_vision", "description": "PDF with no text or image markers in the window"},
+    # encoding (decode_text)
+    "chardet_confident":        {"layer": "derived", "method": "decode_text",      "description": "encoding from chardet at confidence >= 0.5"},
+    "cascade_utf_8":            {"layer": "derived", "method": "decode_text",      "description": "encoding from the utf-8 cascade step"},
+    "cascade_utf_8_sig":        {"layer": "derived", "method": "decode_text",      "description": "encoding from the utf-8-sig cascade step"},
+    "cascade_cp1252":           {"layer": "derived", "method": "decode_text",      "description": "encoding from the cp1252 cascade step"},
+    "cascade_latin_1":          {"layer": "derived", "method": "decode_text",      "description": "encoding from the latin-1 cascade step"},
+    "replace":                  {"layer": "derived", "method": "decode_text",      "description": "encoding cascade exhausted — utf-8 with errors=replace"},
+    # shared / multi-method
+    "not_applicable":           {"layer": "derived", "method": "(various)",        "description": "the derivation does not apply to this file (e.g. binary skips encoding; non-PDF skips vision)"},
+}
 
 BINARY_MIME_PREFIXES = ("image/", "audio/", "video/")
 BINARY_MIME_TYPES = {
@@ -565,6 +656,33 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".docx": "document",
     ".doc": "document",
     ".rtf": "document",
+}
+
+# v1.13: SPECIALIST_FIELDS — the metadata fields each specialist namespace can
+# emit, enumerable from one place for `--schema`. Keyed by namespace (the value
+# in SPECIALIST_NAMESPACE / CHATLOG_NAMESPACE). This documents the specialist
+# output surface for consumers; a guard test asserts every field a specialist
+# actually emits on the training corpus is listed here (no undocumented field).
+# Fields not observed within bounds come back null (null = not seen, not absent).
+SPECIALIST_FIELDS: dict[str, list[str]] = {
+    "pdf": [
+        "has_text_streams", "encrypted", "xref_type", "page_count", "title",
+        "author", "producer", "creator", "creation_date", "pdf_version",
+        "text_detected", "sample_text_marker_density", "parser",
+    ],
+    "image": ["width", "height", "bit_depth"],
+    "document": ["title", "author", "word_count", "heading_count", "application"],
+    "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
+    "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
+              "body_chatlog"],  # v0.9 cross-cut: emitted when an email body is chatlog-shaped (v1.13 leg-1 #4)
+    "chatlog": [
+        "turn_count", "speaker_labels", "speaker_turn_counts",
+        "speaker_turn_chars", "alternation", "content_shape",
+        "section_marker_count", "section_marker_styles", "avg_turn_chars",
+        "max_turn_chars", "min_turn_chars", "reference_tokens",
+        "top_capitalized_tokens", "capitalized_token_count",
+        "vocabulary_size_estimate",
+    ],
 }
 
 
@@ -5165,6 +5283,207 @@ def manifest_to_json(manifest: ScanManifest) -> str:
     return json.dumps(manifest, default=_dc_encoder, indent=2, ensure_ascii=False)
 
 
+# ---------------------------------------------------------------------------
+# v1.13: `--schema` self-description. Introspects the installed build's
+# COMPLETE output surface from the module's registries + dataclasses and emits
+# a deterministic, sorted schema document. No scan, no source dir, no manifest;
+# `--schema` short-circuits the normal CLI path (like --help). Reflects what
+# the build CAN emit, not what any particular scan did emit. SCHEMA_VERSION
+# (the manifest contract) is unchanged; this is a SEPARATE surface.
+# ---------------------------------------------------------------------------
+
+def _dataclass_field_map(cls: type) -> list[dict[str, str]]:
+    """[{name, type}] for a dataclass's fields, in declaration order. With
+    `from __future__ import annotations` (this module) f.type is the verbatim
+    source string of the annotation."""
+    import dataclasses as _dc
+    out = []
+    for f in _dc.fields(cls):
+        t = f.type if isinstance(f.type, str) else getattr(f.type, "__name__", str(f.type))
+        out.append({"name": f.name, "type": str(t)})
+    return out
+
+
+def _referenced_dataclass_names(type_str: str) -> list[str]:
+    """Names from a type-annotation string that resolve to module-level
+    dataclasses (e.g. `DeltaRecord | None` → ['DeltaRecord'];
+    `list[FileRecord]` → ['FileRecord']). Used to recurse the manifest tree so
+    `--schema` documents EVERY nested block, not just the top-level dataclasses
+    (v1.13 leg-1 #3 — the COMPLETE claim must hold)."""
+    import dataclasses as _dc
+    import re as _re
+    g = globals()
+    out = []
+    for token in _re.findall(r"[A-Za-z_][A-Za-z0-9_]*", type_str):
+        obj = g.get(token)
+        if isinstance(obj, type) and _dc.is_dataclass(obj):
+            out.append(token)
+    return out
+
+
+def _collect_manifest_dataclasses() -> dict[str, list[dict[str, str]]]:
+    """Transitively walk the dataclass tree rooted at ScanManifest, expanding
+    every nested dataclass-typed field. Deterministic (sorted output). This is
+    what makes the manifest description COMPLETE — context/meta/stats/
+    routing_summary/delta and any future nested block are documented, not left
+    as opaque type names (v1.13 leg-1 #3)."""
+    import dataclasses as _dc
+    seen: dict[str, list[dict[str, str]]] = {}
+    queue = [ScanManifest]
+    while queue:
+        cls = queue.pop()
+        name = cls.__name__
+        if name in seen:
+            continue
+        fields = _dataclass_field_map(cls)
+        seen[name] = fields
+        for f in fields:
+            for ref in _referenced_dataclass_names(f["type"]):
+                obj = globals().get(ref)
+                if isinstance(obj, type) and _dc.is_dataclass(obj) and ref not in seen:
+                    queue.append(obj)
+    return {k: seen[k] for k in sorted(seen)}
+
+
+def build_schema_document() -> dict[str, Any]:
+    """The complete, code-derived output-surface description. Deterministic:
+    same installed build → byte-identical document. Read from the live
+    registries so it cannot drift from what the code emits (guard tests in
+    test_v1_13 assert completeness against the training corpus)."""
+    vectors = [
+        {"vector_id": CHATLOG_VECTOR_ID, "scope": "file", "method_version": CHATLOG_METHOD_VERSION},
+        {"vector_id": REFERENCE_TOKENS_VECTOR_ID, "scope": "file", "method_version": REFERENCE_TOKENS_METHOD_VERSION},
+        {"vector_id": FILENAME_PATTERNS_VECTOR_ID, "scope": "file", "method_version": FILENAME_PATTERNS_METHOD_VERSION},
+        {"vector_id": PRESERVATION_VECTOR_ID, "scope": "file", "method_version": PRESERVATION_METHOD_VERSION},
+        {"vector_id": AUTHOR_AGGREGATE_VECTOR_ID, "scope": "corpus", "method_version": AUTHOR_AGGREGATE_METHOD_VERSION},
+        {"vector_id": PROVENANCE_VECTOR_ID, "scope": "corpus", "method_version": PROVENANCE_METHOD_VERSION},
+    ]
+    # MAGIC_SIGNATURES labels (the format vocabulary), sorted + deduped.
+    magic_formats = sorted({label for _, label in MAGIC_SIGNATURES})
+    # FORMAT_OBSOLESCENCE grouped by tier.
+    preservation: dict[str, list[str]] = {}
+    for ext, tier in FORMAT_OBSOLESCENCE.items():
+        preservation.setdefault(tier, []).append(ext)
+    for tier in preservation:
+        preservation[tier].sort()
+
+    return {
+        "schema_doc_version": 1,
+        "scanner_version": SCANNER_VERSION,
+        "logic_version": LOGIC_VERSION,
+        "schema_version": SCHEMA_VERSION,
+        # Every dataclass reachable from ScanManifest, expanded (v1.13 leg-1 #3).
+        "manifest": _collect_manifest_dataclasses(),
+        "specialists": {
+            "tools": dict(sorted(SPECIALIST_TOOLS.items())),
+            "namespaces": dict(sorted(SPECIALIST_NAMESPACE.items())),
+            "fields": {ns: sorted(SPECIALIST_FIELDS[ns]) for ns in sorted(SPECIALIST_FIELDS)},
+        },
+        "vectors": sorted(vectors, key=lambda v: v["vector_id"]),
+        "safety_flags": dict(sorted(SAFETY_FLAGS.items())),
+        "error_codes": dict(sorted(ERROR_CODES.items())),
+        "provenance_triggers": {
+            name: PROVENANCE_TRIGGERS[name] for name in sorted(PROVENANCE_TRIGGERS)
+        },
+        "format_signatures": magic_formats,
+        "preservation_tiers": preservation,
+        "reference_tokens_subcategories": sorted(REFERENCE_TOKENS_STATIC_TUNING["enabled_subcategories"]),
+        "filename_patterns_subcategories": sorted(FILENAME_PATTERNS_STATIC_TUNING["enabled_subcategories"]),
+        "mime_tiers": ["libmagic", "magic_signature_fallback", "extension_fallback", "octet_stream"],
+    }
+
+
+def schema_to_json(doc: dict[str, Any]) -> str:
+    return json.dumps(doc, indent=2, ensure_ascii=False, sort_keys=True)
+
+
+def schema_to_markdown(doc: dict[str, Any]) -> str:
+    """Human-readable rendering of the schema document (the `--format md` form
+    + the committed docs/SCHEMA.md source). Deterministic."""
+    L: list[str] = []
+    L.append("# File Observer output schema")
+    L.append("")
+    L.append(f"> Generated by `file-observer --schema --schema-format md` from "
+             f"SCANNER {doc['scanner_version']} / LOGIC {doc['logic_version']} / "
+             f"SCHEMA {doc['schema_version']}. Code-derived — do not hand-edit; "
+             f"regenerate. This describes the COMPLETE output surface the build "
+             f"can emit, independent of any particular scan.")
+    L.append("")
+    # GFM cell escaping: a literal `|` inside a cell (even within backticks) is
+    # a column delimiter and breaks the row. Union types like `DeltaRecord | None`
+    # must escape it (v1.13 leg-1 #2).
+    def _cell(s: str) -> str:
+        return s.replace("|", "\\|")
+
+    L.append("## Manifest structure")
+    for cls_name, fields in doc["manifest"].items():
+        L.append(f"### `{cls_name}`")
+        L.append("")
+        L.append("| field | type |")
+        L.append("|---|---|")
+        for f in fields:
+            L.append(f"| `{_cell(f['name'])}` | `{_cell(f['type'])}` |")
+        L.append("")
+    L.append("## Specialists")
+    L.append("")
+    L.append("| extension | namespace | tool |")
+    L.append("|---|---|---|")
+    for ext, tool in doc["specialists"]["tools"].items():
+        ns = doc["specialists"]["namespaces"].get(ext, "")
+        L.append(f"| `{ext}` | `{ns}` | `{tool}` |")
+    L.append("")
+    L.append("### Specialist metadata fields")
+    for ns, fields in doc["specialists"]["fields"].items():
+        L.append(f"- **{ns}**: " + ", ".join(f"`{x}`" for x in fields))
+    L.append("")
+    L.append("## Vectors")
+    L.append("")
+    L.append("| vector_id | scope | method_version |")
+    L.append("|---|---|---|")
+    for v in doc["vectors"]:
+        L.append(f"| `{v['vector_id']}` | {v['scope']} | {v['method_version']} |")
+    L.append("")
+    L.append("## safety_flags")
+    L.append("")
+    for k, v in doc["safety_flags"].items():
+        L.append(f"- `{k}` — {v}")
+    L.append("")
+    L.append("## error_codes")
+    L.append("")
+    for k, v in doc["error_codes"].items():
+        L.append(f"- `{k}` — {v}")
+    L.append("")
+    L.append("## signal_provenance triggers")
+    L.append("")
+    L.append("| trigger | layer | method | description |")
+    L.append("|---|---|---|---|")
+    for name, meta in doc["provenance_triggers"].items():
+        L.append(f"| `{name}` | {meta['layer']} | `{meta['method']}` | {meta['description']} |")
+    L.append("")
+    L.append("## format_signatures")
+    L.append("")
+    L.append(", ".join(f"`{x}`" for x in doc["format_signatures"]))
+    L.append("")
+    L.append("## preservation tiers")
+    L.append("")
+    for tier, exts in sorted(doc["preservation_tiers"].items()):
+        L.append(f"- **{tier}**: " + (", ".join(f"`{x}`" for x in exts) if exts else "_(default — all other extensions)_"))
+    L.append("")
+    L.append("## reference_tokens subcategories")
+    L.append("")
+    L.append(", ".join(f"`{x}`" for x in doc["reference_tokens_subcategories"]))
+    L.append("")
+    L.append("## filename_patterns subcategories")
+    L.append("")
+    L.append(", ".join(f"`{x}`" for x in doc["filename_patterns_subcategories"]))
+    L.append("")
+    L.append("## MIME detection tiers")
+    L.append("")
+    L.append(" → ".join(f"`{x}`" for x in doc["mime_tiers"]))
+    L.append("")
+    return "\n".join(L)
+
+
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
     # Header line with schema_version, context, meta, stats, routing_summary, delta, manifest_checksum, vectors_collected
@@ -5383,7 +5702,38 @@ def main() -> None:
     parser.add_argument("--profile", choices=list(SCAN_PROFILES.keys()), default=None, help="Named scan profile (fast_sort, general, deep_extract)")
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
+    parser.add_argument("--schema", action="store_true", help="Print the complete output-surface description (every field, specialist, vector, safety_flag, error code, provenance trigger, format signature, preservation tier) and exit. Does NOT scan. Use --schema-format json|md (default json). (v1.13)")
+    parser.add_argument("--schema-format", choices=["json", "md"], default="json", help="Format for --schema output: json (default) or md. Only meaningful with --schema.")
     args = parser.parse_args()
+
+    # v1.13: --schema short-circuits the scan path entirely (like --help). It
+    # introspects the installed build's output surface; no source dir is read,
+    # no manifest is produced. Validate flag compatibility symmetric with --watch
+    # (v1.13 leg-1 #1/#5/#6/#7/#11): --schema is a non-scanning surface, so a
+    # source dir or any scan-only / streaming flag passed alongside it is a
+    # mistake — reject loudly rather than silently discard.
+    if args.schema:
+        conflicts = []
+        if args.source not in (".", None):
+            conflicts.append(f"a source directory ({args.source!r})")
+        if args.output is not None:
+            conflicts.append("--output")
+        if args.watch:
+            conflicts.append("--watch")
+        if args.format != "json":
+            # --format is the scan-output format (json/jsonl); schema output is
+            # controlled by --schema-format. A non-default --format here is a
+            # mistake — reject it rather than silently ignore (v1.13 leg-4 Codex).
+            conflicts.append(f"--format {args.format} (use --schema-format for schema output)")
+        if conflicts:
+            print(f"file-observer: --schema does not scan; remove {', '.join(conflicts)}", file=sys.stderr)
+            sys.exit(2)
+        doc = build_schema_document()
+        if args.schema_format == "md":
+            sys.stdout.write(schema_to_markdown(doc) + "\n")
+        else:
+            sys.stdout.write(schema_to_json(doc) + "\n")
+        return
 
     # Build config from profile + explicit args + overrides
     profile_values = SCAN_PROFILES.get(args.profile, {}) if args.profile else {}
