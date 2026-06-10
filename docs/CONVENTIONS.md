@@ -301,6 +301,7 @@ Required before merge:
 - [ ] `docs/HISTORY.md` — new version row added; "Drafts in Flight" updated
 - [ ] `CLAUDE.md` — spec references and roadmap updated
 - [ ] `docs/CONVENTIONS.md` (this file) — tracking inventory updated for any new specialists, fields, signatures, flags, error codes, vectors
+- [ ] **`docs/SCHEMA.md` regenerated** (since v1.13) — any change to the output surface (a new field, vector, specialist, safety_flag, error code, or provenance trigger) MUST be reflected in the generated schema doc + its source registry (`ERROR_CODES` / `SAFETY_FLAGS` / `PROVENANCE_TRIGGERS` / `SPECIALIST_FIELDS`). Regenerate: `python -c "from file_observer.scanner import build_schema_document, schema_to_markdown; open('docs/SCHEMA.md','w').write(schema_to_markdown(build_schema_document())+chr(10))"`. The drift-guard test (`test_committed_schema_md_matches_generated`) fails if it's stale; the completeness tests fail if a registry is missing an emitted value.
 - [ ] `docs/PUBLIC_CONTRACT.md` — updated only if a public contract field changed
 - [ ] `docs/STANDARDS_TRACKING.md` — touch point pass: review Awareness, Moving toward, Obligations against this version's scope
 - [ ] `pyproject.toml` — version bumped

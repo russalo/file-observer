@@ -76,8 +76,10 @@ def test_no_inline_error_code_literals():
     )
 
 
-def test_version_is_1_12_2():
-    assert SCANNER_VERSION == "1.12.2", f"got {SCANNER_VERSION!r}"
+def test_version_is_at_least_1_12_2():
+    """Version-FLOOR — error-code centralization shipped at-or-after 1.12.2.
+    Stays true across later bumps (current-version pin in test_packaging.py)."""
+    assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 12, 2), f"got {SCANNER_VERSION!r}"
 
 
 def test_logic_and_schema_frozen():
