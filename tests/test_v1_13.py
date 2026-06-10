@@ -181,6 +181,71 @@ DYNAMIC_TRIGGERS = {
 }
 
 
+def _provenance_trigger_arg(call: ast.Call):
+    """The AST node for a ProvenanceEntry call's `trigger` argument — keyword
+    OR positional. ProvenanceEntry(layer, method, trigger, ...) so trigger is
+    positional index 2 (v1.13 leg-4 Gemini: guards must catch positional form
+    too, not only keyword). Returns the node or None."""
+    for kw in call.keywords:
+        if kw.arg == "trigger":
+            return kw.value
+    if len(call.args) >= 3:
+        return call.args[2]
+    return None
+
+
+def test_registry_method_matches_emitted_method():
+    """v1.13 leg-4 Gemini HIGH: --schema advertises the `method` for each
+    provenance trigger; that method MUST match what the ProvenanceEntry call
+    actually emits (else the self-description lies — e.g. registry said
+    'structural.title' but the manifest carries 'extract_md_title'). For every
+    statically-resolvable trigger literal, assert registry method == emitted
+    method. Multi-method triggers (not_applicable) and dynamic per-extension
+    methods (`_<ext>_specialist`) are allowed their documented placeholder."""
+    tree = ast.parse(SCANNER_PY.read_text(encoding="utf-8"), filename=str(SCANNER_PY))
+
+    def _lits(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return [node.value]
+        if isinstance(node, ast.IfExp):
+            return _lits(node.body) + _lits(node.orelse)
+        return []
+
+    from collections import defaultdict
+    emitted = defaultdict(set)  # trigger -> set of method strings
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "ProvenanceEntry"):
+            continue
+        # method arg: keyword or positional idx 1
+        m_node = None
+        for kw in node.keywords:
+            if kw.arg == "method":
+                m_node = kw.value
+        if m_node is None and len(node.args) >= 2:
+            m_node = node.args[1]
+        method = (m_node.value if isinstance(m_node, ast.Constant)
+                  else "<dynamic>" if isinstance(m_node, ast.JoinedStr) else "<expr>")
+        t_node = _provenance_trigger_arg(node)
+        if t_node is None:
+            continue
+        for t in _lits(t_node):
+            emitted[t].add(method)
+
+    ALLOW_PLACEHOLDER = {"_<ext>_specialist", "(various)"}
+    mismatches = []
+    for trig, ms in emitted.items():
+        reg_m = PROVENANCE_TRIGGERS.get(trig, {}).get("method")
+        if reg_m in ALLOW_PLACEHOLDER:
+            continue  # documented multi/dynamic-method placeholder
+        if reg_m not in ms:
+            mismatches.append(f"{trig}: registry={reg_m!r} emitted={sorted(ms)}")
+    assert not mismatches, (
+        "PROVENANCE_TRIGGERS method names disagree with the emitted ProvenanceEntry "
+        f"method= values (--schema would advertise wrong methods): {mismatches}"
+    )
+
+
 def test_every_literal_trigger_is_registered():
     """AST guard (mirrors the v1.12.2 error-code guard): every STATICALLY
     RESOLVABLE inline trigger value in a ProvenanceEntry(...) call MUST be a key
@@ -209,17 +274,17 @@ def test_every_literal_trigger_is_registered():
                 and isinstance(node.func, ast.Name)
                 and node.func.id == "ProvenanceEntry"):
             continue
-        for kw in node.keywords:
-            if kw.arg != "trigger":
-                continue
-            vals, resolved = _literal_strings(kw.value)
-            for val in vals:
-                if val not in PROVENANCE_TRIGGERS:
-                    offenders.append(f"{val!r} (line {kw.value.lineno})")
-            if not resolved:
-                # A dynamic trigger= site. The values it can produce MUST be in
-                # DYNAMIC_TRIGGERS (verified emittable by the driver test).
-                unresolved_sites += 1
+        trigger_node = _provenance_trigger_arg(node)  # keyword OR positional (idx 2)
+        if trigger_node is None:
+            continue
+        vals, resolved = _literal_strings(trigger_node)
+        for val in vals:
+            if val not in PROVENANCE_TRIGGERS:
+                offenders.append(f"{val!r} (line {trigger_node.lineno})")
+        if not resolved:
+            # A dynamic trigger= site. The values it can produce MUST be in
+            # DYNAMIC_TRIGGERS (verified emittable by the driver test).
+            unresolved_sites += 1
     assert not offenders, (
         f"inline trigger literal(s) not in PROVENANCE_TRIGGERS: {offenders}"
     )
@@ -292,9 +357,9 @@ def test_registry_has_no_phantom_keys():
     for node in ast.walk(tree):
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "ProvenanceEntry"):
-            for kw in node.keywords:
-                if kw.arg == "trigger":
-                    _collect(kw.value)
+            t_node = _provenance_trigger_arg(node)  # keyword OR positional
+            if t_node is not None:
+                _collect(t_node)
 
     reachable = literal_triggers | DYNAMIC_TRIGGERS
     phantom = set(PROVENANCE_TRIGGERS) - reachable

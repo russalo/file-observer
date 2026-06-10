@@ -307,29 +307,30 @@ PROVENANCE_TRIGGERS: dict[str, dict[str, str]] = {
     "magic_signature_fallback": {"layer": "derived", "method": "detect_mime",      "description": "MIME from the pure-Python magic-signature sniff (libmagic absent/null)"},
     "extension_fallback":       {"layer": "derived", "method": "detect_mime",      "description": "MIME guessed from the extension (both content tiers failed)"},
     # MIME-vs-extension analysis
-    "mismatch":                 {"layer": "derived", "method": "mime_analysis",    "description": "detected MIME differs from the extension-implied MIME"},
-    "match":                    {"layer": "derived", "method": "mime_analysis",    "description": "detected MIME matches the extension-implied MIME"},
+    "mismatch":                 {"layer": "derived", "method": "analyze_mime",     "description": "detected MIME differs from the extension-implied MIME"},
+    "match":                    {"layer": "derived", "method": "analyze_mime",     "description": "detected MIME matches the extension-implied MIME"},
     # specialist tool registry routing
-    "registry_match":           {"layer": "derived", "method": "specialist_tool",  "description": "extension has a registered specialist tool"},
-    "registry_none":            {"layer": "derived", "method": "specialist_tool",  "description": "extension has no registered specialist tool"},
+    "registry_match":           {"layer": "derived", "method": "specialist_tools_registry", "description": "extension has a registered specialist tool"},
+    "registry_none":            {"layer": "derived", "method": "specialist_tools_registry", "description": "extension has no registered specialist tool"},
     # chatlog content detection
-    "content_pattern_match":    {"layer": "derived", "method": "is_chatlog",       "description": "content matched the chatlog detection rules"},
-    "content_pattern_none":     {"layer": "derived", "method": "is_chatlog",       "description": "content did not match the chatlog detection rules"},
-    "chatlog_activation":       {"layer": "derived", "method": "chatlog_signals",  "description": "chatlog specialist activated on a content-detected match"},
+    "content_pattern_match":    {"layer": "derived", "method": "_detect_chatlog_pattern", "description": "content matched the chatlog detection rules"},
+    "content_pattern_none":     {"layer": "derived", "method": "_detect_chatlog_pattern", "description": "content did not match the chatlog detection rules"},
+    "chatlog_activation":       {"layer": "derived", "method": "content_detected_specialist", "description": "chatlog specialist activated on a content-detected match"},
     # baseline text eligibility
-    "text_eligible":            {"layer": "derived", "method": "baseline",         "description": "file routed into the baseline text-analysis tier"},
+    "text_eligible":            {"layer": "derived", "method": "_extract_reference_tokens", "description": "file routed into the baseline text-analysis tier"},
     # structural extraction
-    "markdown_h1":              {"layer": "derived", "method": "structural.title", "description": "title from a Markdown H1"},
-    "html_title_tag":           {"layer": "derived", "method": "structural.title", "description": "title from an HTML <title> tag"},
-    "yaml_line_parse":          {"layer": "derived", "method": "structural.document_keys", "description": "document keys from YAML line parsing"},
-    "json_loads":               {"layer": "derived", "method": "structural.document_keys", "description": "document keys from json.loads"},
-    "xml_etree":                {"layer": "derived", "method": "structural.document_keys", "description": "document keys from XML ElementTree"},
-    "tomllib":                  {"layer": "derived", "method": "structural.document_keys", "description": "document keys from tomllib"},
-    # specialist metadata extraction (dynamic: chosen per is_deviation / null)
-    "bounded_sample":           {"layer": "derived", "method": "specialist",       "description": "specialist field extracted within the bounded sample"},
-    "bounded_deviation":        {"layer": "derived", "method": "specialist",       "description": "specialist field extracted via a declared deviation read (e.g. ZIP central directory)"},
-    "missing_from_bounds":      {"layer": "derived", "method": "specialist",       "description": "specialist field not observed within bounds (null, not absent)"},
-    "bounded_text":             {"layer": "derived", "method": "specialist",       "description": "specialist text field extracted within bounds"},
+    "markdown_h1":              {"layer": "derived", "method": "extract_md_title",  "description": "title from a Markdown H1"},
+    "html_title_tag":           {"layer": "derived", "method": "extract_html_title", "description": "title from an HTML <title> tag"},
+    "yaml_line_parse":          {"layer": "derived", "method": "extract_yaml_keys", "description": "document keys from YAML line parsing"},
+    "json_loads":               {"layer": "derived", "method": "extract_json_keys", "description": "document keys from json.loads"},
+    "xml_etree":                {"layer": "derived", "method": "extract_xml_keys",  "description": "document keys from XML ElementTree"},
+    "tomllib":                  {"layer": "derived", "method": "extract_toml_keys", "description": "document keys from tomllib"},
+    # specialist metadata extraction (dynamic: method is f"_{ext}_specialist",
+    # trigger chosen per is_deviation / null — method varies by extension)
+    "bounded_sample":           {"layer": "derived", "method": "_<ext>_specialist", "description": "specialist field extracted within the bounded sample"},
+    "bounded_deviation":        {"layer": "derived", "method": "_<ext>_specialist", "description": "specialist field extracted via a declared deviation read (e.g. ZIP central directory)"},
+    "missing_from_bounds":      {"layer": "derived", "method": "_<ext>_specialist", "description": "specialist field not observed within bounds (null, not absent)"},
+    "bounded_text":             {"layer": "derived", "method": "_extract_chatlog_metadata", "description": "specialist text field extracted within bounds"},
     "email_body_crosscut":      {"layer": "derived", "method": "_extract_chatlog_metadata", "description": "email body cross-cut through the chatlog vector"},
     # binary detection (detect_binary)
     "unicode_bom":              {"layer": "derived", "method": "detect_binary",    "description": "treated as text via a UTF-16/UTF-32 BOM at offset 0"},
@@ -5402,7 +5403,7 @@ def schema_to_markdown(doc: dict[str, Any]) -> str:
     L: list[str] = []
     L.append("# File Observer output schema")
     L.append("")
-    L.append(f"> Generated by `file-observer --schema --format md` from "
+    L.append(f"> Generated by `file-observer --schema --schema-format md` from "
              f"SCANNER {doc['scanner_version']} / LOGIC {doc['logic_version']} / "
              f"SCHEMA {doc['schema_version']}. Code-derived — do not hand-edit; "
              f"regenerate. This describes the COMPLETE output surface the build "
@@ -5719,6 +5720,11 @@ def main() -> None:
             conflicts.append("--output")
         if args.watch:
             conflicts.append("--watch")
+        if args.format != "json":
+            # --format is the scan-output format (json/jsonl); schema output is
+            # controlled by --schema-format. A non-default --format here is a
+            # mistake — reject it rather than silently ignore (v1.13 leg-4 Codex).
+            conflicts.append(f"--format {args.format} (use --schema-format for schema output)")
         if conflicts:
             print(f"file-observer: --schema does not scan; remove {', '.join(conflicts)}", file=sys.stderr)
             sys.exit(2)
