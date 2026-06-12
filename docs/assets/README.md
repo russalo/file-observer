@@ -9,7 +9,13 @@ channel** (transparent background — verify `Image.open(p).mode == "RGBA"`).
 | `logo-wordmark.png` | Mark + "file-observer" lockup | horizontal contexts (social, docs) |
 | `logo-mono.png` | Single-color (slate) mark | single-color contexts |
 | `favicon.png` | Square 256×256 mark | docs-site favicon |
+| `logo-motif.png` | Mark + pipeline motif locked-up as one graphic (the OG card's right panel) | reusable composite for social/promo |
 | `pipeline-diagram.png` | files → deterministic, checksum-sealed observation → one JSON manifest → many consumers | README hero; `docs/TUTORIAL.md` §1 |
+| `og-card.png` | 1424×752 social-share card (tagline + mark + pipeline motif) | repo **Settings → Social preview** (manual upload) |
+
+`og-card.png` is the **deliberate exception** to the transparency rule: a
+social-preview card is shown full-bleed on a solid panel, so it ships RGB with a
+solid deep-slate background, not transparent.
 
 ## Provenance
 

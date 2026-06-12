@@ -5,11 +5,12 @@ runnable [example](../examples/). Stable section anchors — external posts link
 here, so the headings don't churn.
 
 > **New to the project?** file-observer is a **deterministic observation layer**:
-> point it at files, get back a JSON manifest of what they are and what's in them.
-> Think the `file` command + Apache Tika's metadata + cryptographic provenance,
-> built to be *reproducible* so it's safe in a pipeline. It is **not** a file
-> watcher, an ingester, an OCR engine, or a classifier — it observes and reports;
-> you decide what to do with the observation.
+> point it at a directory and get back a JSON manifest describing every file —
+> its type, metadata, structure, and provenance — reproducibly enough to trust in
+> a pipeline. It is **not** a file watcher, an ingester, an OCR engine, or a
+> classifier — it observes and reports; you decide what to do with the
+> observation. *(If you already know Apache Tika: think a deterministic Tika
+> built for pipelines.)*
 
 ## 1. What it is (and is not)
 
