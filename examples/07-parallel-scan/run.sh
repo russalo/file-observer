@@ -3,6 +3,7 @@
 # Run from anywhere. Scans with 1 and 4 workers and compares the checksum.
 set -euo pipefail
 cd "$(dirname "$0")"
+rm -rf out          # start clean so glob() can't pick up a stale manifest
 
 file-observer sample_tree --workers 1 -o out/w1
 file-observer sample_tree --workers 4 -o out/w4

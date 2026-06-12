@@ -3,6 +3,7 @@
 # Run from anywhere; writes the manifest + human report to ./out/.
 set -euo pipefail
 cd "$(dirname "$0")"
+rm -rf out          # start clean so re-runs don't accumulate timestamped manifests
 file-observer sample_project -o out
 echo
 echo "Manifest + report written to ./out/. The manifest is the JSON; the .md is"

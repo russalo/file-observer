@@ -4,6 +4,7 @@
 # Needs the [pdf] extra for object-stream / encrypted PDFs:  pip install "file-observer[pdf]"
 set -euo pipefail
 cd "$(dirname "$0")"
+rm -rf out          # start clean so re-runs don't accumulate timestamped manifests
 file-observer sample_pdf --specialists -o out
 echo
 echo "Manifest + report written to ./out/. Open the manifest and look at"

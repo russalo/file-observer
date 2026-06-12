@@ -3,6 +3,7 @@
 # Run from anywhere; writes the manifest + human report to ./out/.
 set -euo pipefail
 cd "$(dirname "$0")"
+rm -rf out          # start clean so re-runs don't accumulate timestamped manifests
 # is_chatlog is set even without --specialists; --specialists adds the rich
 # turn/speaker breakdown and the chatlog vector.
 file-observer sample_logs --specialists -o out

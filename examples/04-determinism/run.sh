@@ -3,6 +3,7 @@
 # Run from anywhere. Writes two manifests to ./out/ and diffs their checksum.
 set -euo pipefail
 cd "$(dirname "$0")"
+rm -rf out          # start clean so glob() can't pick up a stale manifest
 
 file-observer sample_data -o out/run-a
 file-observer sample_data -o out/run-b
