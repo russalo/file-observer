@@ -1,0 +1,4 @@
+order_id,sku,qty,region
+1001,WIDGET-A,3,us-west
+1002,WIDGET-B,1,us-east
+1003,WIDGET-A,7,eu-central
