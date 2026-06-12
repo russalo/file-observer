@@ -15,6 +15,8 @@
 
 File Observer makes a single read-only pass over a directory and tells you exactly what's inside — file types, metadata, conversation patterns, author fingerprints, structural signals — all in one deterministic JSON manifest. You run it on demand; it doesn't stay resident or watch for changes. It reads everything. It changes nothing.
 
+*(If you already know Apache Tika: think a deterministic Tika built for pipelines.)*
+
 <p align="center">
   <img src="docs/assets/pipeline-diagram.png" alt="Many messy files in → one deterministic, checksum-sealed JSON manifest out → many consumers downstream" width="760">
 </p>
@@ -367,6 +369,10 @@ In short: AGPL obligations are triggered by **distribution** and by **network us
 Contact **russalo@russalo.com** for commercial terms.
 
 > This is a plain-language summary, not legal advice or a substitute for the [license text](https://github.com/russalo/file-observer/blob/main/LICENSE). Where this summary and the license differ, the license governs.
+
+### Trademarks
+
+Apache® and Apache Tika™ are trademarks of the [Apache Software Foundation](https://www.apache.org/). The Unix `file` command is referenced descriptively. File Observer is an independent project and is **not affiliated with, endorsed by, or sponsored by** the Apache Software Foundation; any reference to Apache Tika is comparative only.
 
 ---
 
