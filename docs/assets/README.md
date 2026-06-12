@@ -18,8 +18,8 @@ The **mark** and the **pipeline diagram** were generated via the Gemini paste-pa
 favicon are composited from the real mark** (Pillow), not regenerated — a
 text-to-image model can't reproduce an exact reference mark, so deriving them
 programmatically guarantees a pixel-exact match. Backgrounds were made truly
-transparent in the same pass (the generator baked a checkerboard into RGB; see
-[[feedback_image_prompt_transparency]]).
+transparent in the same pass (the generator baked a checkerboard into RGB
+pixels rather than using a real alpha channel).
 
 Shipped transparent / light-optimized: slate is crisp in GitHub light mode and
 dims (teal still pops) in dark mode — a deliberate call, no `<picture>` dark
