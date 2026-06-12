@@ -33,6 +33,8 @@ IDENTICAL — parallelism changed the speed, not the observation.
 
 The `files[]` array is in the same order both times, too — not just the same set of records, the same sequence.
 
+(As in [Example 04](../04-determinism/), the **equality across worker counts** is the invariant; the absolute digest is specific to this build's `ScanContext`, so your run may print a different — but matching — pair.)
+
 ## What just happened
 
 - **Worker count is a runtime detail, deliberately excluded from the output.** Like `scan_id`, `--workers` has no causal link to *what the files are*, so it isn't recorded in `meta.config` and can't affect the checksum. The same input scanned with 1 worker or 8 produces the same bytes — [Example 04](../04-determinism/)'s contract, extended across processes.

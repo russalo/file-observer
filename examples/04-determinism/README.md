@@ -26,6 +26,8 @@ run B manifest_checksum: 2db7f239719fabc6f5d221f4a362806e61d28e1fa3a5dd1fb8a48d7
 IDENTICAL — same bytes in, same observation out.
 ```
 
+The **equality** is the invariant being shown; the absolute digest is specific to this build's `ScanContext` (scanner version, libmagic presence, …), so your run may print a different — but internally identical — pair.
+
 …even though the two runs have different volatile metadata:
 
 | field | run A | run B |

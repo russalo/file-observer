@@ -35,6 +35,8 @@ A manifest with one record per file. The salient fields for each:
 | `data.csv` | `text/csv` | false | false |
 | `logo.png` | `image/png` | **true** | false |
 
+> The MIME column above is from a scan with **libmagic** available (the recommended setup). Without libmagic, file-observer's extension-based fallback reports `README.md` as `text/markdown` and `config.yaml` as `application/yaml` instead — a different but equally deterministic result, because whether libmagic is present is part of the `ScanContext`. (`data.csv` → `text/csv` and `logo.png` → `image/png` are content-sniffed and stable either way; the `manifest_checksum` below is likewise the libmagic-present value.)
+
 And top-level stats:
 
 ```json
