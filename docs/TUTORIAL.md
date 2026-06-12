@@ -25,6 +25,10 @@ connections, or runs embedded scripts/macros. Its whole job is to *look* and
 events — it's a trigger loop around the deterministic observer, not an
 intelligent watcher.
 
+<p align="center">
+  <img src="assets/pipeline-diagram.png" alt="Many messy files in → one deterministic, checksum-sealed JSON manifest out → many consumers downstream" width="760">
+</p>
+
 Why determinism matters: in an ingestion pipeline you want the same file to
 produce the same record every run, so you can cache, diff, and trust the output.
 The `manifest_checksum` is the handle for that (§4, [Example 04](../examples/04-determinism/)).

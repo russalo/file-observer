@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.png" alt="file-observer" width="110">
+</p>
+
 # File Observer
 
 [![PyPI](https://img.shields.io/pypi/v/file-observer)](https://pypi.org/project/file-observer/)
@@ -10,6 +14,10 @@
 *A one-shot, read-only observation pass — not a file watcher. Point it at a directory, get one deterministic JSON manifest of what's inside, before you ingest it.*
 
 File Observer makes a single read-only pass over a directory and tells you exactly what's inside — file types, metadata, conversation patterns, author fingerprints, structural signals — all in one deterministic JSON manifest. You run it on demand; it doesn't stay resident or watch for changes. It reads everything. It changes nothing.
+
+<p align="center">
+  <img src="docs/assets/pipeline-diagram.png" alt="Many messy files in → one deterministic, checksum-sealed JSON manifest out → many consumers downstream" width="760">
+</p>
 
 ```bash
 pip install file-observer
