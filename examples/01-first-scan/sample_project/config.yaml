@@ -1,0 +1,6 @@
+service: acme
+version: 2
+retries: 3
+endpoints:
+  - ingest
+  - normalize
