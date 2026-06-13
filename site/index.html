@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>file-observer — deterministic file observation for pipelines</title>
+<meta name="description" content="A one-shot, read-only scan of a directory that emits a deterministic JSON manifest of every file: type, metadata, structure, and provenance. Same bytes in, same manifest out. Built for pipelines, not watching.">
+<link rel="icon" type="image/png" href="/assets/favicon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="file-observer — deterministic file observation for pipelines">
+<meta property="og:description" content="One read-only pass over a directory → a reproducible JSON manifest of every file's type, metadata, structure, and provenance. Same bytes in, same manifest out.">
+<meta property="og:image" content="https://file-observer.russalo.com/assets/og-card.png">
+<meta property="og:url" content="https://file-observer.russalo.com">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://file-observer.russalo.com/assets/og-card.png">
+<style>
+  :root{
+    --slate:#2e404c; --slate-soft:#505e69; --teal:#279288; --teal-dark:#1f7a72;
+    --bg:#f7f5f0; --card:#fffdf9; --line:#e4e0d6; --code-bg:#2e404c; --code-fg:#e9edf0;
+    --max:880px;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--slate);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  code,kbd,pre{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace}
+  a{color:var(--teal-dark);text-decoration:none}
+  a:hover{text-decoration:underline}
+  .wrap{max-width:var(--max);margin:0 auto;padding:0 22px}
+  header{padding:40px 0 8px;text-align:center}
+  header img{width:96px;height:auto}
+  h1{font-size:30px;line-height:1.25;margin:26px 0 6px;letter-spacing:-.01em}
+  .tag{color:var(--slate-soft);font-size:19px;max-width:640px;margin:0 auto 4px}
+  .sub{color:var(--slate-soft);font-size:15px;max-width:600px;margin:14px auto 0}
+  .install{
+    display:inline-block;margin:24px 0 6px;background:var(--code-bg);color:var(--code-fg);
+    padding:12px 18px;border-radius:8px;font-size:15px;
+  }
+  .install::before{content:"$ ";color:#8aa0aa}
+  .cta{margin:22px 0 8px;text-align:center}
+  .btn{
+    display:inline-block;margin:5px;padding:10px 18px;border-radius:8px;font-size:15px;
+    border:1.5px solid var(--teal);color:var(--teal-dark);background:transparent;
+  }
+  .btn.primary{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .btn:hover{text-decoration:none;background:var(--teal);color:#fff}
+  .btn.primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
+  .hero-img{display:block;margin:34px auto 8px;max-width:100%;height:auto}
+  section{padding:30px 0;border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+  h2{font-size:21px;margin:0 0 18px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .feature{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+  .feature h3{margin:0 0 6px;font-size:16px;color:var(--slate)}
+  .feature p{margin:0;color:var(--slate-soft);font-size:14.5px}
+  pre{
+    background:var(--code-bg);color:var(--code-fg);padding:18px;border-radius:10px;
+    overflow:auto;font-size:13.5px;line-height:1.55
+  }
+  .links{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(2,1fr);gap:8px 22px}
+  .links li{padding:4px 0;border-bottom:1px solid var(--line)}
+  .links .d{color:var(--slate-soft);font-size:13.5px}
+  footer{padding:34px 0 60px;color:var(--slate-soft);font-size:13px;text-align:center;border-top:1px solid var(--line)}
+  footer a{color:var(--slate-soft);text-decoration:underline}
+  @media (max-width:620px){.grid,.links{grid-template-columns:1fr}h1{font-size:25px}.tag{font-size:17px}}
+</style>
+</head>
+<body>
+<header class="wrap">
+  <img src="/assets/logo.png" alt="file-observer">
+  <h1>Deterministic file observation for pipelines</h1>
+  <p class="tag">One read-only pass over a directory, and you get back a single JSON manifest of every file: type, metadata, structure, and provenance.</p>
+  <p class="sub">Same bytes in, same manifest out — byte-identical no matter how many workers you scan with. So you can cache on it, diff it, and trust it as a stable step before ingestion.</p>
+  <div class="cta">
+    <span class="install">pip install file-observer</span>
+  </div>
+  <div class="cta">
+    <a class="btn primary" href="https://github.com/russalo/file-observer">GitHub</a>
+    <a class="btn" href="https://pypi.org/project/file-observer/">PyPI</a>
+    <a class="btn" href="https://github.com/russalo/file-observer/blob/main/docs/TUTORIAL.md">Tutorial</a>
+  </div>
+</header>
+
+<main class="wrap">
+  <img class="hero-img" src="/assets/pipeline-diagram.png" alt="Many files in, one deterministic checksum-sealed JSON manifest out, fanning out to many downstream consumers">
+
+  <section>
+    <h2>What it is</h2>
+    <div class="grid">
+      <div class="feature">
+        <h3>Deterministic</h3>
+        <p>The same bytes always produce the same manifest, down to a checksum — and it stays byte-identical across parallel workers. An enforced, tested contract, not a hope.</p>
+      </div>
+      <div class="feature">
+        <h3>Content-detected</h3>
+        <p>File type, MIME, and structure come from the actual bytes, not the extension. Rename a PNG to <code>.txt</code> and it's still reported as a PNG.</p>
+      </div>
+      <div class="feature">
+        <h3>Self-describing</h3>
+        <p><code>file-observer --schema</code> makes the installed build print its complete output surface, so you can write a consumer without reading the source.</p>
+      </div>
+      <div class="feature">
+        <h3>Observe, don't touch</h3>
+        <p>Read-only. It never executes file content, opens a network connection, or modifies anything. It looks, it describes, and it changes nothing. Not a file watcher.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>One pass, one manifest</h2>
+    <pre>$ file-observer ./your-project --specialists
+
+Scanned 4,366 files (3,526 text, 840 binary) in 31 directories.
+1,163 supported (336 with specialist metadata).
+Quality: 676 clean, 3,690 degraded. 4 safety flags, 2 polyglots.
+
+Manifest written to out/manifest_v&lt;version&gt;_&lt;timestamp&gt;.json
+  → one FileRecord per file: checksum, content-MIME, routing flags,
+    signal_provenance (how each derived field was derived), specialist metadata
+  → a top-level manifest_checksum: scan the same bytes again, get the same value</pre>
+  </section>
+
+  <section>
+    <h2>Read more</h2>
+    <ul class="links" role="list">
+      <li><a href="https://github.com/russalo/file-observer/blob/main/docs/TUTORIAL.md">Tutorial</a><div class="d">first scan → pipeline integration</div></li>
+      <li><a href="https://github.com/russalo/file-observer/tree/main/examples">Examples</a><div class="d">runnable, one per concept</div></li>
+      <li><a href="https://github.com/russalo/file-observer/blob/main/docs/SCHEMA.md">Schema</a><div class="d">the complete output surface</div></li>
+      <li><a href="https://github.com/russalo/file-observer/blob/main/docs/PUBLIC_CONTRACT.md">Public contract</a><div class="d">what's stable to build against</div></li>
+      <li><a href="https://github.com/russalo/file-observer">Source</a><div class="d">AGPL-3.0 + commercial</div></li>
+      <li><a href="https://blog.russalo.com/posts/it-reads-everything-it-changes-nothing">The story</a><div class="d">why it exists</div></li>
+    </ul>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Built by <a href="https://russalo.com">Russalo</a>. Open source under AGPL-3.0, with a commercial license available.</p>
+  <p>Apache Tika is a trademark of the Apache Software Foundation; any reference is comparative. The Unix <code>file</code> command is referenced descriptively. file-observer is an independent project, not affiliated with or endorsed by the ASF.</p>
+</footer>
+</body>
+</html>
