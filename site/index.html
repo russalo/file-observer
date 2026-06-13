@@ -15,7 +15,7 @@
 <meta name="twitter:image" content="https://file-observer.russalo.com/assets/og-card.png">
 <style>
   :root{
-    --slate:#2e404c; --slate-soft:#5b6b75; --teal:#279288; --teal-dark:#1f7a72;
+    --slate:#2e404c; --slate-soft:#505e69; --teal:#279288; --teal-dark:#1f7a72;
     --bg:#f7f5f0; --card:#fffdf9; --line:#e4e0d6; --code-bg:#2e404c; --code-fg:#e9edf0;
     --max:880px;
   }
@@ -46,6 +46,7 @@
   }
   .btn.primary{background:var(--teal);color:#fff;border-color:var(--teal)}
   .btn:hover{text-decoration:none;background:var(--teal);color:#fff}
+  .btn.primary:hover{background:var(--teal-dark);border-color:var(--teal-dark)}
   .hero-img{display:block;margin:34px auto 8px;max-width:100%;height:auto}
   section{padding:30px 0;border-top:1px solid var(--line)}
   section:first-of-type{border-top:none}
@@ -123,7 +124,7 @@ Manifest written to out/manifest_v&lt;version&gt;_&lt;timestamp&gt;.json
 
   <section>
     <h2>Read more</h2>
-    <ul class="links">
+    <ul class="links" role="list">
       <li><a href="https://github.com/russalo/file-observer/blob/main/docs/TUTORIAL.md">Tutorial</a><div class="d">first scan → pipeline integration</div></li>
       <li><a href="https://github.com/russalo/file-observer/tree/main/examples">Examples</a><div class="d">runnable, one per concept</div></li>
       <li><a href="https://github.com/russalo/file-observer/blob/main/docs/SCHEMA.md">Schema</a><div class="d">the complete output surface</div></li>
