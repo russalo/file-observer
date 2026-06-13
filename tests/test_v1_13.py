@@ -120,7 +120,7 @@ class TestSchemaCompleteness:
             for ns, fields in sm.items():
                 if not isinstance(fields, dict):
                     continue
-                known = set(listed.get(ns, []))
+                known = {x["name"] for x in listed.get(ns, [])}  # v1.14: fields are {name, stability}
                 for k in fields:
                     if k.startswith("_"):
                         continue  # transient markers, popped before serialization
@@ -161,7 +161,7 @@ class TestSchemaCompleteness:
             f"email body cross-cut did not emit body_chatlog; email keys: {sorted(email_md)}"
         )
         # And it must be documented in the schema (the whole point of #4)
-        assert "body_chatlog" in schema_doc["specialists"]["fields"]["email"]
+        assert "body_chatlog" in {x["name"] for x in schema_doc["specialists"]["fields"]["email"]}
 
 
 # ---------------------------------------------------------------------------
@@ -441,11 +441,19 @@ class TestSchemaCLI:
 # Version + frozen-contract
 # ---------------------------------------------------------------------------
 
-def test_version_is_1_13_0():
-    assert SCANNER_VERSION == "1.13.0", f"got {SCANNER_VERSION!r}"
+def _ver_tuple(v):
+    return tuple(int(p) for p in v.split("."))
 
 
-def test_logic_and_schema_frozen():
-    """v1.13 is a new SEPARATE surface — the manifest contract is unchanged."""
+def test_version_is_at_least_1_13_0():
+    # Floor, not exact pin — v1.13 shipped --schema; later minors (v1.14 promotion
+    # pass, …) bump the version and shouldn't break this v1.13 marker.
+    assert _ver_tuple(SCANNER_VERSION) >= (1, 13, 0), f"got {SCANNER_VERSION!r}"
+
+
+def test_logic_frozen_schema_only_grows():
+    """v1.13 added a SEPARATE surface (--schema) — the manifest LOGIC contract is
+    unchanged. LOGIC stays frozen; SCHEMA only ever goes up (v1.14 promotion pass
+    bumped it 1.8→1.9)."""
     assert LOGIC_VERSION == "1.4.3", f"LOGIC drifted: {LOGIC_VERSION!r}"
-    assert SCHEMA_VERSION == "1.8", f"SCHEMA drifted: {SCHEMA_VERSION!r}"
+    assert _ver_tuple(SCHEMA_VERSION) >= (1, 8), f"SCHEMA regressed: {SCHEMA_VERSION!r}"

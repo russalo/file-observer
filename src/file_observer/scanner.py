@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.13.0
-    Schema:     1.8
+    Version:    1.14.0
+    Schema:     1.9
     Python:     >= 3.12
-    Spec:       docs/v1.13.0_RFC_Specification.md (current)
+    Spec:       docs/v1.14.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.13.0"
+SCANNER_VERSION = "1.14.0"
 LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
-SCHEMA_VERSION = "1.8"
+SCHEMA_VERSION = "1.9"   # v1.14.0 — promotion pass: pdf.parser + provenance + application provisional→stable + stability surfaced in --schema (designation only; manifest byte-identical, LOGIC frozen)
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -684,6 +684,29 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
         "vocabulary_size_estimate",
     ],
 }
+
+
+# v1.14: the PROVISIONAL surface — everything else enumerable in `--schema` is
+# STABLE. Sourced from PUBLIC_CONTRACT §2.4; a guard test (test_v1_14) keeps this
+# in sync with the contract. v1.14 promoted `pdf.parser`,
+# `{document,spreadsheet}.application`, and the `provenance` vector → stable; what
+# remains provisional is the chatlog family (alpha-locked, pending the non-count
+# redesign) and `preservation` (still gathering value-evidence).
+PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
+    ("chatlog", "content_shape"),
+    ("chatlog", "speaker_turn_counts"),
+    ("chatlog", "speaker_turn_chars"),
+    ("chatlog", "alternation"),
+})
+PROVISIONAL_VECTORS: frozenset[str] = frozenset({"preservation"})
+PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
+    ("FileRecord", "preservation"),
+})
+
+
+def _field_stability(namespace: str, field: str) -> str:
+    """v1.14: stability of a specialist-metadata field for `--schema`."""
+    return "provisional" if (namespace, field) in PROVISIONAL_SPECIALIST_FIELDS else "stable"
 
 
 # Magic byte signatures for polyglot/multi-format detection
@@ -5300,7 +5323,8 @@ def _dataclass_field_map(cls: type) -> list[dict[str, str]]:
     out = []
     for f in _dc.fields(cls):
         t = f.type if isinstance(f.type, str) else getattr(f.type, "__name__", str(f.type))
-        out.append({"name": f.name, "type": str(t)})
+        stability = "provisional" if (cls.__name__, f.name) in PROVISIONAL_MANIFEST_FIELDS else "stable"
+        out.append({"name": f.name, "type": str(t), "stability": stability})
     return out
 
 
@@ -5350,13 +5374,15 @@ def build_schema_document() -> dict[str, Any]:
     same installed build → byte-identical document. Read from the live
     registries so it cannot drift from what the code emits (guard tests in
     test_v1_13 assert completeness against the training corpus)."""
+    def _vstab(vid: str) -> str:
+        return "provisional" if vid in PROVISIONAL_VECTORS else "stable"
     vectors = [
-        {"vector_id": CHATLOG_VECTOR_ID, "scope": "file", "method_version": CHATLOG_METHOD_VERSION},
-        {"vector_id": REFERENCE_TOKENS_VECTOR_ID, "scope": "file", "method_version": REFERENCE_TOKENS_METHOD_VERSION},
-        {"vector_id": FILENAME_PATTERNS_VECTOR_ID, "scope": "file", "method_version": FILENAME_PATTERNS_METHOD_VERSION},
-        {"vector_id": PRESERVATION_VECTOR_ID, "scope": "file", "method_version": PRESERVATION_METHOD_VERSION},
-        {"vector_id": AUTHOR_AGGREGATE_VECTOR_ID, "scope": "corpus", "method_version": AUTHOR_AGGREGATE_METHOD_VERSION},
-        {"vector_id": PROVENANCE_VECTOR_ID, "scope": "corpus", "method_version": PROVENANCE_METHOD_VERSION},
+        {"vector_id": CHATLOG_VECTOR_ID, "scope": "file", "method_version": CHATLOG_METHOD_VERSION, "stability": _vstab(CHATLOG_VECTOR_ID)},
+        {"vector_id": REFERENCE_TOKENS_VECTOR_ID, "scope": "file", "method_version": REFERENCE_TOKENS_METHOD_VERSION, "stability": _vstab(REFERENCE_TOKENS_VECTOR_ID)},
+        {"vector_id": FILENAME_PATTERNS_VECTOR_ID, "scope": "file", "method_version": FILENAME_PATTERNS_METHOD_VERSION, "stability": _vstab(FILENAME_PATTERNS_VECTOR_ID)},
+        {"vector_id": PRESERVATION_VECTOR_ID, "scope": "file", "method_version": PRESERVATION_METHOD_VERSION, "stability": _vstab(PRESERVATION_VECTOR_ID)},
+        {"vector_id": AUTHOR_AGGREGATE_VECTOR_ID, "scope": "corpus", "method_version": AUTHOR_AGGREGATE_METHOD_VERSION, "stability": _vstab(AUTHOR_AGGREGATE_VECTOR_ID)},
+        {"vector_id": PROVENANCE_VECTOR_ID, "scope": "corpus", "method_version": PROVENANCE_METHOD_VERSION, "stability": _vstab(PROVENANCE_VECTOR_ID)},
     ]
     # MAGIC_SIGNATURES labels (the format vocabulary), sorted + deduped.
     magic_formats = sorted({label for _, label in MAGIC_SIGNATURES})
@@ -5377,7 +5403,10 @@ def build_schema_document() -> dict[str, Any]:
         "specialists": {
             "tools": dict(sorted(SPECIALIST_TOOLS.items())),
             "namespaces": dict(sorted(SPECIALIST_NAMESPACE.items())),
-            "fields": {ns: sorted(SPECIALIST_FIELDS[ns]) for ns in sorted(SPECIALIST_FIELDS)},
+            "fields": {
+                ns: [{"name": f, "stability": _field_stability(ns, f)} for f in sorted(SPECIALIST_FIELDS[ns])]
+                for ns in sorted(SPECIALIST_FIELDS)
+            },
         },
         "vectors": sorted(vectors, key=lambda v: v["vector_id"]),
         "safety_flags": dict(sorted(SAFETY_FLAGS.items())),
@@ -5419,10 +5448,10 @@ def schema_to_markdown(doc: dict[str, Any]) -> str:
     for cls_name, fields in doc["manifest"].items():
         L.append(f"### `{cls_name}`")
         L.append("")
-        L.append("| field | type |")
-        L.append("|---|---|")
+        L.append("| field | type | stability |")
+        L.append("|---|---|---|")
         for f in fields:
-            L.append(f"| `{_cell(f['name'])}` | `{_cell(f['type'])}` |")
+            L.append(f"| `{_cell(f['name'])}` | `{_cell(f['type'])}` | {f.get('stability', 'stable')} |")
         L.append("")
     L.append("## Specialists")
     L.append("")
@@ -5434,14 +5463,16 @@ def schema_to_markdown(doc: dict[str, Any]) -> str:
     L.append("")
     L.append("### Specialist metadata fields")
     for ns, fields in doc["specialists"]["fields"].items():
-        L.append(f"- **{ns}**: " + ", ".join(f"`{x}`" for x in fields))
+        L.append(f"- **{ns}**: " + ", ".join(
+            f"`{x['name']}`" + (" _(provisional)_" if x["stability"] == "provisional" else "")
+            for x in fields))
     L.append("")
     L.append("## Vectors")
     L.append("")
-    L.append("| vector_id | scope | method_version |")
-    L.append("|---|---|---|")
+    L.append("| vector_id | scope | method_version | stability |")
+    L.append("|---|---|---|---|")
     for v in doc["vectors"]:
-        L.append(f"| `{v['vector_id']}` | {v['scope']} | {v['method_version']} |")
+        L.append(f"| `{v['vector_id']}` | {v['scope']} | {v['method_version']} | {v.get('stability', 'stable')} |")
     L.append("")
     L.append("## safety_flags")
     L.append("")

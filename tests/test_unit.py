@@ -7,7 +7,7 @@ import pytest
 
 import struct
 from dataclasses import asdict
-from file_observer.scanner import Scanner, ScannerConfig, ErrorRecord
+from file_observer.scanner import Scanner, ScannerConfig, ErrorRecord, SCANNER_VERSION
 
 
 @pytest.fixture
@@ -825,7 +825,7 @@ class TestScanContext:
         (tmp_path / "a.txt").write_text("hello")
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
-        assert ctx.scanner_version == "1.13.0"
+        assert ctx.scanner_version == SCANNER_VERSION
         assert ctx.logic_version == "1.4.3"
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
@@ -864,7 +864,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         data = json_mod.loads(manifest_to_json(manifest))
         assert "context" in data
-        assert data["context"]["scanner_version"] == "1.13.0"
+        assert data["context"]["scanner_version"] == SCANNER_VERSION
 
 
 # ---------------------------------------------------------------------------
@@ -2073,8 +2073,10 @@ class TestSemanticToolNames:
         assert SPECIALIST_TOOLS[".xlsx"] == "spreadsheet_structure"
 
     def test_version_is_current(self) -> None:
+        # Floor, not exact pin (the version-surface sync guard owns "all surfaces
+        # agree"; this just confirms we haven't regressed below the v1.13 baseline).
         from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
-        assert SCANNER_VERSION == "1.13.0"
+        assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 13, 0)
         assert LOGIC_VERSION == "1.4.3"
 
 
@@ -3572,4 +3574,4 @@ class TestMarkdownReport:
         from file_observer.scanner import manifest_to_markdown
         (tmp_path / "a.txt").write_text("hello")
         md = manifest_to_markdown(Scanner(source_dir=tmp_path).scan())
-        assert "1.13.0" in md
+        assert SCANNER_VERSION in md

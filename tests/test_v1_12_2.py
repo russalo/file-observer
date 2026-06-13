@@ -85,4 +85,4 @@ def test_version_is_at_least_1_12_2():
 def test_logic_and_schema_frozen():
     """Pure refactor — no observation-logic or schema change."""
     assert LOGIC_VERSION == "1.4.3", f"LOGIC drifted: {LOGIC_VERSION!r}"
-    assert SCHEMA_VERSION == "1.8", f"SCHEMA drifted: {SCHEMA_VERSION!r}"
+    assert tuple(int(p) for p in SCHEMA_VERSION.split(".")) >= (1, 8), f"SCHEMA regressed: {SCHEMA_VERSION!r}"  # v1.12.2 didn't bump it; later minors only grow it
