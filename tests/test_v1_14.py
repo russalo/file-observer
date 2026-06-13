@@ -42,10 +42,6 @@ def schema_doc():
     return build_schema_document()
 
 
-def _ver(v: str) -> tuple[int, ...]:
-    return tuple(int(p) for p in v.split("."))
-
-
 def test_release_version_surfaces():
     assert SCANNER_VERSION == "1.14.0", f"got {SCANNER_VERSION!r}"
     assert SCHEMA_VERSION == "1.9", f"SCHEMA: {SCHEMA_VERSION!r}"   # promotion = contract designation change
@@ -102,7 +98,11 @@ class TestProvisionalRegistryMatchesContract:
             ("chatlog", "alternation"),
         })
         assert PROVISIONAL_VECTORS == frozenset({"preservation"})
-        assert PROVISIONAL_MANIFEST_FIELDS == frozenset({("FileRecord", "preservation")})
+        assert PROVISIONAL_MANIFEST_FIELDS == frozenset({
+            ("FileRecord", "preservation"),
+            ("FileRecord", "format_signatures"),  # §2.4 internal field set
+            ("FileRecord", "is_polyglot"),         # §2.4 internal field set
+        })
 
 
 class TestPromotionIsDesignationOnly:
@@ -129,6 +129,7 @@ class TestPromotionIsDesignationOnly:
             saw_provenance = True
         # fixtures include PDFs + a docx/xlsx, so at least parser is exercised
         assert saw_parser, "no PDF in fixtures exercised pdf.parser"
+        assert saw_app, "no docx/xlsx in fixtures exercised application"
         assert saw_provenance, "provenance vector not present on the fixtures scan"
 
     def test_stability_does_not_leak_into_the_manifest(self, manifest):

@@ -52,8 +52,8 @@
 | `mime_analysis` | `MimeAnalysisRecord` | stable |
 | `specialist_metadata` | `dict[str, Any] \| None` | stable |
 | `file_signature` | `dict[str, Any] \| None` | stable |
-| `format_signatures` | `list[dict[str, Any]]` | stable |
-| `is_polyglot` | `bool` | stable |
+| `format_signatures` | `list[dict[str, Any]]` | provisional |
+| `is_polyglot` | `bool` | provisional |
 | `is_chatlog` | `bool` | stable |
 | `reference_tokens` | `dict[str, int] \| None` | stable |
 | `filename_patterns` | `dict[str, bool] \| None` | stable |

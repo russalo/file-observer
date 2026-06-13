@@ -701,6 +701,8 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
 PROVISIONAL_VECTORS: frozenset[str] = frozenset({"preservation"})
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("FileRecord", "preservation"),
+    ("FileRecord", "format_signatures"),  # PUBLIC_CONTRACT §2.4 — internal magic scan results
+    ("FileRecord", "is_polyglot"),         # PUBLIC_CONTRACT §2.4 — derived from format_signatures
 })
 
 
@@ -5394,7 +5396,7 @@ def build_schema_document() -> dict[str, Any]:
         preservation[tier].sort()
 
     return {
-        "schema_doc_version": 1,
+        "schema_doc_version": 2,   # v1.14: specialists.fields is now list[{name, stability}] (was list[str]); + stability on vectors/manifest fields
         "scanner_version": SCANNER_VERSION,
         "logic_version": LOGIC_VERSION,
         "schema_version": SCHEMA_VERSION,
