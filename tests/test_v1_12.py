@@ -484,7 +484,7 @@ class TestVersionBumps:
     def test_schema_version_unchanged_at_1_8(self):
         """v1.12 promotes the disclosure to safety_flags (existing stable list[str])
         rather than adding a new pdf-namespaced bool — no SCHEMA bump (leg-1 #12)."""
-        assert SCHEMA_VERSION == "1.8", f"got {SCHEMA_VERSION!r}"
+        assert tuple(int(p) for p in SCHEMA_VERSION.split(".")) >= (1, 8), f"SCHEMA regressed: {SCHEMA_VERSION!r}"  # v1.12 didn't bump it; later minors only grow it
 
 
 # ---------------------------------------------------------------------------

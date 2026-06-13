@@ -49,7 +49,7 @@ The scanner has five distinct things that carry versions. They are independent �
 - `reference_tokens` method_version: 2 (v0.9.2: URL-stripped path counting)
 - `author_aggregate` method_version: 1 (v0.10.0: corpus-scoped)
 - `filename_patterns` method_version: 1 (v0.10.0: file-scoped)
-- `provenance` method_version: 1 (v1.6.0: corpus-scoped — normalized toolchain (closed table), production era, digitization origin; complements author_aggregate)
+- `provenance` method_version: 2 (v1.10.0: + OLE2 producing-app feeds the toolchain; v1.6.0: corpus-scoped — normalized toolchain (closed table), production era, digitization origin; complements author_aggregate). STABLE v1.14.
 **Internal rule:** A vector at version N in two scanner releases must produce identical counts on identical input. If counts could differ, bump the vector version. This is enforced by the identity digest — same digest guarantees same output.
 
 ### 1.5 DICTIONARY_ID (per customer dictionary, future v0.10+)
@@ -240,11 +240,11 @@ This section is for **us**. It is the running list of everything File Observer c
 
 | Namespace | Fields |
 |---|---|
-| `pdf` | has_text_streams, page_count, title, author, producer, creator, creation_date, encrypted, pdf_version, sample_text_marker_density, **text_detected** (v1.5, STABLE v1.10), **xref_type** (v1.7, STABLE v1.10 — classic/stream/none), **parser** (v1.8, provisional — pypdf/stdlib/none, the decode tier that filled an object-stream `page_count`/`/Info`) |
+| `pdf` | has_text_streams, page_count, title, author, producer, creator, creation_date, encrypted, pdf_version, sample_text_marker_density, **text_detected** (v1.5, STABLE v1.10), **xref_type** (v1.7, STABLE v1.10 — classic/stream/none), **parser** (v1.8, STABLE v1.14 — pypdf/stdlib/none, the decode tier that filled an object-stream `page_count`/`/Info`) |
 | `image` | width, height, bit_depth (PNG only) |
 | `email` | subject, from, to, date, message_id, has_attachments |
-| `spreadsheet` | sheet_names, header_rows (XLSX only), format (`biff` or `ooxml`), **application** (OOXML `app.xml`, v1.6) |
-| `document` | title, author, word_count (DOCX only), heading_count (DOCX only), **application** (OOXML `app.xml`, v1.6) |
+| `spreadsheet` | sheet_names, header_rows (XLSX only), format (`biff` or `ooxml`), **application** (OOXML `app.xml` v1.6 + OLE2 v1.10, STABLE v1.14) |
+| `document` | title, author, word_count (DOCX only), heading_count (DOCX only), **application** (OOXML `app.xml` v1.6 + OLE2 v1.10, STABLE v1.14) |
 | `chatlog` | turn_count, speaker_labels, section_marker_count, section_marker_styles, avg_turn_chars, max_turn_chars, min_turn_chars, reference_tokens.{at_mentions, wiki_links, code_fence_blocks, url_count}, top_capitalized_tokens, capitalized_token_count, vocabulary_size_estimate, **speaker_turn_counts / speaker_turn_chars / alternation** (v1.2, provisional) |
 
 ### 4.4 Magic signatures
@@ -279,10 +279,10 @@ Core counters in `ScanQuality`: total_files, clean_files, degraded_files, error_
 
 ### 4.8 Vectors registry
 
-Five vectors ship in `vectors_collected[]` (see §1.4 for method_versions):
+Six vectors ship in `vectors_collected[]` (see §1.4 for method_versions):
 `chatlog` (content-detected), `reference_tokens` (per-file, 7 subcategories),
-`author_aggregate` (corpus-scoped), `provenance` (corpus-scoped, v1.6),
-`filename_patterns` (per-file, 6 booleans).
+`author_aggregate` (corpus-scoped), `provenance` (corpus-scoped, v1.6, STABLE v1.14),
+`filename_patterns` (per-file, 6 booleans), `preservation` (per-file, v1.10, provisional).
 
 ### 4.9 Customer dictionaries (future v0.10+)
 

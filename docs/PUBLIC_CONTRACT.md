@@ -226,10 +226,9 @@ These fields exist in the manifest but are subject to change in MINOR releases w
 - `is_polyglot` — derived from format_signatures
 - `specialist_metadata.chatlog.speaker_turn_counts`, `.speaker_turn_chars`, `.alternation` — per-speaker turn structure (provisional since v1.2)
 - `specialist_metadata.chatlog.content_shape` (`.utterance_ratio`, `.density`) — content-shape detection signals; null in JSONL mode (provisional since v1.4)
-- `vectors_collected[]` entry `provenance` — corpus-scoped production provenance (normalized `toolchains`, `production_years`, `digitization`); feeds `application` from docx/xlsx **and (v1.10) legacy OLE2 `.doc`/`.xls`** (provisional since v1.6; `method_version` 2 as of v1.10)
-- `specialist_metadata.{document,spreadsheet}.application` — producing application: OOXML since v1.6, **OLE2 `.doc`/`.xls` since v1.10** (provisional)
-- `specialist_metadata.pdf.parser` — `pypdf` / `stdlib` / `none`, which decode tier filled an object-stream PDF's `page_count`/`/Info` (`none` = v1.7's byte reader sufficed or nothing recovered) (provisional since v1.8)
 - `preservation` (top-level on every `FileRecord`; `.format_obsolescence`: `current`/`at_risk`/`obsolete`; `.migration_recommended`: bool) — per-file format-preservation signal from a **closed obsolescence table** (provisional since v1.10). Same scope as `filename_patterns` — not under `specialist_metadata`.
+
+**Promoted to stable in v1.14** (now under the backward-compat policy — not removable/retypable without a MAJOR bump): `specialist_metadata.pdf.parser` (`pypdf`/`stdlib`/`none` decode tier — the PDF arc completed at v1.12; its value records which tier ran and is independent of any future `/Info` extraction), `specialist_metadata.{document,spreadsheet}.application` (producing application; OOXML + OLE2), and the `vectors_collected[]` `provenance` vector (shape `toolchains`/`production_years`/`digitization` — stable; the closed toolchain table may still grow additively, rules-hash-tracked). As of v1.14, `file-observer --schema` annotates every field/vector with its `stability` (`stable`/`provisional`).
 
 **Promoted to stable in v1.10** (now under the backward-compat policy — not removable/retypable without a MAJOR bump): `quality.duplicate_clusters` / `duplicate_cluster_count` / `redundant_file_count`, `quality.specialist_stats`, `errors[].detail`, `specialist_metadata.pdf.text_detected`, `specialist_metadata.pdf.xref_type`.
 
