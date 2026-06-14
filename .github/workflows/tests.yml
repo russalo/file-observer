@@ -40,10 +40,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
       - name: Run test suite
-        # DIAGNOSTIC (v1.15 Windows hang): -v shows the last test before a hang;
-        # faulthandler_timeout=90 dumps ALL thread stacks after 90s on a stuck test
-        # (pytest core, independent of the pytest-timeout plugin — works on Windows),
-        # pinpointing where it blocks. Revert to `-q` once Windows is diagnosed.
+        # shell: bash on ALL OSes (git-bash on Windows). The default Windows shell is
+        # pwsh with $ErrorActionPreference='Stop', which turns any native-command
+        # stderr into a lost terminating error — the Windows job was failing in ~2s
+        # with ZERO captured output (a swallowed pytest stderr), not actually hanging.
+        # bash handles stdout/stderr normally → real output/tracebacks are visible.
+        shell: bash
+        # -v + faulthandler_timeout kept as diagnostics until Windows is confirmed green.
         run: python -m pytest tests/ -v -o faulthandler_timeout=90
 
   test-no-libmagic:
