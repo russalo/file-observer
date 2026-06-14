@@ -46,8 +46,10 @@ jobs:
         # with ZERO captured output (a swallowed pytest stderr), not actually hanging.
         # bash handles stdout/stderr normally → real output/tracebacks are visible.
         shell: bash
-        # -v + faulthandler_timeout kept as diagnostics until Windows is confirmed green.
-        run: python -m pytest tests/ -v -o faulthandler_timeout=90
+        # DIAGNOSTIC: python -u + -s force UNBUFFERED, uncaptured output so the last
+        # line before a collection-time stall survives the job-timeout kill (the prior
+        # runs lost it to stdout buffering). Pinpoints the Windows hang. Revert to -q.
+        run: python -u -m pytest tests/ -v -s -o faulthandler_timeout=90
 
   test-no-libmagic:
     # Deterministic coverage of the pure-Python MIME fallback — don't let the
