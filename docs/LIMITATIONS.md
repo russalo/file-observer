@@ -74,7 +74,9 @@ range of common binary formats before falling back to extension inference. Optio
   (tier 1; the stdlib fallback recovers most common cases when absent)
 - **watchfiles** (`file-observer[watch]`) — backend for `--watch` continuous
   mode. When absent, `--watch` prints an actionable error and exits; one-shot
-  scans are unaffected.
+  scans are unaffected. **`--watch` is validated on POSIX** — its graceful
+  shutdown is SIGTERM/SIGINT-based; on Windows that signal model differs, so the
+  continuous mode is untested there (one-shot scanning is fully cross-platform).
 
 When an optional dependency is missing, the related signals are reduced or
 skipped — the scan still completes. The manifest's `context` records dependency

@@ -12,8 +12,6 @@ state-independent, falsify-first contracts that hold on any OS:
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 import file_observer.scanner as fo
