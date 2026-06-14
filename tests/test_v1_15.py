@@ -93,6 +93,8 @@ class TestPathEdges:
     cases live in test_v1_8_1, skipped on Windows); these run on every OS in the matrix."""
 
     def test_awkward_names_and_deep_paths_do_not_crash(self, tmp_path):
+        # Names valid on every OS in the matrix (no trailing-space/dot — Windows
+        # strips those; no >MAX_PATH — those POSIX cases live in test_v1_8_1).
         deep = tmp_path
         for part in ["a", "bb", "ccc", "dddd", "eeeee"]:   # nested, safely short
             deep = deep / part
@@ -100,11 +102,11 @@ class TestPathEdges:
         (deep / "buried.txt").write_text("deep")
         (tmp_path / "name with spaces.txt").write_text("x")
         (tmp_path / "dotted.name.v2.final.txt").write_text("y")
-        (tmp_path / "café_résumé_ünïcode.md").write_text("# z")
-        (tmp_path / "trailing.space .txt").write_text("w")
+        (tmp_path / "café_résumé_ünïcode.md").write_text("# z")   # unicode (UTF-8 mode)
         m = Scanner(source_dir=tmp_path).scan()            # must NOT raise
-        assert len(m.files) == 5
-        # every record is well-formed (posix-relative path, no abort, no None paths)
+        assert len(m.files) == 4
+        # every record is well-formed: posix-relative path (the cross-platform
+        # normalization — no backslashes even on Windows), non-empty, no None.
         assert all(f.path and "\\" not in f.path for f in m.files)
         assert any(f.path.endswith("eeeee/buried.txt") for f in m.files)
 
