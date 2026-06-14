@@ -73,6 +73,7 @@ class TestPdfDecoderDoS:
         assert time.monotonic() - t < 5            # no unbounded loop
 
 
+@pytest.mark.posix_fs  # >MAX_PATH names + chmod-000 can't be set up on Windows; never-crash covered cross-platform by test_v1_15.TestPathEdges
 class TestNeverCrashesScan:
     """#4/#5 — a single pathological file must NOT abort the whole scan; it degrades
     to a FileRecord (with an ErrorRecord) and the manifest still emits."""
@@ -98,6 +99,7 @@ class TestNeverCrashesScan:
             os.chmod(p, 0o644)                        # let tmp cleanup remove it
 
 
+@pytest.mark.posix_fs  # 250-255-byte filenames exceed Windows MAX_PATH at creation
 class TestSidecarPerCandidate:
     """PR review (#4 refinement) — guarding each sidecar candidate independently
     must not let one over-long candidate hide a valid shorter sidecar that exists."""
@@ -112,6 +114,7 @@ class TestSidecarPerCandidate:
         assert _sc().detect_sidecar(tmp_path / base) is True   # pre-fix: OSError on cand[0] → False
 
 
+@pytest.mark.posix_fs  # symlink creation needs privilege/developer-mode on Windows
 class TestNoTreeEscape:
     """#6 — a symlink pointing OUTSIDE the scan tree must not be read into the
     manifest (and an in-tree file is still scanned)."""

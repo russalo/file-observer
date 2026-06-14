@@ -83,6 +83,7 @@ def test_version_is_at_least_1_12_2():
 
 
 def test_logic_and_schema_frozen():
-    """Pure refactor — no observation-logic or schema change."""
-    assert LOGIC_VERSION == "1.4.3", f"LOGIC drifted: {LOGIC_VERSION!r}"
+    """v1.12.2 was a pure refactor — it did not bump LOGIC (1.4.3) or SCHEMA. Both
+    floored: later minors only grow them (v1.15 → LOGIC 1.5.0 for the HEIC MIME fix)."""
+    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 4, 3), f"LOGIC regressed below 1.4.3: {LOGIC_VERSION!r}"
     assert tuple(int(p) for p in SCHEMA_VERSION.split(".")) >= (1, 8), f"SCHEMA regressed: {SCHEMA_VERSION!r}"  # v1.12.2 didn't bump it; later minors only grow it

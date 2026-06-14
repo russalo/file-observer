@@ -43,9 +43,12 @@ def schema_doc():
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.14.0", f"got {SCANNER_VERSION!r}"
-    assert SCHEMA_VERSION == "1.9", f"SCHEMA: {SCHEMA_VERSION!r}"   # promotion = contract designation change
-    assert LOGIC_VERSION == "1.4.3", f"LOGIC must stay frozen: {LOGIC_VERSION!r}"
+    # v1.14 floor — the exact current-version pin lives in the newest release test
+    # (test_v1_15). Older release tests assert floors so a later bump doesn't break them.
+    def _v(s): return tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 14, 0), f"SCANNER regressed below v1.14: {SCANNER_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 9), f"SCHEMA regressed below 1.9: {SCHEMA_VERSION!r}"   # promotion landed in 1.9
+    assert _v(LOGIC_VERSION) >= (1, 4, 3), f"LOGIC regressed below 1.4.3: {LOGIC_VERSION!r}"
 
 
 # --- the promotion is visible in --schema, the held set stays provisional ---

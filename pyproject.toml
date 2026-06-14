@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.14.0"
+version = "1.15.0"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -33,7 +33,13 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
     "Typing :: Typed",
 ]
-dependencies = ["python-magic", "chardet"]
+# python-magic is excluded on Windows: the wheel installs without the libmagic DLL,
+# and python-magic's import-time library search HANGS (not raises) on a Windows box
+# with no libmagic — which would hang `import file_observer.scanner` itself. The v1.3
+# pure-Python MIME fallback is built for exactly this: on Windows `import magic` raises
+# ImportError → the fallback engages, so `pip install file-observer` just works. Windows
+# users who want libmagic-grade MIME can install `python-magic-bin` (bundles the DLL).
+dependencies = ["python-magic; platform_system != 'Windows'", "chardet"]
 
 [project.optional-dependencies]
 yaml = ["PyYAML"]
@@ -41,7 +47,7 @@ msg = ["olefile"]
 security = ["defusedxml"]
 pdf = ["pypdf", "cryptography"]   # v1.8: object-stream page_count/Info (tier 1; stdlib fallback if absent). v1.12: cryptography required by pypdf for AES-256/V5 owner-locked PDFs (e.g. Caltrans 2025 specs)
 watch = ["watchfiles"]   # v1.11: --watch FS-event backend (measured vs watchdog; watchfiles won 1:1 delivery + 43ms latency)
-dev = ["pytest", "PyYAML", "olefile", "defusedxml", "pypdf", "cryptography", "watchfiles"]
+dev = ["pytest", "pytest-timeout", "PyYAML", "olefile", "defusedxml", "pypdf", "cryptography", "watchfiles"]
 
 [project.urls]
 Homepage = "https://github.com/russalo/file-observer"
@@ -58,6 +64,11 @@ fo = "file_observer.scanner:main"
 where = ["src"]
 
 [tool.pytest.ini_options]
+# Safety net: no single test may run >120s. A genuine hang (e.g. a Windows-only
+# blocking I/O / process-pool deadlock) then FAILS FAST with a traceback instead of
+# running to the GitHub Actions 6h job limit. The whole suite is ~65s; the cap is
+# generous. pytest-timeout picks signal method on POSIX, thread on Windows.
+timeout = 120
 # Only collect the project's own tests. Without this, a bare `pytest` walks the
 # repo root and tries to import test files inside scratch/corpora* (the harvested
 # repos), which both errors on collection AND writes __pycache__/*.pyc into the

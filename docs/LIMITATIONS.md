@@ -63,8 +63,17 @@ observation when present, and null always means "not observed within bounds."
 The declared dependencies are `python-magic` and `chardet`. `python-magic` binds the
 **libmagic** system library — and *libmagic itself is optional as of v1.3*: when it's
 absent (Windows, minimal containers), the built-in pure-Python content sniff covers a
-range of common binary formats before falling back to extension inference. Optional
-*extras* widen coverage further:
+range of common binary formats before falling back to extension inference.
+
+**Windows:** `python-magic` is **not** installed on Windows (a `platform_system`
+dependency marker). The wheel ships without a libmagic DLL, and python-magic's
+import-time library search *hangs* on a Windows box with no libmagic — which would hang
+`import file_observer.scanner` itself. So on Windows `pip install file-observer` skips
+it and the pure-Python MIME fallback engages automatically (it just works). Windows
+users who want libmagic-grade content MIME can install `python-magic-bin` (it bundles
+the DLL). One-shot scanning is otherwise fully cross-platform.
+
+Optional *extras* widen coverage further:
 
 - **PyYAML** — frontmatter parsing
 - **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`)
@@ -74,7 +83,9 @@ range of common binary formats before falling back to extension inference. Optio
   (tier 1; the stdlib fallback recovers most common cases when absent)
 - **watchfiles** (`file-observer[watch]`) — backend for `--watch` continuous
   mode. When absent, `--watch` prints an actionable error and exits; one-shot
-  scans are unaffected.
+  scans are unaffected. **`--watch` is validated on POSIX** — its graceful
+  shutdown is SIGTERM/SIGINT-based; on Windows that signal model differs, so the
+  continuous mode is untested there (one-shot scanning is fully cross-platform).
 
 When an optional dependency is missing, the related signals are reduced or
 skipped — the scan still completes. The manifest's `context` records dependency
@@ -198,6 +209,26 @@ inference. The `signal_provenance.trigger` records which tier produced it
 (`libmagic` / `magic_signature_fallback` / `extension_fallback`). When content
 and extension disagree, File Observer **reports the mismatch** as a signal
 (`mime_analysis.matches_extension`) — it does not rename, re-route, or "fix" the file.
+
+### Without libmagic, some signals are reduced (v1.15)
+
+When libmagic is absent (Windows, minimal containers), MIME comes from the
+pure-Python sniff or the extension tier. Two consequences are **by design**, not
+bugs — the scan still completes and never aborts (bounded observation):
+
+- **Signatureless text files read as "degraded."** A plain `.txt`/`.md`/`.toml`
+  has no magic bytes for the sniff to match, so its MIME falls to the
+  extension tier, which records a `mime_type_fallback` diagnostic. The file is
+  fully observed; it just counts as `degraded` rather than `clean` in the
+  quality block. (v1.15 registers `.toml` as `text/plain` so it is treated as
+  text, not misclassified as binary.)
+- **The `.eml` email specialist is skipped.** `.eml` is text with no magic-byte
+  signature, so its extension-derived `message/rfc822` cannot be corroborated by
+  a `format_signatures` entry — and the MIME safety guard (which deliberately
+  distrusts uncorroborated extension-echo MIME, to avoid acting on a lying
+  extension) skips the specialist. Envelope fields and the email→chatlog body
+  crosscut are then null. `.msg` (OLE2) is unaffected — it has a real signature.
+  Install `python-magic` + libmagic for full email extraction.
 
 ## Chatlog detection has known false negatives (v1.4)
 

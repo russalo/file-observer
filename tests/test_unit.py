@@ -7,7 +7,7 @@ import pytest
 
 import struct
 from dataclasses import asdict
-from file_observer.scanner import Scanner, ScannerConfig, ErrorRecord, SCANNER_VERSION
+from file_observer.scanner import Scanner, ScannerConfig, ErrorRecord, SCANNER_VERSION, LOGIC_VERSION
 
 
 @pytest.fixture
@@ -826,7 +826,7 @@ class TestScanContext:
         manifest = Scanner(source_dir=tmp_path).scan()
         ctx = manifest.context
         assert ctx.scanner_version == SCANNER_VERSION
-        assert ctx.logic_version == "1.4.3"
+        assert ctx.logic_version == LOGIC_VERSION  # the live constant, not a pinned literal
         assert ctx.python_version  # non-empty
         assert ctx.platform  # non-empty
 
@@ -2077,7 +2077,7 @@ class TestSemanticToolNames:
         # agree"; this just confirms we haven't regressed below the v1.13 baseline).
         from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
         assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 13, 0)
-        assert LOGIC_VERSION == "1.4.3"
+        assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 4, 3)  # floor; only grows
 
 
 # ---------------------------------------------------------------------------
@@ -2179,6 +2179,7 @@ class TestEmlMetadata:
         assert meta is not None
         assert meta["subject"] is None
 
+    @pytest.mark.requires_libmagic  # full-scan path: MIME guard skips .eml specialist without a magic-byte signature
     def test_eml_through_scan(self, tmp_path: Path) -> None:
         eml = b"From: test@test.com\r\nSubject: Hello\r\n\r\nBody\r\n"
         (tmp_path / "email.eml").write_bytes(eml)
@@ -2777,6 +2778,7 @@ class TestScanQuality:
         assert manifest.quality is not None
         assert manifest.quality.total_files == 1
 
+    @pytest.mark.requires_libmagic  # without libmagic, signatureless .txt falls to the extension tier → mime_type_fallback diagnostic → "degraded", not clean
     def test_quality_clean_count(self, tmp_path: Path) -> None:
         (tmp_path / "a.txt").write_text("hello")
         (tmp_path / "b.txt").write_text("world")
@@ -2792,8 +2794,17 @@ class TestScanQuality:
         assert q.clean_files + q.degraded_files + q.error_files == q.total_files
 
     def test_quality_mime_mismatch_count(self, tmp_path: Path) -> None:
-        # PNG content in .txt file
-        (tmp_path / "spoof.txt").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 30)
+        # PNG content in a .txt file → detected (image/png) != extension (text/plain).
+        # Use a COMPLETE valid PNG (sig + IHDR + IDAT + IEND), not a truncated header:
+        # some libmagic builds (e.g. macOS brew) classify a header-only sample as
+        # text/plain, which would hide the mismatch — the OS matrix caught this.
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+            b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+            b"\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        (tmp_path / "spoof.txt").write_bytes(png)
         manifest = Scanner(source_dir=tmp_path).scan()
         assert manifest.quality.mime_mismatches >= 1
 
@@ -3150,7 +3161,13 @@ class TestReferenceTokensVector:
 
 
 class TestEmailBodyChatlogCrosscut:
-    """Test email body chatlog cross-cut per spec §4.1."""
+    """Test email body chatlog cross-cut per spec §4.1.
+
+    The three tests that assert the crosscut FIRES need the .eml email specialist,
+    which the MIME safety guard skips on the no-libmagic fallback → marked
+    requires_libmagic. The two that assert ABSENCE (plain email, is_chatlog False)
+    still hold there (the specialist being skipped only makes the crosscut MORE
+    absent), so they deliberately run on the no-libmagic job as degraded-path coverage."""
 
     CHATLOG_EML = (
         "From: sender@example.com\r\n"
@@ -3179,6 +3196,7 @@ class TestEmailBodyChatlogCrosscut:
         "Hello, this is a normal email body with no chatlog patterns.\r\n"
     )
 
+    @pytest.mark.requires_libmagic
     def test_body_chatlog_fires_on_chatlog_email(self, tmp_path: Path) -> None:
         (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
         config = ScannerConfig(enable_specialists=True)
@@ -3206,6 +3224,7 @@ class TestEmailBodyChatlogCrosscut:
         rec = manifest.files[0]
         assert rec.is_chatlog is False
 
+    @pytest.mark.requires_libmagic
     def test_body_chatlog_provenance(self, tmp_path: Path) -> None:
         (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
         config = ScannerConfig(enable_specialists=True)
@@ -3213,6 +3232,7 @@ class TestEmailBodyChatlogCrosscut:
         rec = manifest.files[0]
         assert "specialist_metadata.email.body_chatlog" in rec.signal_provenance
 
+    @pytest.mark.requires_libmagic
     def test_body_chatlog_counted_in_chatlog_vector(self, tmp_path: Path) -> None:
         """Email body chatlog hits contribute to the chatlog vector's applied_to_count."""
         (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)

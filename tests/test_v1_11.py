@@ -29,6 +29,16 @@ def _has_watchfiles() -> bool:
 skip_no_watchfiles = pytest.mark.skipif(
     not _has_watchfiles(), reason="--watch requires the [watch] extra")
 
+# --watch is a POSIX-oriented feature: graceful shutdown is SIGTERM/SIGINT-based and
+# the test harness reads the subprocess's stdout with a blocking readline + sends
+# SIGTERM. On Windows send_signal(SIGTERM) maps to an ungraceful TerminateProcess and
+# the blocking read can't honor the wall-clock deadline (no POSIX select on pipes) —
+# so these would hang/misbehave. --watch is validated on POSIX (see docs/LIMITATIONS).
+skip_watch_on_windows = pytest.mark.skipif(
+    sys.platform.startswith("win"),
+    reason="--watch lifecycle (SIGTERM shutdown + blocking stdout read) is POSIX-only; "
+    "validated on POSIX (docs/LIMITATIONS.md)")
+
 
 def _spawn_watch(src: Path, debounce_ms: int = 100, include_files: bool = False,
                   specialists: bool = False) -> subprocess.Popen:
@@ -68,6 +78,7 @@ def _stop(proc: subprocess.Popen, sig=signal.SIGTERM) -> int:
 
 # --- the contract: stream emit ≡ one-shot scan -----------------------------------
 @skip_no_watchfiles
+@skip_watch_on_windows
 def test_watch_initial_emit_matches_oneshot_checksum(tmp_path):
     # seed a fixture tree (deterministic content; no live writers)
     (tmp_path / "a.txt").write_text("hello\n")
@@ -89,6 +100,7 @@ def test_watch_initial_emit_matches_oneshot_checksum(tmp_path):
 
 # --- runtime-only flags don't leak into meta.config -------------------------------
 @skip_no_watchfiles
+@skip_watch_on_windows
 def test_watch_flags_excluded_from_meta_config(tmp_path):
     (tmp_path / "x.txt").write_text("x")
     proc = _spawn_watch(tmp_path, debounce_ms=80, include_files=True)
@@ -105,6 +117,7 @@ def test_watch_flags_excluded_from_meta_config(tmp_path):
 
 # --- --watch-include-files opts files[] back in ----------------------------------
 @skip_no_watchfiles
+@skip_watch_on_windows
 def test_watch_include_files_opts_in(tmp_path):
     (tmp_path / "a.txt").write_text("a")
     (tmp_path / "b.txt").write_text("b")
@@ -127,6 +140,7 @@ def test_watch_include_files_opts_in(tmp_path):
 
 
 @skip_no_watchfiles
+@skip_watch_on_windows
 def test_watch_initial_emit_anchors_with_files(tmp_path):
     """Codex PR #51 — without files[] AND without delta.added on the first emit,
     consumers can't see pre-existing files. The fix: anchor the initial emit with
@@ -152,6 +166,7 @@ def test_watch_initial_emit_anchors_with_files(tmp_path):
 
 # --- SIGTERM terminates cleanly with exit 0 --------------------------------------
 @skip_no_watchfiles
+@skip_watch_on_windows
 def test_watch_sigterm_clean_exit(tmp_path):
     (tmp_path / "f.txt").write_text("f")
     proc = _spawn_watch(tmp_path)
