@@ -127,6 +127,12 @@ mimetypes.add_type("application/jsonl", ".jsonl")
 # false content-vs-extension mismatch on libmagic systems. extension_mime feeds
 # guess_type, so this is the deliberate, correct cross-platform reading.
 mimetypes.add_type("text/plain", ".toml")
+# v1.15: stdlib mimetypes knows .yaml/.yml on Linux (application/yaml) but NOT on
+# macOS (returns None) — a real determinism wart the OS matrix surfaced. Pin the
+# value Linux already produces so extension_mime is identical across platforms
+# (no-op on Linux; fills the macOS null). Matches the canonical IANA type.
+mimetypes.add_type("application/yaml", ".yaml")
+mimetypes.add_type("application/yaml", ".yml")
 
 
 SUPPORTED_EXTENSIONS = {

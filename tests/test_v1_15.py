@@ -89,6 +89,28 @@ class TestNoLibmagicCrashGuard:
         assert mimes.get("p.png") == "image/png"   # content-sniffed, no libmagic
 
 
+class TestPathEdges:
+    """RFC §5: a tree with awkward-but-valid path shapes must produce records, never
+    abort. Cross-platform by construction — no symlink/chmod/>MAX_PATH (those POSIX-only
+    cases live in test_v1_8_1, skipped on Windows); these run on every OS in the matrix."""
+
+    def test_awkward_names_and_deep_paths_do_not_crash(self, tmp_path):
+        deep = tmp_path
+        for part in ["a", "bb", "ccc", "dddd", "eeeee"]:   # nested, safely short
+            deep = deep / part
+        deep.mkdir(parents=True)
+        (deep / "buried.txt").write_text("deep")
+        (tmp_path / "name with spaces.txt").write_text("x")
+        (tmp_path / "dotted.name.v2.final.txt").write_text("y")
+        (tmp_path / "café_résumé_ünïcode.md").write_text("# z")
+        (tmp_path / "trailing.space .txt").write_text("w")
+        m = Scanner(source_dir=tmp_path).scan()            # must NOT raise
+        assert len(m.files) == 5
+        # every record is well-formed (posix-relative path, no abort, no None paths)
+        assert all(f.path and "\\" not in f.path for f in m.files)
+        assert any(f.path.endswith("eeeee/buried.txt") for f in m.files)
+
+
 class TestTomlFallbackIsText:
     """Without libmagic, stdlib mimetypes didn't know .toml → octet-stream → the file
     was treated as BINARY (no preview/structural). v1.15 registers .toml as text/plain

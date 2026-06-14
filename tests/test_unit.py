@@ -2794,8 +2794,17 @@ class TestScanQuality:
         assert q.clean_files + q.degraded_files + q.error_files == q.total_files
 
     def test_quality_mime_mismatch_count(self, tmp_path: Path) -> None:
-        # PNG content in .txt file
-        (tmp_path / "spoof.txt").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 30)
+        # PNG content in a .txt file → detected (image/png) != extension (text/plain).
+        # Use a COMPLETE valid PNG (sig + IHDR + IDAT + IEND), not a truncated header:
+        # some libmagic builds (e.g. macOS brew) classify a header-only sample as
+        # text/plain, which would hide the mismatch — the OS matrix caught this.
+        png = (
+            b"\x89PNG\r\n\x1a\n"
+            b"\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+            b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+            b"\x00\x00\x00\x00IEND\xaeB`\x82"
+        )
+        (tmp_path / "spoof.txt").write_bytes(png)
         manifest = Scanner(source_dir=tmp_path).scan()
         assert manifest.quality.mime_mismatches >= 1
 
