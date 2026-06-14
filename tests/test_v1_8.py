@@ -151,11 +151,17 @@ class TestStdlibOracleParity:
             data = _objstm_pdf(n)
             (Path("/tmp") / "x.pdf")  # noqa — just for clarity
             oracle = len(pypdf.PdfReader(io.BytesIO(data)).pages)
-            # call the stdlib tier directly via a temp file
-            import tempfile
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tf:
-                tf.write(data); tf.flush()
-                got = sc._pdf_via_stdlib(Path(tf.name))
+            # call the stdlib tier directly via a temp file. Write+CLOSE before
+            # re-opening by name — on Windows a NamedTemporaryFile holds an exclusive
+            # lock while open, so _pdf_via_stdlib's open() would fail → None.
+            import tempfile, os
+            fd, name = tempfile.mkstemp(suffix=".pdf")
+            try:
+                with os.fdopen(fd, "wb") as tf:
+                    tf.write(data)
+                got = sc._pdf_via_stdlib(Path(name))
+            finally:
+                os.unlink(name)
             assert got is not None and got["page_count"] == oracle == n
 
 

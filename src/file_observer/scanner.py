@@ -133,6 +133,15 @@ mimetypes.add_type("text/plain", ".toml")
 # (no-op on Linux; fills the macOS null). Matches the canonical IANA type.
 mimetypes.add_type("application/yaml", ".yaml")
 mimetypes.add_type("application/yaml", ".yml")
+# v1.15: Windows stdlib mimetypes doesn't know the Office formats (returns None for
+# .xlsx etc.) while Linux does — another extension_mime determinism wart the OS matrix
+# surfaced. Pin the canonical IANA values Linux already produces (no-op on Linux; fills
+# the macOS/Windows nulls) so a supported extension always has an extension_mime.
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", ".xlsx")
+mimetypes.add_type("application/vnd.openxmlformats-officedocument.wordprocessingml.document", ".docx")
+mimetypes.add_type("application/vnd.ms-excel", ".xls")
+mimetypes.add_type("application/msword", ".doc")
+mimetypes.add_type("application/rtf", ".rtf")
 
 
 SUPPORTED_EXTENSIONS = {
@@ -2364,7 +2373,12 @@ class Scanner:
 
     def iter_files(self, root: Path) -> Iterable[Path]:
         root_resolved = root.resolve()
-        for path in sorted(root.rglob("*")):
+        # Sort by the posix string, NOT the Path object: WindowsPath sorts
+        # case-INSENSITIVELY (via _str_normcase), so `sorted(rglob)` gives a different
+        # file order on Windows than on Linux — a cross-platform determinism break
+        # (Pillar 1). as_posix() is case-sensitive + forward-slash → identical order on
+        # every OS (and byte-identical to the prior order on POSIX, where str==as_posix).
+        for path in sorted(root.rglob("*"), key=lambda p: p.as_posix()):
             if path.is_file():
                 # rglob/is_file() FOLLOW symlinks. A symlink whose target resolves
                 # OUTSIDE the scan tree would read that file's bytes/hash into the
