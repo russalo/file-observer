@@ -63,8 +63,17 @@ observation when present, and null always means "not observed within bounds."
 The declared dependencies are `python-magic` and `chardet`. `python-magic` binds the
 **libmagic** system library — and *libmagic itself is optional as of v1.3*: when it's
 absent (Windows, minimal containers), the built-in pure-Python content sniff covers a
-range of common binary formats before falling back to extension inference. Optional
-*extras* widen coverage further:
+range of common binary formats before falling back to extension inference.
+
+**Windows:** `python-magic` is **not** installed on Windows (a `platform_system`
+dependency marker). The wheel ships without a libmagic DLL, and python-magic's
+import-time library search *hangs* on a Windows box with no libmagic — which would hang
+`import file_observer.scanner` itself. So on Windows `pip install file-observer` skips
+it and the pure-Python MIME fallback engages automatically (it just works). Windows
+users who want libmagic-grade content MIME can install `python-magic-bin` (it bundles
+the DLL). One-shot scanning is otherwise fully cross-platform.
+
+Optional *extras* widen coverage further:
 
 - **PyYAML** — frontmatter parsing
 - **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`)

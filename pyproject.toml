@@ -33,7 +33,13 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
     "Typing :: Typed",
 ]
-dependencies = ["python-magic", "chardet"]
+# python-magic is excluded on Windows: the wheel installs without the libmagic DLL,
+# and python-magic's import-time library search HANGS (not raises) on a Windows box
+# with no libmagic — which would hang `import file_observer.scanner` itself. The v1.3
+# pure-Python MIME fallback is built for exactly this: on Windows `import magic` raises
+# ImportError → the fallback engages, so `pip install file-observer` just works. Windows
+# users who want libmagic-grade MIME can install `python-magic-bin` (bundles the DLL).
+dependencies = ["python-magic; platform_system != 'Windows'", "chardet"]
 
 [project.optional-dependencies]
 yaml = ["PyYAML"]

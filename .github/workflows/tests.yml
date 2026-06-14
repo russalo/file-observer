@@ -39,29 +39,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      # DIAGNOSTIC (Windows hang bisection): pytest prints NOTHING before hanging, so
-      # the hang is in the earliest import phase. Run each suspect stage as its own
-      # unbuffered probe with a marker; the last marker before this step is killed
-      # (step timeout-minutes) pinpoints the stage. TEMPORARY — remove once located.
-      - name: Diagnose Windows import (bisection)
-        if: runner.os == 'Windows'
-        shell: bash
-        timeout-minutes: 6
-        run: |
-          set -x
-          python -u -c "print('P1: python -c runs')"
-          python -u -c "import chardet; print('P2: chardet OK')"
-          python -u -c "import magic; print('P3: import magic OK')" || echo "P3: import magic RAISED (handled by scanner)"
-          python -u -c "import magic; m=magic.Magic(mime=True); print('P4: magic.Magic() built')" || echo "P4: magic.Magic() RAISED (handled)"
-          python -u -c "import file_observer.scanner as s; print('P5: scanner import OK; s.magic=', s.magic)"
-          python -u -c "from file_observer.scanner import Scanner; from pathlib import Path; import tempfile; sc=Scanner(source_dir=Path(tempfile.mkdtemp())); print('P6: Scanner() built; _magic=', sc._magic)"
-          python -u -c "import sys; sys.path.insert(0,'tests'); import conftest; print('P7: conftest import OK; LIBMAGIC_AVAILABLE=', conftest.LIBMAGIC_AVAILABLE)"
-          python -u -m pytest tests/ --collect-only -q 2>&1 | tail -3; echo "P8: collect-only done"
-          echo "ALL PROBES PASSED — hang is in pytest execution, not import"
       - name: Run test suite
         # shell: bash on all OSes (git-bash on Windows) — avoids the pwsh stderr-swallow.
+        # -u (unbuffered) + -v kept until Windows is confirmed green so any remaining
+        # platform-specific stall is visible; revert to `-q` in a cleanup pass after.
         shell: bash
-        run: python -m pytest tests/ -q
+        run: python -u -m pytest tests/ -v
 
   test-no-libmagic:
     # Deterministic coverage of the pure-Python MIME fallback — don't let the
