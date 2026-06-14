@@ -338,8 +338,9 @@ class TestMimeAnalysisIntegration:
             assert f.mime_analysis.detected_mime is not None
 
     def test_supported_extensions_have_extension_mime(self, manifest: ScanManifest) -> None:
-        # .mdx has no standard MIME registration in Python's mimetypes module
-        no_standard_mime = {".mdx", ".msg", ".vx", ".toml"}
+        # .msg/.vx have no standard MIME registration in Python's mimetypes module.
+        # .toml is now registered (text/plain, v1.15), so it's no longer exempt.
+        no_standard_mime = {".mdx", ".msg", ".vx"}
         from file_observer.scanner import SUPPORTED_EXTENSIONS
         for f in manifest.files:
             if f.extension in SUPPORTED_EXTENSIONS and f.extension not in no_standard_mime:

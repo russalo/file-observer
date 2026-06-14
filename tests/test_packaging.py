@@ -37,7 +37,7 @@ def test_canonical_top_level_api():
 
     import file_observer
 
-    assert file_observer.__version__ == "1.14.0"
+    assert file_observer.__version__ == "1.15.0"
     assert "Scanner" in file_observer.__all__
 
 
@@ -69,9 +69,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.14.0"
-    assert SCHEMA_VERSION == "1.9"  # v1.14: promotion pass (pdf.parser/application/provenance → stable) — designation bump
-    assert LOGIC_VERSION == "1.4.3"  # frozen — promotion changes the stability promise, not how anything is computed
+    assert SCANNER_VERSION == "1.15.0"
+    assert SCHEMA_VERSION == "1.9"  # unchanged in v1.15 — HEIC fix is LOGIC, not a contract change
+    assert LOGIC_VERSION == "1.5.0"  # v1.15: HEIC/HEIF/AVIF MIME detection (v1.3 precedent: MIME tier = LOGIC)
 
 
 def test_legacy_scanner_import_warns():

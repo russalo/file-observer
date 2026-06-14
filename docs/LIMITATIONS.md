@@ -199,6 +199,26 @@ inference. The `signal_provenance.trigger` records which tier produced it
 and extension disagree, File Observer **reports the mismatch** as a signal
 (`mime_analysis.matches_extension`) — it does not rename, re-route, or "fix" the file.
 
+### Without libmagic, some signals are reduced (v1.15)
+
+When libmagic is absent (Windows, minimal containers), MIME comes from the
+pure-Python sniff or the extension tier. Two consequences are **by design**, not
+bugs — the scan still completes and never aborts (bounded observation):
+
+- **Signatureless text files read as "degraded."** A plain `.txt`/`.md`/`.toml`
+  has no magic bytes for the sniff to match, so its MIME falls to the
+  extension tier, which records a `mime_type_fallback` diagnostic. The file is
+  fully observed; it just counts as `degraded` rather than `clean` in the
+  quality block. (v1.15 registers `.toml` as `text/plain` so it is treated as
+  text, not misclassified as binary.)
+- **The `.eml` email specialist is skipped.** `.eml` is text with no magic-byte
+  signature, so its extension-derived `message/rfc822` cannot be corroborated by
+  a `format_signatures` entry — and the MIME safety guard (which deliberately
+  distrusts uncorroborated extension-echo MIME, to avoid acting on a lying
+  extension) skips the specialist. Envelope fields and the email→chatlog body
+  crosscut are then null. `.msg` (OLE2) is unaffected — it has a real signature.
+  Install `python-magic` + libmagic for full email extraction.
+
 ## Chatlog detection has known false negatives (v1.4)
 
 `is_chatlog` is a content-based heuristic. v1.4.0 added a content-shape gate (a

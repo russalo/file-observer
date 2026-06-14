@@ -128,6 +128,7 @@ class TestSchemaCompleteness:
                         offenders.append(f"{ns}.{k}")
         assert not offenders, f"specialist fields emitted but absent from --schema: {sorted(set(offenders))}"
 
+    @pytest.mark.requires_libmagic  # drives a real .eml scan; the email specialist is guard-skipped without libmagic
     def test_email_body_chatlog_crosscut_field_is_in_schema(self, schema_doc, tmp_path):
         """v1.13 leg-1 #4: the email cross-cut emits specialist_metadata.email.
         body_chatlog when an email body is chatlog-shaped — a real serialized
@@ -452,8 +453,8 @@ def test_version_is_at_least_1_13_0():
 
 
 def test_logic_frozen_schema_only_grows():
-    """v1.13 added a SEPARATE surface (--schema) — the manifest LOGIC contract is
-    unchanged. LOGIC stays frozen; SCHEMA only ever goes up (v1.14 promotion pass
-    bumped it 1.8→1.9)."""
-    assert LOGIC_VERSION == "1.4.3", f"LOGIC drifted: {LOGIC_VERSION!r}"
+    """v1.13 added a SEPARATE surface (--schema) — it did not change LOGIC (it was
+    1.4.3 at v1.13). LOGIC and SCHEMA only ever go up; both floored here (v1.15
+    bumped LOGIC 1.4.3→1.5.0 for the HEIC MIME fix, a later release than this one)."""
+    assert _ver_tuple(LOGIC_VERSION) >= (1, 4, 3), f"LOGIC regressed below 1.4.3: {LOGIC_VERSION!r}"
     assert _ver_tuple(SCHEMA_VERSION) >= (1, 8), f"SCHEMA regressed: {SCHEMA_VERSION!r}"

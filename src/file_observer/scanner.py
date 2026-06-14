@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.14.0
+    Version:    1.15.0
     Schema:     1.9
     Python:     >= 3.12
-    Spec:       docs/v1.14.0_RFC_Specification.md (current)
+    Spec:       docs/v1.15.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.14.0"
-LOGIC_VERSION = "1.4.3"   # v1.9.1 — stat-failure record preserves the source-relative path (was flattened to bare filename), making the degraded record consistent with normal records (Gemini F2)
-SCHEMA_VERSION = "1.9"   # v1.14.0 — promotion pass: pdf.parser + provenance + application provisional→stable + stability surfaced in --schema (designation only; manifest byte-identical, LOGIC frozen)
+SCANNER_VERSION = "1.15.0"
+LOGIC_VERSION = "1.5.0"   # v1.15.0 — cross-platform hardening: HEIC/HEIF/AVIF detection (ftyp+brand) corrects the no-libmagic fallback mislabeling iPhone photos as video/mp4. MIME-detection change (v1.3 precedent: MIME tier = LOGIC). Prior 1.4.3 = v1.9.1 stat-failure path fix.
+SCHEMA_VERSION = "1.9"   # v1.14.0 — promotion pass: pdf.parser + provenance + application provisional→stable + stability surfaced in --schema
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -119,6 +119,14 @@ STRUCTURAL_ANCHORS: dict[str, str] = {
 mimetypes.add_type("text/markdown", ".md")
 mimetypes.add_type("text/markdown", ".mdx")
 mimetypes.add_type("application/jsonl", ".jsonl")
+# v1.15: stdlib mimetypes doesn't know .toml — without this, the extension-fallback
+# tier (no-libmagic path, e.g. Windows) returns octet-stream → the file is treated as
+# BINARY (no preview/structural/toml-keys). Registered as text/plain (NOT the IANA
+# application/toml): libmagic reads toml as text/plain, so text/plain keeps
+# mime_analysis.matches_extension True — application/toml would make every .toml a
+# false content-vs-extension mismatch on libmagic systems. extension_mime feeds
+# guess_type, so this is the deliberate, correct cross-platform reading.
+mimetypes.add_type("text/plain", ".toml")
 
 
 SUPPORTED_EXTENSIONS = {
@@ -757,7 +765,18 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
     (((0, b"{\\rtf"),), "application/rtf"),
     (((0, b"\x7fELF"),), "application/x-elf"),
     (((0, b"%!PS"),), "application/postscript"),
-    # media
+    # media — ISO-BMFF `ftyp` box (offset 4). The brand at offset 8 disambiguates
+    # image (HEIC/HEIF/AVIF — incl. the iPhone default photo format) from video
+    # (mp4/mov). MORE-SPECIFIC image brands MUST precede the generic ftyp→video/mp4
+    # below, or the no-libmagic fallback mislabels every iPhone photo as video/mp4
+    # (v1.15 fix; signatures are tested in order).
+    (((4, b"ftyp"), (8, b"heic")), "image/heic"),
+    (((4, b"ftyp"), (8, b"heix")), "image/heic"),
+    (((4, b"ftyp"), (8, b"heif")), "image/heic"),
+    (((4, b"ftyp"), (8, b"mif1")), "image/heic"),   # generic HEIF still image
+    (((4, b"ftyp"), (8, b"msf1")), "image/heic"),   # HEIF image sequence
+    (((4, b"ftyp"), (8, b"avif")), "image/avif"),
+    (((4, b"ftyp"), (8, b"avis")), "image/avif"),   # AVIF image sequence
     (((4, b"ftyp"),), "video/mp4"),
     (((0, b"\x1aE\xdf\xa3"),), "video/x-matroska"),
     # ID3v2: require a real major-version byte (2/3/4) so prose like "ID3 tags"
@@ -1364,7 +1383,15 @@ class Scanner:
     def __init__(self, source_dir: Path, config: ScannerConfig | None = None) -> None:
         self.source_dir = source_dir.resolve()
         self.config = config or ScannerConfig()
-        self._magic = magic.Magic(mime=True) if magic else None
+        # python-magic may IMPORT yet fail to construct when the libmagic C library
+        # is absent (the common Windows case) — degrade to the pure-Python MIME
+        # fallback instead of crashing the whole scan at init (v1.15 cross-platform).
+        self._magic = None
+        if magic is not None:
+            try:
+                self._magic = magic.Magic(mime=True)
+            except Exception:
+                self._magic = None
         self._ignore_patterns = self._load_ignore_patterns()
 
     def _load_ignore_patterns(self) -> list[str]:
@@ -5151,6 +5178,12 @@ class Scanner:
         if seen_formats & {"image/webp", "audio/wav", "video/x-msvideo"}:
             found = [s for s in found if s["format"] != "riff_container"]
             seen_formats.discard("riff_container")
+        # v1.15: same pattern for ISO-BMFF `ftyp` — a recognized image brand
+        # (HEIC/AVIF) supersedes the generic video/mp4 ftyp label, so a real
+        # iPhone photo emits one signature, not a false image+video polyglot.
+        if seen_formats & {"image/heic", "image/avif"}:
+            found = [s for s in found if s["format"] != "video/mp4"]
+            seen_formats.discard("video/mp4")
         found.sort(key=lambda x: x["offset"])
         is_polyglot = len(seen_formats) > 1
         return file_sig, found, is_polyglot

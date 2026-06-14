@@ -7,17 +7,48 @@ on:
 
 jobs:
   test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false   # one OS failing must not mask the others
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install libmagic (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libmagic1
+      - name: Install libmagic (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libmagic
+      # Windows: libmagic is intentionally NOT installed — this job exercises the
+      # pure-Python MIME fallback (v1.3) on a real no-libmagic platform, and the
+      # v1.15 init-guard for "python-magic imports but libmagic is absent".
+      - name: Install package + dev deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+      - name: Run test suite
+        run: python -m pytest tests/ -q
+
+  test-no-libmagic:
+    # Deterministic coverage of the pure-Python MIME fallback — don't let the
+    # Windows runner's libmagic state be the only thing exercising it. Removing
+    # python-magic forces `import magic` to fail → self._magic is None → fallback.
+    name: test (ubuntu, no python-magic — forced fallback)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: Install libmagic (python-magic backend)
-        run: sudo apt-get update && sudo apt-get install -y libmagic1
-      - name: Install package + dev deps
+      - name: Install package + dev deps, then remove python-magic
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Run test suite
+          pip uninstall -y python-magic
+      - name: Run test suite (no python-magic → pure-Python MIME fallback)
         run: python -m pytest tests/ -q
