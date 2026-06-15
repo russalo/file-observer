@@ -29,10 +29,11 @@ IMAGE_EXTS = (".heic", ".heif", ".avif")
 
 
 def test_release_version_surfaces():
-    # v1.16.0 is the newest release — it holds the exact current-version pins.
-    assert SCANNER_VERSION == "1.16.0", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.6.0", f"LOGIC: {LOGIC_VERSION!r}"   # extraction-surface change
-    assert SCHEMA_VERSION == "1.10", f"SCHEMA: {SCHEMA_VERSION!r}"  # additive EXIF fields + geotagged
+    # v1.16 floor — the exact current-version pin lives in the newest release test.
+    def _v(s): return tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 16, 0), f"SCANNER regressed below 1.16.0: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 6, 0), f"LOGIC regressed below 1.6.0: {LOGIC_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 10), f"SCHEMA regressed below 1.10: {SCHEMA_VERSION!r}"
 
 
 # --------------------------------------------------------------------------- registries
