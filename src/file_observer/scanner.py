@@ -1478,7 +1478,12 @@ def _parse_exif_tiff(buf: bytes) -> dict | None:
         for tag, name in _EXIF_IFD0_TAGS.items():
             if tag in ifd0:
                 typ, _cnt, raw = ifd0[tag]
-                out[name] = _exif_ascii(raw) if typ == 2 else struct.unpack(bo + "H", raw[:2])[0] if typ == 3 else None
+                if typ == 2:
+                    out[name] = _exif_ascii(raw)
+                elif typ == 3 and len(raw) >= 2:
+                    out[name] = struct.unpack(bo + "H", raw[:2])[0]
+                else:
+                    out[name] = None
         out["gps_present"] = _EXIF_GPS_IFD_PTR in ifd0
         if _EXIF_SUB_IFD_PTR in ifd0 and ifd0[_EXIF_SUB_IFD_PTR][0] == 4:
             sub = read_ifd(struct.unpack(bo + "I", ifd0[_EXIF_SUB_IFD_PTR][2])[0])
@@ -1488,9 +1493,9 @@ def _parse_exif_tiff(buf: bytes) -> dict | None:
             for tag, name in _EXIF_SUB_NUM.items():
                 if tag in sub:
                     typ, _cnt, raw = sub[tag]
-                    if typ == 3:        # SHORT
+                    if typ == 3 and len(raw) >= 2:      # SHORT
                         out[name] = struct.unpack(bo + "H", raw[:2])[0]
-                    elif typ == 4:      # LONG
+                    elif typ == 4 and len(raw) >= 4:    # LONG
                         out[name] = struct.unpack(bo + "I", raw[:4])[0]
     except Exception:
         return out or None
@@ -1545,19 +1550,27 @@ def _heif_exif_tiff(data: bytes) -> bytes | None:
         return None
     try:
         msize = struct.unpack(">I", data[meta:meta+4])[0]
+        # Two passes' worth of state in one walk: ISO 14496-12 does NOT mandate that
+        # `iinf` precede `iloc` among `meta`'s children (leg-4/Codex). Collect both the
+        # Exif item-ID and the iloc box offset, then resolve after the walk — so EXIF is
+        # found regardless of child order. Bounds-guard every offset (leg-4/Gemini): the
+        # walk runs on a head-capped buffer, so o+8 / o2+20 can exceed it on truncation.
         exif_id = None
+        iloc_o = None
         for t, o, s in _iter_isobmff(data, meta+12, meta+msize):
             if t == "iinf":
                 # iinf FullBox: 12-byte header + entry_count (2 bytes if version 0, else 4)
-                child0 = o + 16 if data[o+8] else o + 14
+                child0 = o + 16 if (o + 8 < len(data) and data[o+8]) else o + 14
                 for t2, o2, s2 in _iter_isobmff(data, child0, o+s):
-                    if t2 == "infe" and data[o2+16:o2+20] == b"Exif":
+                    if t2 == "infe" and o2 + 20 <= len(data) and data[o2+16:o2+20] == b"Exif":
                         exif_id = struct.unpack(">H", data[o2+12:o2+14])[0]
-            elif t == "iloc" and exif_id is not None:
-                blob = _heif_iloc_extent(data, o, exif_id)
-                if blob and len(blob) >= 4:
-                    pre = struct.unpack(">I", blob[:4])[0]
-                    return blob[4+pre:] if 4 + pre < len(blob) else blob[4:]
+            elif t == "iloc":
+                iloc_o = o
+        if exif_id is not None and iloc_o is not None:
+            blob = _heif_iloc_extent(data, iloc_o, exif_id)
+            if blob and len(blob) >= 4:
+                pre = struct.unpack(">I", blob[:4])[0]
+                return blob[4+pre:] if 4 + pre < len(blob) else blob[4:]
     except Exception:
         pass
     return None
@@ -1565,6 +1578,8 @@ def _heif_exif_tiff(data: bytes) -> bytes | None:
 
 def _heif_iloc_extent(data: bytes, o: int, want_id: int) -> bytes | None:
     """Version-aware iloc parse (ISO 14496-12): return the byte range for want_id."""
+    if o + 14 > len(data):           # leg-4/Gemini: guard the fixed header read on truncation
+        return None
     ver = data[o+8]
     p = o + 12
     offsz, lensz = data[p] >> 4, data[p] & 0xF
@@ -3034,7 +3049,20 @@ class Scanner:
                     else:
                         specialist_metadata = raw_metadata
                     tool = SPECIALIST_TOOLS.get(extension, "unknown")
-                    is_deviation = extension in {".xlsx", ".docx"}
+                    # Specialists that read beyond the 8 KB sample declare it as a
+                    # deviation so the per-field provenance can't claim the value came
+                    # from the bounded sample (leg-4/Codex — provenance-honesty). OOXML
+                    # reads the ZIP central directory; the image-EXIF path (v1.16) reads
+                    # a bounded 1 MiB head (EXIF/XMP live past the sample).
+                    if extension in {".xlsx", ".docx"}:
+                        is_deviation = True
+                        dev_reason, dev_budget = "zip_central_directory_required", eff["specialist_budget"]
+                    elif extension in {".jpg", ".jpeg", ".heic", ".heif", ".avif"}:
+                        is_deviation = True
+                        dev_reason, dev_budget = "exif_metadata_beyond_sample", self.IMAGE_METADATA_MAX_BYTES
+                    else:
+                        is_deviation = False
+                        dev_reason = dev_budget = None
                     ns_prefix = f"specialist_metadata.{ns}." if ns else "specialist_metadata."
                     for key in raw_metadata:
                         prov_key = f"{ns_prefix}{key}"
@@ -3043,8 +3071,8 @@ class Scanner:
                             trigger = "missing_from_bounds"
                         prov_detail: dict[str, Any] = {"tool": tool}
                         if is_deviation:
-                            prov_detail["read_budget_bytes"] = eff["specialist_budget"]
-                            prov_detail["reason"] = "zip_central_directory_required"
+                            prov_detail["read_budget_bytes"] = dev_budget
+                            prov_detail["reason"] = dev_reason
                         else:
                             prov_detail["sample_size"] = len(sample)
                         provenance[prov_key] = asdict(ProvenanceEntry(

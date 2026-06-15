@@ -113,6 +113,24 @@ class TestHeicExif:
     def test_datetime_original(self, heic):
         assert heic["datetime_original"] == "2024:05:01 18:22:10"
 
+    def test_meta_child_order_independent(self):
+        # leg-4/Codex: ISO 14496-12 doesn't mandate iinf-before-iloc. Rebuild the
+        # fixture's meta box with iinf/iloc swapped (offsets unchanged) → EXIF must
+        # still resolve. We reparse the committed fixture and reorder its meta children.
+        import struct
+        data = bytearray((GEN / "exif_phone_gps.heic").read_bytes())
+        # locate meta box and its iinf/iloc children, swap them, re-extract
+        meta_off = next(o for t, o, s in fo._iter_isobmff(bytes(data)) if t == "meta")
+        msize = struct.unpack(">I", bytes(data[meta_off:meta_off+4]))[0]
+        kids = {t: (o, s) for t, o, s in fo._iter_isobmff(bytes(data), meta_off+12, meta_off+msize)}
+        (io, isz), (lo, lsz) = kids["iinf"], kids["iloc"]
+        assert io < lo  # fixture has iinf first
+        iinf_b, iloc_b = bytes(data[io:io+isz]), bytes(data[lo:lo+lsz])
+        swapped = bytes(data[:io]) + iloc_b + iinf_b + bytes(data[lo+lsz:])
+        tiff = fo._heif_exif_tiff(swapped)
+        assert tiff is not None
+        assert fo._parse_exif_tiff(tiff)["make"] == "Apple"
+
 
 # --------------------------------------------------------------------- geotagged in scan
 class TestGeotaggedSafetyFlag:
