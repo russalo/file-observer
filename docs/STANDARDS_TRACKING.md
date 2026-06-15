@@ -26,6 +26,10 @@ Things on the radar but not committed to. Some will graduate; some will be parke
 | **DBoM** | Data governance | GDPR Article 30 use cases. Wait for a real customer ask. |
 | **JHOVE** | Format validation | Different tool with different goals. Position scanner as upstream layer, not integration. |
 | **Apache Tika** | Content extraction | Direct competitor in some markets. Marketing positioning, not adoption. |
+| **C2PA / Content Credentials** | Provenance / authenticity | **High-value strategic fit for the `provenance` seam.** Cryptographically-signed provenance manifests, embedded by camera makers (Leica/Sony/Nikon) + AI generators (the AI-content signal) + Adobe/MS tooling. C2PA-*presence* detection would extend `provenance`/`digitization` — observe-with-disclosure, not verification. Likely v1.17+. Researched 2026-06-15. |
+| **XMP (ISO 16684-1 / Adobe)** | Metadata | Graduated to *Moving toward v1.16* (presence). Listed here for cross-ref — also feeds the future C2PA/IPTC provenance work. |
+| **IPTC Photo Metadata (IIM / XMP)** | Metadata | Creator/copyright/caption on pro/edited photos; feeds `author_aggregate`/`provenance`. Maps onto the same EXIF/XMP fields MWG reconciles. Awareness for now; graduate with the provenance-image work. Researched 2026-06-15. |
+| **MWG (Metadata Working Group) guidelines** | Metadata reconciliation | "Guidelines for Handling Image Metadata" (Adobe/Canon/MS) — how EXIF/IPTC/XMP equivalent fields (DateTime, Creator) map + reconcile. **Design input, deliberately NOT adopted as a reconciler:** the MWG itself stalled and ExifTool became the de-facto authority, so file-observer will REPORT each source's value (observe-don't-interpret), not pick a winner. ExifTool is the reconciliation reference + the falsify-first oracle for v1.16 (as pypdf was for v1.8). Researched 2026-06-15. |
 
 ### 1.2 Moving toward — decided to support, not yet built
 
@@ -33,7 +37,10 @@ Items we've committed to in principle. They have an intended target version. The
 
 | Item | Target version | Form | Status |
 |---|---|---|---|
-| (none yet — populate when items graduate from awareness) | | | |
+| **EXIF (CIPA DC-008)** | v1.16 | Observe-only camera metadata for images — `make`/`model`/`datetime_original`/`orientation` from TIFF/IFD0 + Exif sub-IFD, and **GPS-presence** from the GPS IFD (→ a `geotagged` safety-flag, presence not coordinates). Freely published (cipa.jp); tag structure stable across Exif 2.x–3.1. | **IMPLEMENTED v1.16.0 (2026-06-15)** — JPEG (APP1) + HEIC. Hand-parsed TIFF/EXIF IFD (stdlib/struct, no Pillow). |
+| **HEIF Exif item (ISO/IEC 23008-12)** | v1.16 | The HEIC-specific mechanism: EXIF is stored as an **item** referenced via `meta` → `iinf`/`infe` (item_type `Exif`) + `iloc` (byte range), NOT a JPEG-style APP1 marker. The iPhone-HEIC path. Free ref: nokiatech.github.io/heif/technical.html. | **IMPLEMENTED v1.16.0 (2026-06-15)** — version-aware `iloc` parse; HEIC dims from EXIF pixel dims (the `ispe` tile-trap avoided). |
+| **XMP (ISO 16684-1 / Adobe)** | v1.16 (presence) | Extensible metadata written alongside EXIF by iPhones + any editor. Detect via the Adobe namespace marker — JPEG APP1 `http://ns.adobe.com/xap/1.0/`, PNG `iTXt`, HEIF XMP item. | **PRESENCE IMPLEMENTED v1.16.0 (2026-06-15)** — `xmp_present` via the Adobe namespace marker. Full XMP depth (creator/edit history) is the §9 ungated upgrade. |
+| **ISOBMFF video metadata (ISO 14496-12 + Apple QuickTime keys + ISO 6709)** | v1.16 (gated) | Observe-only container metadata for video — codec/duration/resolution + `mvhd` creation_time + Apple `com.apple.quicktime.*` keys (make/model/creationdate) + **GPS-presence** via `com.apple.quicktime.location.ISO6709` (iPhone) / `udta` `©xyz` (Android), both ISO 6709. Apple publishes the QTFF keys (developer docs). | **GATED within v1.16** — a `video_structure` specialist, deferred until real `.mov` validation data lands (the parked iPhone-`.mov` path). Extends the existing hand-rolled ISOBMFF walk. |
 
 ### 1.3 Adopted — implemented and current
 

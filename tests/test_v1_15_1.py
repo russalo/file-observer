@@ -26,7 +26,7 @@ def test_release_version_surfaces():
     def _v(s): return tuple(int(p) for p in s.split("."))
     assert _v(SCANNER_VERSION) >= (1, 15, 1), f"SCANNER regressed below 1.15.1: {SCANNER_VERSION!r}"
     assert _v(LOGIC_VERSION) >= (1, 5, 1), f"LOGIC regressed below 1.5.1: {LOGIC_VERSION!r}"   # brand-label move + recognition
-    assert SCHEMA_VERSION == "1.9", f"SCHEMA unchanged: {SCHEMA_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 9), f"SCHEMA regressed below 1.9: {SCHEMA_VERSION!r}"
 
 
 class TestBrandLabelPrecision:
@@ -60,7 +60,8 @@ class TestBrandLabelPrecision:
 
 class TestRecognizedAsSupported:
     """The extensions are first-class: in SUPPORTED_EXTENSIONS, with an extension_mime,
-    NOT flagged unsupported_extension, and NOT routed to a (nonexistent) specialist."""
+    NOT flagged unsupported_extension. (v1.15.1 had no specialist for them; v1.16 added
+    the image-EXIF specialist, so requires_specialist_tool is now True.)"""
 
     def test_extensions_are_supported(self):
         assert {".heic", ".heif", ".avif"} <= SUPPORTED_EXTENSIONS
@@ -77,8 +78,9 @@ class TestRecognizedAsSupported:
         # not flagged unsupported (the v1.15.0 wart this patch removes)
         assert not any(e.code == "unsupported_extension" for e in rec.errors)
         assert rec.mime_analysis.extension_mime == emime
-        # recognized but NOT extracted — no specialist for these yet
-        assert rec.requires_specialist_tool is False
+        # v1.15.1 recognized these but had no specialist (requires_specialist_tool False);
+        # v1.16 adds the image specialist (EXIF), so the flag is now True.
+        assert rec.requires_specialist_tool is True
 
     def test_iphone_heic_matches_extension(self, tmp_path):
         # the common case: a .heic with the heic brand → content == extension → match

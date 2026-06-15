@@ -27,9 +27,11 @@ GEN = Path(__file__).parent / "fixtures" / "generated"
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.15.2", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.5.2", f"LOGIC: {LOGIC_VERSION!r}"   # extraction-dispatch change
-    assert SCHEMA_VERSION == "1.9", f"SCHEMA unchanged: {SCHEMA_VERSION!r}"
+    # v1.15.2 floor — the exact current-version pin lives in the newest release test.
+    def _v(s): return tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 15, 2), f"SCANNER regressed below 1.15.2: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 5, 2), f"LOGIC regressed below 1.5.2: {LOGIC_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 9), f"SCHEMA regressed below 1.9: {SCHEMA_VERSION!r}"
 
 
 @pytest.mark.skipif(olefile is None, reason="olefile not installed")

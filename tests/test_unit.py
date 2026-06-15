@@ -2094,10 +2094,11 @@ class TestJpegMetadata:
         return soi + sof
 
     def test_valid_jpeg_sof0(self, scanner: Scanner) -> None:
-        sample = self._make_jpeg_sof0(1920, 1080)
-        meta = scanner._extract_jpeg_metadata(sample)
-        assert meta["width"] == 1920
-        assert meta["height"] == 1080
+        # v1.16: _extract_jpeg_metadata now takes (path, sample); the pure dimension
+        # parse lives in the _jpeg_dimensions static helper, exercised directly here.
+        width, height = scanner._jpeg_dimensions(self._make_jpeg_sof0(1920, 1080))
+        assert width == 1920
+        assert height == 1080
 
     def test_valid_jpeg_progressive(self, scanner: Scanner) -> None:
         # SOF2 (progressive) marker
@@ -2105,23 +2106,20 @@ class TestJpegMetadata:
         components = b"\x01\x11\x00"
         seg_length = 2 + 1 + 2 + 2 + len(components)
         sof = b"\xff\xc2" + struct.pack(">H", seg_length) + struct.pack(">B", 8) + struct.pack(">HH", 600, 800) + components
-        sample = soi + sof
-        meta = scanner._extract_jpeg_metadata(sample)
-        assert meta["width"] == 800
-        assert meta["height"] == 600
+        width, height = scanner._jpeg_dimensions(soi + sof)
+        assert width == 800
+        assert height == 600
 
     def test_no_sof_marker(self, scanner: Scanner) -> None:
         # Just SOI + some EXIF data, no SOF
-        sample = b"\xff\xd8\xff\xe1\x00\x10" + b"\x00" * 14
-        meta = scanner._extract_jpeg_metadata(sample)
-        assert meta["width"] is None
-        assert meta["height"] is None
+        width, height = scanner._jpeg_dimensions(b"\xff\xd8\xff\xe1\x00\x10" + b"\x00" * 14)
+        assert width is None
+        assert height is None
 
     def test_truncated_sof(self, scanner: Scanner) -> None:
         # SOI + SOF marker but truncated before dimensions
-        sample = b"\xff\xd8\xff\xc0\x00\x0b\x08"
-        meta = scanner._extract_jpeg_metadata(sample)
-        assert meta["width"] is None
+        width, _height = scanner._jpeg_dimensions(b"\xff\xd8\xff\xc0\x00\x0b\x08")
+        assert width is None
 
     def test_jpeg_through_scan(self, tmp_path: Path) -> None:
         sample = self._make_jpeg_sof0(640, 480)
