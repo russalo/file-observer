@@ -2179,7 +2179,6 @@ class TestEmlMetadata:
         assert meta is not None
         assert meta["subject"] is None
 
-    @pytest.mark.requires_libmagic  # full-scan path: MIME guard skips .eml specialist without a magic-byte signature
     def test_eml_through_scan(self, tmp_path: Path) -> None:
         eml = b"From: test@test.com\r\nSubject: Hello\r\n\r\nBody\r\n"
         (tmp_path / "email.eml").write_bytes(eml)
@@ -3196,7 +3195,6 @@ class TestEmailBodyChatlogCrosscut:
         "Hello, this is a normal email body with no chatlog patterns.\r\n"
     )
 
-    @pytest.mark.requires_libmagic
     def test_body_chatlog_fires_on_chatlog_email(self, tmp_path: Path) -> None:
         (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
         config = ScannerConfig(enable_specialists=True)
@@ -3224,7 +3222,6 @@ class TestEmailBodyChatlogCrosscut:
         rec = manifest.files[0]
         assert rec.is_chatlog is False
 
-    @pytest.mark.requires_libmagic
     def test_body_chatlog_provenance(self, tmp_path: Path) -> None:
         (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
         config = ScannerConfig(enable_specialists=True)
@@ -3232,7 +3229,6 @@ class TestEmailBodyChatlogCrosscut:
         rec = manifest.files[0]
         assert "specialist_metadata.email.body_chatlog" in rec.signal_provenance
 
-    @pytest.mark.requires_libmagic
     def test_body_chatlog_counted_in_chatlog_vector(self, tmp_path: Path) -> None:
         """Email body chatlog hits contribute to the chatlog vector's applied_to_count."""
         (tmp_path / "chat.eml").write_text(self.CHATLOG_EML)
