@@ -143,6 +143,17 @@ class TestRobustness:
         assert out["duration_s"] is None              # not 3.07e16
         assert out["creation_date"] == "2019-12-03T15:47:23Z"   # v1 created still parsed
 
+    def test_truncated_mvhd_is_null_not_wrong(self):
+        # leg-4/Gemini: a truncated mvhd (version byte present, duration slice short) must
+        # yield None — NOT a wrong value from int.from_bytes silently accepting fewer bytes.
+        import struct
+        # v0 mvhd header + only created+mod+timescale, duration slice truncated
+        body = b"\x00\x00\x00\x00" + struct.pack(">III", 3658232843, 0, 600)  # missing duration
+        mvhd = struct.pack(">I", 8 + len(body)) + b"mvhd" + body
+        out = fo._parse_mvhd(mvhd, 0)
+        assert out["duration_s"] is None      # bounds guard bailed; no short-slice garbage
+        assert out["creation_date"] is None    # whole branch bailed (o+28 > len)
+
     def test_pre_1970_creation_date_platform_independent(self):
         # leg-1 #2: a 1904-epoch creation time before 1970 (negative POSIX ts) must
         # convert via timedelta, identically on every platform (no fromtimestamp).

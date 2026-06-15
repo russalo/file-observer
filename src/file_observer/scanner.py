@@ -1651,13 +1651,22 @@ def _box_find(data: bytes, typ: str, start: int, end: int) -> tuple[int, int] | 
 def _parse_mvhd(data: bytes, o: int) -> dict:
     """movie header → creation_date (ISO 8601 UTC) + duration_s (float seconds)."""
     out: dict = {"creation_date": None, "duration_s": None}
+    # Bounds-guard before every read (leg-4/Gemini): on a truncated mvhd, int.from_bytes
+    # on a SHORT slice does not raise — it silently parses fewer bytes → a WRONG value.
+    # Bail to honest-null instead.
+    if o + 9 > len(data):
+        return out
     ver = data[o+8]
     if ver == 1:
+        if o + 40 > len(data):
+            return out
         created = int.from_bytes(data[o+12:o+20], "big")
         timescale = int.from_bytes(data[o+28:o+32], "big")
         duration = int.from_bytes(data[o+32:o+40], "big")
         unset = 0xFFFFFFFFFFFFFFFF        # v1 duration is 64-bit (leg-1 #1)
     else:
+        if o + 28 > len(data):
+            return out
         created = int.from_bytes(data[o+12:o+16], "big")
         timescale = int.from_bytes(data[o+20:o+24], "big")
         duration = int.from_bytes(data[o+24:o+28], "big")
@@ -1679,6 +1688,8 @@ def _parse_mvhd(data: bytes, o: int) -> dict:
 
 def _parse_tkhd_dims(data: bytes, o: int) -> tuple[int | None, int | None]:
     """track header → (width, height) from the 16.16 fixed-point fields at the box tail."""
+    if o + 9 > len(data):                 # leg-4/Gemini: guard the version-byte read
+        return None, None
     ver = data[o+8]
     base = o + (96 if ver == 1 else 84)   # width offset: v0 = o+84, v1 = o+96 (8-byte times)
     if base + 8 > len(data):
