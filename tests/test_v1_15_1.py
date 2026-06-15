@@ -83,3 +83,14 @@ class TestRecognizedAsSupported:
         (tmp_path / "IMG.heic").write_bytes(_ftyp(b"heic") + b"\x00" * 64)
         rec = next(f for f in Scanner(source_dir=tmp_path).scan().files if f.filename == "IMG.heic")
         assert rec.mime_analysis.matches_extension is True
+
+    def test_generic_brand_heic_mismatches_extension(self, tmp_path):
+        # DECISION (observe-don't-interpret): we report the MAJOR brand's type. A .heic
+        # whose major brand is the generic `mif1` → detected image/heif vs extension
+        # image/heic → matches_extension=False. This is an honest content-vs-extension
+        # SIGNAL, not a bug — file-observer surfaces the divergence, never "fixes" it.
+        # Deep compatible-brands analysis (would mif1+heic-compatible → image/heic?) is
+        # v1.16 HEIC-specialist territory, not the fallback sniffer.
+        (tmp_path / "IMG.heic").write_bytes(_ftyp(b"mif1") + b"\x00" * 64)
+        rec = next(f for f in Scanner(source_dir=tmp_path).scan().files if f.filename == "IMG.heic")
+        assert rec.mime_analysis.matches_extension is False
