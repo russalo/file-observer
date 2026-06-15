@@ -71,9 +71,12 @@ class TestBlastRadiusContained:
     """The relaxation must stay scoped to `email`. A lying binary-format extension
     (text content named .pdf/.docx) must STILL be guard-skipped on the no-libmagic
     path — those namespaces are NOT extension-trusted (a genuine file would have a
-    magic signature). Pins EXTENSION_TRUSTED_NAMESPACES tiny."""
+    magic signature). Pins EXTENSION_TRUSTED_MIMES tiny + MIME-gated (not namespace —
+    so a lying .msg, binary OLE2 in the same `email` namespace, stays skipped)."""
 
-    @pytest.mark.parametrize("name", ["lying.pdf", "lying.docx"])
+    # .msg shares the `email` namespace but is BINARY OLE2 — a lying text .msg must
+    # STAY skipped (the v1.15.2 gate is by MIME message/rfc822, not by namespace).
+    @pytest.mark.parametrize("name", ["lying.pdf", "lying.docx", "lying.msg"])
     def test_lying_binary_extension_still_skipped(self, tmp_path, monkeypatch, name):
         monkeypatch.setattr(fo, "magic", None)            # no-libmagic path
         (tmp_path / name).write_text("just plain text, not really a " + name)

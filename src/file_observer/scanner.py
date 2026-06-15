@@ -833,14 +833,15 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "chatlog": {"text/plain", "text/markdown", "text/x-markdown", "application/json", "application/jsonl", "application/x-ndjson"},
 }
 
-# v1.15.2: namespaces whose formats are TEXT-based (no magic byte signature exists even
-# for a genuine file) AND whose specialist self-validates on bad input. For these, an
-# extension-derived MIME that IS a recognized format for the namespace is trustworthy
-# WITHOUT a corroborating format_signature (a binary format would have one; its absence
-# is suspicious only for binary formats). Only `email` (.eml → message/rfc822, parsed by
-# stdlib email.parser which degrades gracefully on non-email). .msg is OLE2 (signed),
-# unaffected. Keep this set TINY — it relaxes the guard's lying-extension protection.
-EXTENSION_TRUSTED_NAMESPACES: set[str] = {"email"}
+# v1.15.2: MIME types that are TEXT-based (no magic byte signature exists even for a
+# genuine file) AND whose specialist self-validates on bad input. For these, an
+# extension-derived MIME is trustworthy WITHOUT a corroborating format_signature (a
+# BINARY format would have one; its absence is suspicious only for binary formats).
+# Gate by the specific MIME, NOT the namespace: `.eml` → message/rfc822 (text, parsed by
+# stdlib email.parser, graceful on non-email), but `.msg` → application/vnd.ms-outlook is
+# BINARY OLE2 (same `email` namespace) and must STAY distrusted when unsigned — a lying
+# text `.msg` would otherwise bypass the guard (leg-2/Gemini HIGH). Keep this set TINY.
+EXTENSION_TRUSTED_MIMES: set[str] = {"message/rfc822"}
 
 # v0.8: identifiers for the chatlog specialist. Not registered in
 # SPECIALIST_TOOLS / SPECIALIST_NAMESPACE because those are extension-keyed
@@ -2787,9 +2788,10 @@ class Scanner:
                     # format (pdf/docx/xls) WOULD have a signature, so its absence is
                     # suspicious → distrust. But a TEXT-based, self-validating namespace
                     # (email: .eml message/rfc822) has no signature even when genuine —
-                    # trust it when its MIME is a recognized format for the namespace
-                    # (v1.15.2). This is the no-libmagic .eml path; .msg is OLE2-signed.
-                    if ns in EXTENSION_TRUSTED_NAMESPACES and mime_type in guard:
+                    # trust it when the resolved MIME is a known text-format MIME
+                    # (v1.15.2). Gated by MIME, NOT namespace, so a lying text `.msg`
+                    # (binary OLE2, same namespace, vnd.ms-outlook) stays distrusted.
+                    if mime_type in EXTENSION_TRUSTED_MIMES and mime_type in guard:
                         guard_failed = False
                     else:
                         guard_failed = True
