@@ -2791,7 +2791,10 @@ class Scanner:
                     # trust it when the resolved MIME is a known text-format MIME
                     # (v1.15.2). Gated by MIME, NOT namespace, so a lying text `.msg`
                     # (binary OLE2, same namespace, vnd.ms-outlook) stays distrusted.
-                    if mime_type in EXTENSION_TRUSTED_MIMES and mime_type in guard:
+                    # `sample` must be non-empty: an unreadable/TOCTOU file leaves
+                    # sample=b'' (universal_read_failed) and parsing empty bytes would
+                    # yield an all-null "successful" extraction — skip it (leg-4/codex).
+                    if mime_type in EXTENSION_TRUSTED_MIMES and mime_type in guard and sample:
                         guard_failed = False
                     else:
                         guard_failed = True

@@ -86,3 +86,13 @@ class TestBlastRadiusContained:
         # extension-derived MIME, no magic signature, namespace NOT trusted → no extraction
         assert rec.specialist_metadata is None
         assert any(e.code == "specialist_probe_failed" for e in rec.errors)
+
+    def test_empty_eml_not_trusted(self, tmp_path, monkeypatch):
+        # an empty/unreadable .eml leaves sample=b''; the trust must require a non-empty
+        # read so parsing empty bytes can't masquerade as a successful extraction (leg-4).
+        monkeypatch.setattr(fo, "magic", None)
+        (tmp_path / "empty.eml").write_bytes(b"")
+        rec = next(f for f in Scanner(source_dir=tmp_path,
+                                      config=ScannerConfig(enable_specialists=True)).scan().files
+                   if f.filename == "empty.eml")
+        assert (rec.specialist_metadata or {}).get("email") is None
