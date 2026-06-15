@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.15.1
+    Version:    1.15.2
     Schema:     1.9
     Python:     >= 3.12
     Spec:       docs/v1.15.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.15.1"
-LOGIC_VERSION = "1.5.1"   # v1.15.1 — HEIC/HEIF/AVIF recognition: generic HEIF brands (heif/mif1/msf1) relabel image/heic→image/heif; .heic/.heif/.avif added to SUPPORTED_EXTENSIONS + registered extension MIMEs (recognized, not degraded). MIME-detection change. Prior 1.5.0 = v1.15.0 HEIC detection.
+SCANNER_VERSION = "1.15.2"
+LOGIC_VERSION = "1.5.2"   # v1.15.2 — MIME-guard hardening: accept application/vnd.ms-office (generic OLE2-office); trust extension-derived message/rfc822 for the self-validating email namespace (.eml on the no-libmagic path). Extraction-dispatch change. Prior 1.5.1 = v1.15.1 HEIC recognition.
 SCHEMA_VERSION = "1.9"   # v1.14.0 — promotion pass: pdf.parser + provenance + application provisional→stable + stability surfaced in --schema
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -822,14 +822,26 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
     "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      "application/vnd.ms-excel", "application/x-ole-storage", "application/CDFV2",
+                     "application/vnd.ms-office",  # v1.15.2: libmagic's generic OLE2-office MIME
                      "application/octet-stream"},
     "document": {"application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                  "application/msword", "application/x-ole-storage", "text/rtf", "application/rtf",
-                 "application/CDFV2", "application/octet-stream"},
+                 "application/CDFV2", "application/vnd.ms-office",  # v1.15.2: generic OLE2-office
+                 "application/octet-stream"},
     # v0.8: chatlog is the first content-detected (not extension-driven)
     # specialist. Its MIME guard accepts text/plain and the markdown variants.
     "chatlog": {"text/plain", "text/markdown", "text/x-markdown", "application/json", "application/jsonl", "application/x-ndjson"},
 }
+
+# v1.15.2: MIME types that are TEXT-based (no magic byte signature exists even for a
+# genuine file) AND whose specialist self-validates on bad input. For these, an
+# extension-derived MIME is trustworthy WITHOUT a corroborating format_signature (a
+# BINARY format would have one; its absence is suspicious only for binary formats).
+# Gate by the specific MIME, NOT the namespace: `.eml` → message/rfc822 (text, parsed by
+# stdlib email.parser, graceful on non-email), but `.msg` → application/vnd.ms-outlook is
+# BINARY OLE2 (same `email` namespace) and must STAY distrusted when unsigned — a lying
+# text `.msg` would otherwise bypass the guard (leg-2/Gemini HIGH). Keep this set TINY.
+EXTENSION_TRUSTED_MIMES: set[str] = {"message/rfc822"}
 
 # v0.8: identifiers for the chatlog specialist. Not registered in
 # SPECIALIST_TOOLS / SPECIALIST_NAMESPACE because those are extension-keyed
@@ -2772,8 +2784,20 @@ class Scanner:
                     else:
                         guard_failed = False
                 elif mime_from_extension and guard and not format_signatures:
-                    # No signatures detected and MIME is just extension echo — not trustworthy
-                    guard_failed = True
+                    # Extension-derived MIME, no corroborating magic signature. A binary
+                    # format (pdf/docx/xls) WOULD have a signature, so its absence is
+                    # suspicious → distrust. But a TEXT-based, self-validating namespace
+                    # (email: .eml message/rfc822) has no signature even when genuine —
+                    # trust it when the resolved MIME is a known text-format MIME
+                    # (v1.15.2). Gated by MIME, NOT namespace, so a lying text `.msg`
+                    # (binary OLE2, same namespace, vnd.ms-outlook) stays distrusted.
+                    # `sample` must be non-empty: an unreadable/TOCTOU file leaves
+                    # sample=b'' (universal_read_failed) and parsing empty bytes would
+                    # yield an all-null "successful" extraction — skip it (leg-4/codex).
+                    if mime_type in EXTENSION_TRUSTED_MIMES and mime_type in guard and sample:
+                        guard_failed = False
+                    else:
+                        guard_failed = True
                 elif guard and mime_type not in guard:
                     guard_failed = True
                 else:

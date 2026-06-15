@@ -22,8 +22,10 @@ def _ftyp(brand: bytes) -> bytes:
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.15.1", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.5.1", f"LOGIC: {LOGIC_VERSION!r}"   # brand-label move + recognition
+    # v1.15.1 floor — the exact current-version pin lives in the newest release test.
+    def _v(s): return tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 15, 1), f"SCANNER regressed below 1.15.1: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 5, 1), f"LOGIC regressed below 1.5.1: {LOGIC_VERSION!r}"   # brand-label move + recognition
     assert SCHEMA_VERSION == "1.9", f"SCHEMA unchanged: {SCHEMA_VERSION!r}"
 
 

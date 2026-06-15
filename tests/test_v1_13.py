@@ -128,7 +128,6 @@ class TestSchemaCompleteness:
                         offenders.append(f"{ns}.{k}")
         assert not offenders, f"specialist fields emitted but absent from --schema: {sorted(set(offenders))}"
 
-    @pytest.mark.requires_libmagic  # drives a real .eml scan; the email specialist is guard-skipped without libmagic
     def test_email_body_chatlog_crosscut_field_is_in_schema(self, schema_doc, tmp_path):
         """v1.13 leg-1 #4: the email cross-cut emits specialist_metadata.email.
         body_chatlog when an email body is chatlog-shaped — a real serialized
