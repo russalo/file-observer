@@ -221,3 +221,29 @@ for name, data in {
 }.items():
     (OUT / name).write_bytes(data)
     print(f"wrote {name:24} EXIF fixture ({len(data)} bytes)")
+
+
+# ---- v1.17: minimal ISOBMFF .mov (moov at the TAIL, after mdat) ----------------
+# Self-authored QuickTime container exercising the video_structure parse:
+# moov{mvhd, trak{tkhd, mdia{hdlr(vide), minf{stbl{stsd(codec)}}}}}. Placed AFTER mdat
+# so it tests the tail-scan (real .mov put moov at the end — measured 61/62). Round-trip
+# verified; container-half fields only (codec/duration/dims/creation_date).
+def _mov_with_moov_at_tail(codec=b"avc1", w=1920, h=1080,
+                           created=3658232843, timescale=600, duration=3000):
+    def box(typ, body): return struct.pack(">I", 8 + len(body)) + typ + body
+    mvhd = box(b"mvhd", b"\x00\x00\x00\x00" + struct.pack(">IIII", created, created, timescale, duration) + b"\x00" * 80)
+    tkhd = box(b"tkhd", b"\x00\x00\x00\x07" + b"\x00" * 72 + struct.pack(">II", w << 16, h << 16))
+    hdlr = box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 13)
+    stsd = box(b"stsd", b"\x00\x00\x00\x00" + struct.pack(">I", 1) + box(codec, b"\x00" * 8))
+    stbl = box(b"stbl", stsd)
+    minf = box(b"minf", stbl)
+    mdia = box(b"mdia", hdlr + minf)
+    trak = box(b"trak", tkhd + mdia)
+    moov = box(b"moov", mvhd + trak)
+    ftyp = box(b"ftyp", b"qt  " + b"\x00\x00\x00\x00" + b"qt  ")
+    mdat = box(b"mdat", b"\x00" * 64)
+    return ftyp + mdat + moov
+
+
+(OUT / "video_h264.mov").write_bytes(_mov_with_moov_at_tail())
+print(f"wrote video_h264.mov           minimal ISOBMFF (moov-at-tail) fixture")

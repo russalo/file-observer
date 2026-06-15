@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.16.0
-    Schema:     1.10
+    Version:    1.17.0
+    Schema:     1.11
     Python:     >= 3.12
-    Spec:       docs/v1.16.0_RFC_Specification.md (current)
+    Spec:       docs/v1.17.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.16.0"
-LOGIC_VERSION = "1.6.0"   # v1.16.0 — image capture-metadata: EXIF (make/model/orientation/datetime_original/gps_present) + xmp_present for JPEG & HEIC, HEIC dimensions via ispe, geotagged safety_flag. New extraction surface (specialist routing for .heic/.heif/.avif). Prior 1.5.2 = v1.15.2 MIME-guard hardening.
-SCHEMA_VERSION = "1.10"   # v1.16.0 — image specialist gains EXIF fields (make/model/orientation/datetime_original/gps_present/xmp_present) + geotagged safety_flag (additive)
+SCANNER_VERSION = "1.17.0"
+LOGIC_VERSION = "1.7.0"   # v1.17.0 — video container metadata: codec/duration_s/width/height/creation_date for MP4/MOV/M4V (ISOBMFF moov/mvhd/tkhd/stsd, stdlib struct). New extraction surface (video_structure specialist routing for .mp4/.mov/.m4v). Prior 1.6.0 = v1.16.0 image EXIF.
+SCHEMA_VERSION = "1.11"   # v1.17.0 — new video specialist namespace (codec/duration_s/width/height/creation_date), additive
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -157,8 +157,8 @@ SUPPORTED_EXTENSIONS = {
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
     ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
     ".doc", ".xls", ".jsonl",
-    ".heic", ".heif", ".avif",   # v1.15.1: recognized image formats (detected since
-                                 # v1.15; no specialist yet — extraction is v1.16)
+    ".heic", ".heif", ".avif",   # v1.16: image EXIF specialist (recognized since v1.15.1)
+    ".mp4", ".mov", ".m4v",      # v1.17: video container specialist (ISOBMFF)
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -276,6 +276,9 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".heic": "image_structure",
     ".heif": "image_structure",
     ".avif": "image_structure",
+    ".mp4": "video_structure",
+    ".mov": "video_structure",
+    ".m4v": "video_structure",
     ".msg": "email_envelope",
     ".eml": "email_envelope",
     ".xlsx": "spreadsheet_structure",
@@ -689,6 +692,9 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".heic": "image",
     ".heif": "image",
     ".avif": "image",
+    ".mp4": "video",
+    ".mov": "video",
+    ".m4v": "video",
     ".msg": "email",
     ".eml": "email",
     ".xlsx": "spreadsheet",
@@ -714,6 +720,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
         "width", "height", "bit_depth", "make", "model", "orientation",
         "datetime_original", "gps_present", "xmp_present",
     ],
+    "video": ["codec", "duration_s", "width", "height", "creation_date"],
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
     "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
@@ -830,6 +837,8 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "pdf": {"application/pdf"},
     "image": {"image/png", "image/jpeg", "image/gif", "image/webp",
               "image/heic", "image/heif", "image/avif"},
+    "video": {"video/mp4", "video/quicktime", "video/x-m4v", "application/mp4",
+              "application/octet-stream"},
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
     "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      "application/vnd.ms-excel", "application/x-ole-storage", "application/CDFV2",
@@ -1621,6 +1630,101 @@ def _heif_iloc_extent(data: bytes, o: int, want_id: int) -> bytes | None:
             if iid == want_id and 0 <= start and start + elen <= len(data):
                 return data[start:start+elen]
     return None
+
+
+# --- v1.17: video container metadata (ISOBMFF moov/mvhd/trak/tkhd/hdlr/stsd, stdlib
+# struct, no library). Container/track half only — codec / duration_s / dims /
+# creation_date, oracle-validated against exiftool on 62 real .mov. The iPhone-specific
+# Apple QuickTime keys (make/model) + GPS-presence are GATED on a real iPhone-.mov corpus
+# (0/62 conformance files carry them) and land as an additive follow-up. ---
+_QT_EPOCH_OFFSET = 2082844800  # seconds between 1904-01-01 and 1970-01-01 (QuickTime epoch)
+
+
+def _box_find(data: bytes, typ: str, start: int, end: int) -> tuple[int, int] | None:
+    """First direct child box of the given type in [start, end) → (offset, size)."""
+    for t, o, s in _iter_isobmff(data, start, end):
+        if t == typ:
+            return o, s
+    return None
+
+
+def _parse_mvhd(data: bytes, o: int) -> dict:
+    """movie header → creation_date (ISO 8601 UTC) + duration_s (float seconds)."""
+    out: dict = {"creation_date": None, "duration_s": None}
+    ver = data[o+8]
+    if ver == 1:
+        created = int.from_bytes(data[o+12:o+20], "big")
+        timescale = int.from_bytes(data[o+28:o+32], "big")
+        duration = int.from_bytes(data[o+32:o+40], "big")
+        unset = 0xFFFFFFFFFFFFFFFF        # v1 duration is 64-bit (leg-1 #1)
+    else:
+        created = int.from_bytes(data[o+12:o+16], "big")
+        timescale = int.from_bytes(data[o+20:o+24], "big")
+        duration = int.from_bytes(data[o+24:o+28], "big")
+        unset = 0xFFFFFFFF
+    if created:
+        import datetime as _dt
+        # Build from the 1904 epoch via timedelta (NOT fromtimestamp) so pre-1970
+        # creation times convert identically on every platform (leg-1 #2 — Windows
+        # raises on negative POSIX timestamps); explicit UTC keeps it locale-independent.
+        try:
+            dt = _dt.datetime(1904, 1, 1, tzinfo=_dt.timezone.utc) + _dt.timedelta(seconds=created)
+            out["creation_date"] = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except (OverflowError, ValueError):
+            out["creation_date"] = None
+    if timescale and duration and duration != unset:
+        out["duration_s"] = round(duration / timescale, 3)
+    return out
+
+
+def _parse_tkhd_dims(data: bytes, o: int) -> tuple[int | None, int | None]:
+    """track header → (width, height) from the 16.16 fixed-point fields at the box tail."""
+    ver = data[o+8]
+    base = o + (96 if ver == 1 else 84)   # width offset: v0 = o+84, v1 = o+96 (8-byte times)
+    if base + 8 > len(data):
+        return None, None
+    w = int.from_bytes(data[base:base+4], "big") >> 16
+    h = int.from_bytes(data[base+4:base+8], "big") >> 16
+    return (w or None), (h or None)
+
+
+def _video_track(data: bytes, moov_o: int, moov_end: int) -> dict:
+    """Find the 'vide'-handler trak; return its dims (tkhd) + codec fourCC (stsd)."""
+    out: dict = {"width": None, "height": None, "codec": None}
+    for t, o, s in _iter_isobmff(data, moov_o+8, moov_end):
+        if t != "trak":
+            continue
+        mdia = _box_find(data, "mdia", o+8, o+s)
+        if not mdia:
+            continue
+        mo, ms = mdia
+        hdlr = _box_find(data, "hdlr", mo+8, mo+ms)
+        if not hdlr or data[hdlr[0]+16:hdlr[0]+20] != b"vide":
+            continue
+        tkhd = _box_find(data, "tkhd", o+8, o+s)
+        if tkhd:
+            out["width"], out["height"] = _parse_tkhd_dims(data, tkhd[0])
+        minf = _box_find(data, "minf", mo+8, mo+ms)
+        stbl = _box_find(data, "stbl", minf[0]+8, minf[0]+minf[1]) if minf else None
+        stsd = _box_find(data, "stsd", stbl[0]+8, stbl[0]+stbl[1]) if stbl else None
+        if stsd and stsd[0] + 24 <= len(data):
+            # stsd: version/flags(4) + entry_count(4) + first sample entry [size(4)+format(4)]
+            out["codec"] = data[stsd[0]+20:stsd[0]+24].decode("latin-1", "replace").strip() or None
+        return out
+    return out
+
+
+def _parse_moov(moov: bytes) -> dict:
+    """Parse a standalone moov box buffer (offset 0). Container/track half only."""
+    out: dict = {"codec": None, "duration_s": None, "width": None, "height": None,
+                 "creation_date": None}
+    msize = struct.unpack(">I", moov[:4])[0] if len(moov) >= 4 else len(moov)
+    end = min(msize, len(moov))
+    mvhd = _box_find(moov, "mvhd", 8, end)
+    if mvhd:
+        out.update(_parse_mvhd(moov, mvhd[0]))
+    out.update(_video_track(moov, 0, end))
+    return out
 
 
 class Scanner:
@@ -3060,6 +3164,9 @@ class Scanner:
                     elif extension in {".jpg", ".jpeg", ".heic", ".heif", ".avif"}:
                         is_deviation = True
                         dev_reason, dev_budget = "exif_metadata_beyond_sample", self.IMAGE_METADATA_MAX_BYTES
+                    elif extension in {".mp4", ".mov", ".m4v"}:
+                        is_deviation = True
+                        dev_reason, dev_budget = "moov_box_beyond_sample", self.MOOV_MAX_BYTES
                     else:
                         is_deviation = False
                         dev_reason = dev_budget = None
@@ -3202,6 +3309,8 @@ class Scanner:
             return self._extract_jpeg_metadata(path, sample)
         if extension in {".heic", ".heif", ".avif"}:
             return self._extract_heic_metadata(path, sample)
+        if extension in {".mp4", ".mov", ".m4v"}:
+            return self._extract_video_metadata(path, sample)
         if extension == ".msg":
             return self._extract_msg_metadata(path)
         if extension == ".eml":
@@ -4204,6 +4313,60 @@ class Scanner:
             # observe-with-disclosure (the v1.12 extraction_permission_bypassed pattern):
             # surface GPS *presence*, never coordinates.
             meta["_safety_extras"] = ["geotagged"]
+
+    # v1.17: video container metadata. `moov` is usually at the file TAIL (measured: 61/62
+    # real .mov), so scanning top-level boxes and seeking past the giant `mdat` reads ONLY
+    # the moov box — bounded, no whole-file read. Cap the moov size (a real moov is KBs–few
+    # MB; reject a hostile oversize claim).
+    MOOV_MAX_BYTES = 16 << 20  # 16 MiB
+
+    def _read_moov(self, path: Path) -> bytes | None:
+        """Return the bytes of the `moov` box (seeking past `mdat`), or None. Bounded by
+        MOOV_MAX_BYTES; never raises (caller-safe)."""
+        try:
+            with open(path, "rb") as fh:
+                fh.seek(0, 2)
+                fsize = fh.tell()
+                pos = 0
+                while pos + 8 <= fsize:
+                    fh.seek(pos)
+                    hdr = fh.read(8)
+                    if len(hdr) < 8:
+                        break
+                    size = struct.unpack(">I", hdr[:4])[0]
+                    typ = hdr[4:8]
+                    if size == 1:                       # 64-bit largesize
+                        ext = fh.read(8)
+                        if len(ext) < 8:
+                            break
+                        size = struct.unpack(">Q", ext)[0]
+                    if size == 0:                       # box runs to EOF
+                        size = fsize - pos
+                    if typ == b"moov":
+                        if size > self.MOOV_MAX_BYTES or size < 8:
+                            return None
+                        fh.seek(pos)
+                        return fh.read(size)
+                    if size < 8:
+                        break
+                    pos += size
+        except OSError:
+            return None
+        return None
+
+    def _extract_video_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+        # Container/track half (v1.17): codec / duration_s / width / height / creation_date.
+        # Apple QuickTime keys (make/model) + GPS-presence are gated on real iPhone .mov.
+        moov = self._read_moov(path)
+        meta: dict[str, Any] = {"codec": None, "duration_s": None, "width": None,
+                                "height": None, "creation_date": None}
+        if moov is None:
+            return meta
+        try:
+            meta.update(_parse_moov(moov))
+        except Exception:
+            pass
+        return meta
 
     def _extract_eml_metadata(self, sample: bytes) -> dict[str, Any] | None:
         try:

@@ -21,6 +21,11 @@ the public format definitions:
   (GPS present → `geotagged`, + XMP marker), `exif_camera_nogps.jpg` (no GPS), and
   `exif_phone_gps.heic` (HEIC dims from EXIF pixel dimensions, GPS present). No
   third-party photo — license-clean.
+- **Video (`video_h264.mov`)** — a minimal self-authored QuickTime/ISOBMFF container
+  (`moov`{`mvhd`,`trak`{`tkhd`,`mdia`{`hdlr`,`minf`/`stbl`/`stsd`}}}) with the `moov` box
+  placed AFTER `mdat` (the tail), so it exercises the v1.17 `video_structure` tail-scan
+  (real `.mov` put `moov` at the end — measured 61/62). Container-half fields only
+  (codec/duration/dims/creation_date). No third-party video — license-clean.
 
 Regenerate: `python tests/fixtures/generated/generate.py`. Tested by
 `tests/test_fixture_coverage.py`.
