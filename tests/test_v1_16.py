@@ -210,15 +210,14 @@ class TestRobustness:
         assert m["make"] is None  # no EXIF located, no crash
 
     def test_bounded_head_read(self, scanner, tmp_path):
-        # EXIF beyond the 1 MiB cap is not read (bounded-observation). Put 2 MiB of
-        # filler between SOI and the EXIF APP1 → EXIF falls outside the cap → None.
+        # EXIF beyond the 1 MiB cap is not read (bounded-observation). Take a real
+        # EXIF fixture and push its APP1 past 1 MiB with APP0 filler segments inserted
+        # right after the SOI → EXIF falls outside the head read → fields None.
         import struct
-        from tests.fixtures.generated.generate import _exif_tiff  # type: ignore
-        tiff = _exif_tiff("Canon", "Canon EOS 5D", "2023:01:01 00:00:00", 1, 100, 100, True)
-        app1 = b"Exif\x00\x00" + tiff
-        # APP0 filler segment(s) pushing APP1 past 1 MiB
+        orig = (GEN / "exif_camera_gps.jpg").read_bytes()
+        assert orig[:2] == b"\xff\xd8"
         filler = b"\xff\xe0" + struct.pack(">H", 0xFFFF) + b"\x00" * (0xFFFF - 2)
-        body = b"\xff\xd8" + filler * 20 + b"\xff\xe1" + struct.pack(">H", len(app1) + 2) + app1 + b"\xff\xd9"
+        body = b"\xff\xd8" + filler * 32 + orig[2:]   # ~2 MiB of filler before the APP1
         p = tmp_path / "big.jpg"
         p.write_bytes(body)
         meta = scanner._extract_jpeg_metadata(p, body[:8192])
