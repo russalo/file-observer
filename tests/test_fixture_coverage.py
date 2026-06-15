@@ -47,7 +47,7 @@ class TestHeifAvifFixtures:
         ext = Path(name).suffix
         assert ext in SUPPORTED_EXTENSIONS                      # v1.15.1 recognition
         assert not any(e.code == "unsupported_extension" for e in rec.errors)
-        assert rec.requires_specialist_tool is False           # no specialist yet (v1.16)
+        assert rec.requires_specialist_tool is True            # v1.16: image-EXIF specialist
         assert rec.is_polyglot is False                        # ftyp-superseding holds
         assert not rec.errors or all(e.code != "universal_read_failed" for e in rec.errors)
 

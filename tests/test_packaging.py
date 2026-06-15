@@ -36,8 +36,9 @@ def test_canonical_top_level_api():
     from file_observer import Scanner, ScannerConfig, manifest_to_json  # noqa: F401
 
     import file_observer
+    from file_observer.scanner import SCANNER_VERSION
 
-    assert file_observer.__version__ == "1.15.2"
+    assert file_observer.__version__ == SCANNER_VERSION
     assert "Scanner" in file_observer.__all__
 
 
@@ -69,9 +70,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.15.2"
-    assert SCHEMA_VERSION == "1.9"  # unchanged in v1.15 — HEIC fix is LOGIC, not a contract change
-    assert LOGIC_VERSION == "1.5.2"  # v1.15.2: HEIC/HEIF/AVIF MIME detection (v1.3 precedent: MIME tier = LOGIC)
+    assert SCANNER_VERSION == "1.16.0"
+    assert SCHEMA_VERSION == "1.10"  # v1.16.0: image specialist gains EXIF fields + geotagged (additive)
+    assert LOGIC_VERSION == "1.6.0"  # v1.16.0: image capture-metadata extraction surface
 
 
 def test_legacy_scanner_import_warns():

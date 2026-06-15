@@ -29,7 +29,7 @@ def test_release_version_surfaces():
     def _v(s): return tuple(int(p) for p in s.split("."))
     assert _v(SCANNER_VERSION) >= (1, 15, 0), f"SCANNER regressed below 1.15.0: {SCANNER_VERSION!r}"
     assert _v(LOGIC_VERSION) >= (1, 5, 0), f"LOGIC regressed below 1.5.0: {LOGIC_VERSION!r}"   # HEIC MIME change
-    assert SCHEMA_VERSION == "1.9", f"SCHEMA should be unchanged: {SCHEMA_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 9), f"SCHEMA regressed below 1.9: {SCHEMA_VERSION!r}"
 
 
 class TestHeicBrandDetection:

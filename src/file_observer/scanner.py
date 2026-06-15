@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.15.2
-    Schema:     1.9
+    Version:    1.16.0
+    Schema:     1.10
     Python:     >= 3.12
-    Spec:       docs/v1.15.0_RFC_Specification.md (current)
+    Spec:       docs/v1.16.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.15.2"
-LOGIC_VERSION = "1.5.2"   # v1.15.2 — MIME-guard hardening: accept application/vnd.ms-office (generic OLE2-office); trust extension-derived message/rfc822 for the self-validating email namespace (.eml on the no-libmagic path). Extraction-dispatch change. Prior 1.5.1 = v1.15.1 HEIC recognition.
-SCHEMA_VERSION = "1.9"   # v1.14.0 — promotion pass: pdf.parser + provenance + application provisional→stable + stability surfaced in --schema
+SCANNER_VERSION = "1.16.0"
+LOGIC_VERSION = "1.6.0"   # v1.16.0 — image capture-metadata: EXIF (make/model/orientation/datetime_original/gps_present) + xmp_present for JPEG & HEIC, HEIC dimensions via ispe, geotagged safety_flag. New extraction surface (specialist routing for .heic/.heif/.avif). Prior 1.5.2 = v1.15.2 MIME-guard hardening.
+SCHEMA_VERSION = "1.10"   # v1.16.0 — image specialist gains EXIF fields (make/model/orientation/datetime_original/gps_present/xmp_present) + geotagged safety_flag (additive)
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -273,6 +273,9 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".png": "image_structure",
     ".jpg": "image_structure",
     ".jpeg": "image_structure",
+    ".heic": "image_structure",
+    ".heif": "image_structure",
+    ".avif": "image_structure",
     ".msg": "email_envelope",
     ".eml": "email_envelope",
     ".xlsx": "spreadsheet_structure",
@@ -324,6 +327,7 @@ SAFETY_FLAGS: dict[str, str] = {
     "has_ole_objects": "RTF contains \\objemb or \\objlink",
     "has_external_references": "XML contains <!ENTITY with SYSTEM or PUBLIC",
     "extraction_permission_bypassed": "owner-locked encrypted PDF: EXTRACT permission not set but metadata extracted anyway (v1.12)",
+    "geotagged": "image EXIF carries a GPS IFD (location present; coordinates NOT extracted) (v1.16)",
 }
 
 # v1.13: PROVENANCE_TRIGGERS — the complete signal_provenance trigger surface,
@@ -682,6 +686,9 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".png": "image",
     ".jpg": "image",
     ".jpeg": "image",
+    ".heic": "image",
+    ".heif": "image",
+    ".avif": "image",
     ".msg": "email",
     ".eml": "email",
     ".xlsx": "spreadsheet",
@@ -703,7 +710,10 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
         "author", "producer", "creator", "creation_date", "pdf_version",
         "text_detected", "sample_text_marker_density", "parser",
     ],
-    "image": ["width", "height", "bit_depth"],
+    "image": [
+        "width", "height", "bit_depth", "make", "model", "orientation",
+        "datetime_original", "gps_present", "xmp_present",
+    ],
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
     "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
@@ -818,7 +828,8 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
 # MIME types a specialist namespace accepts — skip if mime_type doesn't match
 SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "pdf": {"application/pdf"},
-    "image": {"image/png", "image/jpeg", "image/gif", "image/webp"},
+    "image": {"image/png", "image/jpeg", "image/gif", "image/webp",
+              "image/heic", "image/heif", "image/avif"},
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
     "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      "application/vnd.ms-excel", "application/x-ole-storage", "application/CDFV2",
@@ -1416,6 +1427,185 @@ def run_watch(source_dir: Path, config: "ScannerConfig") -> int:
         if last_tmp:
             try: Path(last_tmp).unlink()
             except OSError: pass
+
+
+# --- v1.16: capture-metadata parse helpers (stdlib only, no Pillow). EXIF in JPEG
+# (APP1) and HEIC (meta→iinf/iloc→'Exif' item) → TIFF/IFD0 + GPS-presence; HEIC image
+# dimensions via the `ispe` box; XMP-presence via the Adobe namespace marker. Validated
+# against a real corpus (iPhone HEIC + camera jpgs) before integration. All bounded:
+# callers pass a head-capped buffer (EXIF/meta live near the file front). ---
+_EXIF_IFD0_TAGS = {0x010F: "make", 0x0110: "model", 0x0112: "orientation", 0x0132: "datetime"}
+_EXIF_SUB_ASCII = {0x9003: "datetime_original"}
+_EXIF_SUB_NUM = {0xA002: "pixel_x", 0xA003: "pixel_y"}  # authoritative image dims
+_EXIF_GPS_IFD_PTR = 0x8825
+_EXIF_SUB_IFD_PTR = 0x8769
+_EXIF_TYPE_SIZE = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8}
+_XMP_MARKER = b"http://ns.adobe.com/xap/1.0/"
+
+
+def _exif_ascii(b: bytes) -> str:
+    return b.split(b"\x00")[0].decode("latin-1", "replace").strip()
+
+
+def _parse_exif_tiff(buf: bytes) -> dict | None:
+    """Parse a TIFF/EXIF block (starts at the II*/MM* header). Returns make/model/
+    orientation/datetime_original + gps_present, or None if not a TIFF block."""
+    if len(buf) < 8 or buf[:2] not in (b"II", b"MM"):
+        return None
+    bo = "<" if buf[:2] == b"II" else ">"
+    out: dict = {}
+    try:
+        def read_ifd(off):
+            if off < 0 or off + 2 > len(buf):
+                return {}
+            n = struct.unpack(bo + "H", buf[off:off+2])[0]
+            entries = {}
+            for i in range(n):
+                e = off + 2 + i * 12
+                if e + 12 > len(buf):
+                    break
+                tag, typ, cnt = struct.unpack(bo + "HHI", buf[e:e+8])
+                valoff = buf[e+8:e+12]
+                size = _EXIF_TYPE_SIZE.get(typ, 1) * cnt
+                if size <= 4:
+                    raw = valoff
+                else:
+                    p = struct.unpack(bo + "I", valoff)[0]
+                    raw = buf[p:p+size] if 0 <= p and p + size <= len(buf) else b""
+                entries[tag] = (typ, cnt, raw)
+            return entries
+        ifd0 = read_ifd(struct.unpack(bo + "I", buf[4:8])[0])
+        for tag, name in _EXIF_IFD0_TAGS.items():
+            if tag in ifd0:
+                typ, _cnt, raw = ifd0[tag]
+                out[name] = _exif_ascii(raw) if typ == 2 else struct.unpack(bo + "H", raw[:2])[0] if typ == 3 else None
+        out["gps_present"] = _EXIF_GPS_IFD_PTR in ifd0
+        if _EXIF_SUB_IFD_PTR in ifd0 and ifd0[_EXIF_SUB_IFD_PTR][0] == 4:
+            sub = read_ifd(struct.unpack(bo + "I", ifd0[_EXIF_SUB_IFD_PTR][2])[0])
+            for tag, name in _EXIF_SUB_ASCII.items():
+                if tag in sub and sub[tag][0] == 2:
+                    out[name] = _exif_ascii(sub[tag][2])
+            for tag, name in _EXIF_SUB_NUM.items():
+                if tag in sub:
+                    typ, _cnt, raw = sub[tag]
+                    if typ == 3:        # SHORT
+                        out[name] = struct.unpack(bo + "H", raw[:2])[0]
+                    elif typ == 4:      # LONG
+                        out[name] = struct.unpack(bo + "I", raw[:4])[0]
+    except Exception:
+        return out or None
+    return out or None
+
+
+def _exif_tiff_from_jpeg(data: bytes) -> bytes | None:
+    """Locate the EXIF TIFF block via the JPEG APP1 marker (bounded by the buffer)."""
+    i = 2
+    while i + 4 < len(data):
+        if data[i] != 0xFF:
+            break
+        marker = data[i+1]
+        if marker == 0xDA:                       # start of scan — metadata done
+            break
+        seglen = struct.unpack(">H", data[i+2:i+4])[0]
+        seg = data[i+4: i+2+seglen]
+        if marker == 0xE1 and seg[:6] == b"Exif\x00\x00":
+            return seg[6:]
+        i += 2 + seglen
+    return None
+
+
+def _iter_isobmff(data: bytes, start: int = 0, end: int | None = None):
+    """Yield (type, offset, size) for ISOBMFF boxes in [start, end)."""
+    end = len(data) if end is None else min(end, len(data))
+    o = start
+    while o + 8 <= end:
+        size = struct.unpack(">I", data[o:o+4])[0]
+        typ = data[o+4:o+8].decode("latin-1", "replace")
+        if size == 1:
+            if o + 16 > end:
+                break
+            size = struct.unpack(">Q", data[o+8:o+16])[0]
+        if size == 0:
+            size = end - o
+        yield typ, o, size
+        if size < 8:
+            break
+        o += size
+
+
+def _heif_exif_tiff(data: bytes) -> bytes | None:
+    """From a (head-capped) HEIF buffer: locate the 'Exif' item via meta→iinf/iloc and
+    return its TIFF block (best-effort, None on any parse miss). Image dimensions are
+    deliberately NOT read from the `ispe` box — iPhone/HEIC images are tiled, so the
+    first `ispe` is a 512px tile, not the full picture; authoritative dims come from
+    EXIF PixelXDimension/PixelYDimension instead (resolving the primary item via
+    pitm→ipma→grid is deferred — honest-null beats a wrong tile size)."""
+    meta = next((o for t, o, s in _iter_isobmff(data) if t == "meta"), None)
+    if meta is None:
+        return None
+    try:
+        msize = struct.unpack(">I", data[meta:meta+4])[0]
+        exif_id = None
+        for t, o, s in _iter_isobmff(data, meta+12, meta+msize):
+            if t == "iinf":
+                # iinf FullBox: 12-byte header + entry_count (2 bytes if version 0, else 4)
+                child0 = o + 16 if data[o+8] else o + 14
+                for t2, o2, s2 in _iter_isobmff(data, child0, o+s):
+                    if t2 == "infe" and data[o2+16:o2+20] == b"Exif":
+                        exif_id = struct.unpack(">H", data[o2+12:o2+14])[0]
+            elif t == "iloc" and exif_id is not None:
+                blob = _heif_iloc_extent(data, o, exif_id)
+                if blob and len(blob) >= 4:
+                    pre = struct.unpack(">I", blob[:4])[0]
+                    return blob[4+pre:] if 4 + pre < len(blob) else blob[4:]
+    except Exception:
+        pass
+    return None
+
+
+def _heif_iloc_extent(data: bytes, o: int, want_id: int) -> bytes | None:
+    """Version-aware iloc parse (ISO 14496-12): return the byte range for want_id."""
+    ver = data[o+8]
+    p = o + 12
+    offsz, lensz = data[p] >> 4, data[p] & 0xF
+    baseoffsz = data[p+1] >> 4
+    indexsz = data[p+1] & 0xF if ver in (1, 2) else 0
+    p += 2
+    # Degenerate sizes (leg-2/Gemini): with offsz==0 or lensz==0 an extent record is
+    # 0 bytes wide, so the inner extent loop never advances `p` and would spin `ecount`
+    # (up to 65535) times per item regardless of the buffer bound. We also can't locate
+    # a byte range without both sizes — so bail (honest null). Guarantees each extent
+    # consumes ≥1 byte, keeping both loops bounded by the buffer.
+    if not offsz or not lensz:
+        return None
+    def take(n):
+        nonlocal p
+        v = int.from_bytes(data[p:p+n], "big"); p += n; return v
+    cnt = take(4) if ver == 2 else take(2)
+    # Bounded observation: item_count / extent_count are attacker-controlled and can be
+    # up to 2^32-1 — `take` returns 0 past the buffer end (never raises), so without a
+    # buffer bound a crafted iloc would spin for billions of iterations (CPU-bound, NOT
+    # catchable by the surrounding try/except — the v1.8.1 lesson). Bail the moment we
+    # read past the buffer; a real iloc is exhausted long before then.
+    for _ in range(cnt):
+        if p >= len(data):
+            break
+        iid = take(4) if ver == 2 else take(2)
+        cm = take(2) if ver in (1, 2) else 0     # construction_method
+        take(2)                                  # data_reference_index
+        base = take(baseoffsz)                   # base_offset
+        ecount = take(2)
+        for _e in range(ecount):
+            if p >= len(data):
+                break
+            if ver in (1, 2) and indexsz:
+                take(indexsz)
+            eoff = take(offsz)
+            elen = take(lensz)
+            start = base + eoff if cm == 0 else eoff   # method 0 = base_offset + extent
+            if iid == want_id and 0 <= start and start + elen <= len(data):
+                return data[start:start+elen]
+    return None
 
 
 class Scanner:
@@ -2818,18 +3008,20 @@ class Scanner:
                         stage="specialist",
                     ))
                 if raw_metadata is not None:
-                    # v1.12 (leg-1 review #3/#8 + #12): pop transient PDF specialist
-                    # markers BEFORE the metadata is registered in the manifest.
+                    # Pop transient specialist markers BEFORE the metadata is registered
+                    # in the manifest. (v1.12 leg-1 review #3/#8 + #12.)
                     # - `_safety_extras` → merged into FileRecord.safety_flags
-                    #   (cross-format stable surface; promotes the v1.12 disclosure
-                    #   from a narrow `pdf.permission_flags_bypassed` bool).
+                    #   (cross-format stable surface). v1.12 used it for the PDF
+                    #   `extraction_permission_bypassed` disclosure; v1.16 reuses the same
+                    #   channel for image `geotagged` — so the merge runs for ANY
+                    #   specialist, not just `.pdf`.
+                    for flag in raw_metadata.pop("_safety_extras", []) or []:
+                        if flag not in safety_flags:
+                            safety_flags.append(flag)
+                    safety_flags = sorted(safety_flags)
                     # - `_pdf_encryption_unsupported` → emits an ErrorRecord per
                     #   v1.12 RFC §4.1 (cryptography-absent on AES-encrypted PDF).
                     if extension == ".pdf":
-                        for flag in raw_metadata.pop("_safety_extras", []) or []:
-                            if flag not in safety_flags:
-                                safety_flags.append(flag)
-                        safety_flags = sorted(safety_flags)
                         if raw_metadata.pop("_pdf_encryption_unsupported", False):
                             errors.append(ErrorRecord(
                                 code=ERR_PDF_ENCRYPTION_UNSUPPORTED,
@@ -2979,7 +3171,9 @@ class Scanner:
         if extension == ".png":
             return self._extract_png_metadata(sample)
         if extension in {".jpg", ".jpeg"}:
-            return self._extract_jpeg_metadata(sample)
+            return self._extract_jpeg_metadata(path, sample)
+        if extension in {".heic", ".heif", ".avif"}:
+            return self._extract_heic_metadata(path, sample)
         if extension == ".msg":
             return self._extract_msg_metadata(path)
         if extension == ".eml":
@@ -3899,21 +4093,42 @@ class Scanner:
         bit_depth = sample[24]
         return {"width": width, "height": height, "bit_depth": bit_depth}
 
-    def _extract_jpeg_metadata(self, sample: bytes) -> dict[str, Any] | None:
+    # v1.16: EXIF lives in the JPEG APP1 segment / HEIC 'Exif' item, both near the file
+    # front but past the 8 KB universal sample (a thumbnail-bearing APP1 can run tens of
+    # KB; a HEIC iloc offset can point further). Read a bounded head from the path — a
+    # declared deviation from `sample_size`, capped so it stays bounded-observation-safe.
+    IMAGE_METADATA_MAX_BYTES = 1 << 20  # 1 MiB
+
+    def _image_metadata_head(self, path: Path, sample: bytes) -> bytes:
+        """Bounded head read for image metadata. Falls back to the 8 KB sample on any
+        read error (never-crash)."""
+        try:
+            with open(path, "rb") as fh:
+                return fh.read(self.IMAGE_METADATA_MAX_BYTES)
+        except OSError:
+            return sample
+
+    @staticmethod
+    def _jpeg_dimensions(head: bytes) -> tuple[int | None, int | None]:
         # Scan for SOF0 (0xFFC0) or SOF2 (0xFFC2) markers
         i = 0
-        while i < len(sample) - 1:
-            if sample[i] != 0xFF:
+        while i < len(head) - 1:
+            if head[i] != 0xFF:
                 i += 1
                 continue
-            marker = sample[i + 1]
+            marker = head[i + 1]
             if marker in (0xC0, 0xC2):  # SOF0 or SOF2
-                # SOF frame: 2 bytes length, 1 byte precision, 2 bytes height, 2 bytes width
-                if i + 9 > len(sample):
-                    return {"width": None, "height": None}
-                height = struct.unpack(">H", sample[i + 5:i + 7])[0]
-                width = struct.unpack(">H", sample[i + 7:i + 9])[0]
-                return {"width": width, "height": height}
+                if i + 9 > len(head):
+                    return None, None
+                height = struct.unpack(">H", head[i + 5:i + 7])[0]
+                width = struct.unpack(">H", head[i + 7:i + 9])[0]
+                return width, height
+            if marker == 0xDA:  # SOS — start of compressed scan data
+                # SOF always precedes SOS in a valid JPEG. Stop here: scanning into the
+                # entropy-coded stream would false-match a stray 0xFFC0/0xFFC2 byte pair
+                # and return garbage dimensions (leg-2/Gemini — amplified by the v1.16
+                # 1 MiB head vs the old 8 KB sample). Honest-null beats a wrong value.
+                break
             if marker == 0xD8 or marker == 0xD9:  # SOI or EOI
                 i += 2
                 continue
@@ -3921,12 +4136,46 @@ class Scanner:
                 i += 2
                 continue
             # Other markers: skip length
-            if i + 3 < len(sample):
-                seg_len = struct.unpack(">H", sample[i + 2:i + 4])[0]
+            if i + 3 < len(head):
+                seg_len = struct.unpack(">H", head[i + 2:i + 4])[0]
                 i += 2 + seg_len
             else:
                 break
-        return {"width": None, "height": None}
+        return None, None
+
+    def _extract_jpeg_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+        head = self._image_metadata_head(path, sample)
+        width, height = self._jpeg_dimensions(head)
+        meta: dict[str, Any] = {"width": width, "height": height}
+        self._apply_exif(meta, _exif_tiff_from_jpeg(head), head)
+        return meta
+
+    def _extract_heic_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+        head = self._image_metadata_head(path, sample)
+        meta: dict[str, Any] = {"width": None, "height": None}
+        # HEIC dims come from EXIF PixelXDimension/PixelYDimension (authoritative),
+        # filled by _apply_exif when width/height are still None.
+        self._apply_exif(meta, _heif_exif_tiff(head), head)
+        return meta
+
+    @staticmethod
+    def _apply_exif(meta: dict[str, Any], tiff: bytes | None, head: bytes) -> None:
+        """Merge EXIF fields + XMP-presence + geotagged disclosure into an image record.
+        Always sets the EXIF keys (None when absent) so the field surface is stable.
+        Fills width/height from EXIF pixel dimensions only when not already set (JPEG
+        keeps its authoritative SOF dims; HEIC takes them from EXIF)."""
+        exif = _parse_exif_tiff(tiff) if tiff else None
+        for key in ("make", "model", "orientation", "datetime_original"):
+            meta[key] = exif.get(key) if exif else None
+        if meta.get("width") is None and exif and exif.get("pixel_x"):
+            meta["width"], meta["height"] = exif["pixel_x"], exif.get("pixel_y")
+        gps_present = bool(exif.get("gps_present")) if exif else False
+        meta["gps_present"] = gps_present
+        meta["xmp_present"] = _XMP_MARKER in head
+        if gps_present:
+            # observe-with-disclosure (the v1.12 extraction_permission_bypassed pattern):
+            # surface GPS *presence*, never coordinates.
+            meta["_safety_extras"] = ["geotagged"]
 
     def _extract_eml_metadata(self, sample: bytes) -> dict[str, Any] | None:
         try:

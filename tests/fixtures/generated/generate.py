@@ -131,3 +131,93 @@ doc = _minimal_ole2("\x05SummaryInformation",
                     _summaryinformation_propset("File Observer Test Doc", "File Observer Test"))
 (OUT / "generated.doc").write_bytes(doc)
 print(f"wrote generated.doc (minimal OLE2 + SummaryInformation, {len(doc)} bytes)")
+
+
+# ---- v1.16: EXIF-bearing JPEG + HEIC (CIPA DC-008 TIFF/IFD; ISO 14496-12 meta/iloc) --
+# Self-authored EXIF blocks — no third-party photo (license-clean). The scanner reads
+# Make/Model/Orientation/DateTimeOriginal + GPS-IFD presence + EXIF pixel dimensions;
+# these fixtures exercise exactly that path. Round-trip verified against the scanner's
+# own parser at authoring time.
+def _exif_tiff(make, model, dt_original, orientation, px, py, with_gps):
+    """Little-endian TIFF: IFD0 (Make/Model/Orientation/DateTime + Exif ptr [+ GPS ptr])
+    → Exif sub-IFD (DateTimeOriginal + PixelX/YDimension) [→ empty GPS IFD]."""
+    bo = "<"
+    def asc(s): return s.encode("ascii") + b"\x00"
+    make_b, model_b, dto_b, dt_main = asc(make), asc(model), asc(dt_original), asc("2024:01:01 00:00:00")
+    n0 = 6 if with_gps else 5
+    ifd0_size = 2 + 12 * n0 + 4
+    base = 8 + ifd0_size
+    make_ptr, model_ptr = base, base + len(make_b)
+    dt_ptr = model_ptr + len(model_b)
+    exif_off = base + len(make_b) + len(model_b) + len(dt_main)
+    ifdE_size = 2 + 12 * 3 + 4
+    dto_ptr = exif_off + ifdE_size
+    gps_off = dto_ptr + len(dto_b)
+
+    def E(tag, typ, count, payload):
+        if len(payload) <= 4:
+            payload = payload + b"\x00" * (4 - len(payload))
+        return struct.pack(bo + "HHI", tag, typ, count) + payload
+
+    out = bytearray(b"II" + struct.pack(bo + "HI", 42, 8))
+    out += struct.pack(bo + "H", n0)
+    e0 = [
+        (0x010F, 2, len(make_b), struct.pack(bo + "I", make_ptr)),
+        (0x0110, 2, len(model_b), struct.pack(bo + "I", model_ptr)),
+        (0x0112, 3, 1, struct.pack(bo + "H", orientation)),
+        (0x0132, 2, len(dt_main), struct.pack(bo + "I", dt_ptr)),
+        (0x8769, 4, 1, struct.pack(bo + "I", exif_off)),
+    ]
+    if with_gps:
+        e0.append((0x8825, 4, 1, struct.pack(bo + "I", gps_off)))
+    for tag, typ, count, payload in sorted(e0):
+        out += E(tag, typ, count, payload)
+    out += struct.pack(bo + "I", 0) + make_b + model_b + dt_main
+    out += struct.pack(bo + "H", 3)
+    for tag, typ, count, payload in sorted([
+        (0x9003, 2, len(dto_b), struct.pack(bo + "I", dto_ptr)),
+        (0xA002, 4, 1, struct.pack(bo + "I", px)),
+        (0xA003, 4, 1, struct.pack(bo + "I", py)),
+    ]):
+        out += E(tag, typ, count, payload)
+    out += struct.pack(bo + "I", 0) + dto_b
+    if with_gps:
+        out += struct.pack(bo + "H", 0) + struct.pack(bo + "I", 0)   # empty GPS IFD (presence is the signal)
+    return bytes(out)
+
+
+def _jpeg_with_exif(tiff, width, height, with_xmp=False):
+    comp = b"\x01\x11\x00"
+    sof = b"\xff\xc0" + struct.pack(">H", 2 + 1 + 2 + 2 + len(comp)) + b"\x08" + struct.pack(">HH", height, width) + comp
+    out = bytearray(b"\xff\xd8")
+    app1 = b"Exif\x00\x00" + tiff
+    out += b"\xff\xe1" + struct.pack(">H", len(app1) + 2) + app1
+    if with_xmp:
+        xmp = b"http://ns.adobe.com/xap/1.0/\x00<x:xmpmeta/>"
+        out += b"\xff\xe1" + struct.pack(">H", len(xmp) + 2) + xmp
+    return bytes(out + sof + b"\xff\xd9")
+
+
+def _heif_with_exif(tiff, major=b"heic"):
+    def box(typ, body): return struct.pack(">I", 8 + len(body)) + typ + body
+    ftyp = struct.pack(">I", 4 + 4 + 4 + 4 + 8) + b"ftyp" + major + b"\x00\x00\x00\x00" + major + b"mif1"
+    infe = box(b"infe", b"\x02\x00\x00\x00" + struct.pack(">HH", 1, 0) + b"Exif" + b"\x00")
+    iinf = box(b"iinf", b"\x00\x00\x00\x00" + struct.pack(">H", 1) + infe)
+    exif_payload = struct.pack(">I", 0) + tiff
+    def iloc(off):
+        body = b"\x01\x00\x00\x00" + bytes([0x44, 0x00]) + struct.pack(">HHHH", 1, 1, 0, 0)
+        body += struct.pack(">H", 1) + struct.pack(">II", off, len(exif_payload))
+        return box(b"iloc", body)
+    meta = box(b"meta", b"\x00\x00\x00\x00" + iinf + iloc(0))
+    off = len(ftyp) + len(meta) + 8
+    meta = box(b"meta", b"\x00\x00\x00\x00" + iinf + iloc(off))
+    return ftyp + meta + box(b"mdat", exif_payload)
+
+
+for name, data in {
+    "exif_camera_gps.jpg": _jpeg_with_exif(_exif_tiff("Canon", "Canon EOS 5D", "2023:07:04 12:30:00", 1, 5616, 3744, True), 5616, 3744, with_xmp=True),
+    "exif_camera_nogps.jpg": _jpeg_with_exif(_exif_tiff("NIKON", "NIKON D850", "2022:11:02 09:15:42", 6, 8256, 5504, False), 8256, 5504),
+    "exif_phone_gps.heic": _heif_with_exif(_exif_tiff("Apple", "iPhone 15 Pro", "2024:05:01 18:22:10", 6, 4032, 3024, True)),
+}.items():
+    (OUT / name).write_bytes(data)
+    print(f"wrote {name:24} EXIF fixture ({len(data)} bytes)")
