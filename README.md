@@ -43,8 +43,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.8",
-  "context": { "scanner_version": "1.13.0", "logic_version": "1.4.3", "...": "…" },
+  "schema_version": "1.9",
+  "context": { "scanner_version": "1.15.1", "logic_version": "1.5.1", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,11 +76,11 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.13.0` |
-| **Schema** | `1.8` |
-| **Python** | `>= 3.12` |
+| **Version** | `1.15.1` |
+| **Schema** | `1.9` |
+| **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 849 passed, 1 skipped; ran clean (zero fatal errors) — see "Validated at scale" below |
+| **Tests** | 894 passed, 1 skipped; ran clean (zero fatal errors) — see "Validated at scale" below |
 
 ---
 
@@ -282,9 +282,9 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.13.0 RFC Specification](docs/v1.13.0_RFC_Specification.md) | Current release spec — `--schema` self-description. v1.0.0 RFC remains the binding schema-freeze contract. |
-| [v1.12.0 RFC Specification](docs/v1.12.0_RFC_Specification.md) | Prior — encrypted + uncompressed-xref PDF residual closure. |
-| [v1.11.0 RFC Specification](docs/v1.11.0_RFC_Specification.md) | Prior — `--watch` continuous trigger loop. |
+| [v1.15.0 RFC Specification](docs/v1.15.0_RFC_Specification.md) | Current release spec — cross-platform hardening (CI OS matrix + HEIC/HEIF/AVIF). v1.15.1 (HEIC recognition) shipped as a patch under it; see HISTORY.md. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.14.0 RFC Specification](docs/v1.14.0_RFC_Specification.md) | Prior — promotion pass + `--schema` stability annotation. |
+| [v1.13.0 RFC Specification](docs/v1.13.0_RFC_Specification.md) | Prior — `--schema` self-description. |
 
 ---
 

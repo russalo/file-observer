@@ -23,7 +23,7 @@ We will acknowledge receipt within 48 hours and provide an initial assessment wi
 
 | Dependency | Role | Risk mitigation |
 |---|---|---|
-| `python-magic` / `libmagic` | MIME detection | Read-only, no execution. Fallback chain since v1.3: pure-Python magic-signature sniff → extension-based inference if libmagic is absent. |
+| `python-magic` / `libmagic` | MIME detection | Read-only, no execution. Fallback chain since v1.3: pure-Python magic-signature sniff → extension-based inference if libmagic is absent. **v1.15:** excluded on Windows via a `platform_system` dependency marker — python-magic's import-time libmagic search can *hang* on a Windows box without the DLL; the pure-Python fallback runs instead (Windows users wanting libmagic-grade MIME install `python-magic-bin`). |
 | `chardet` | Encoding detection | Read-only. Fallback to encoding cascade if unavailable. |
 | `olefile` | OLE2 parsing (.msg/.doc/.xls) | Read-only stream access. Files opened via path (not buffer) for OLE2 FAT chain traversal. |
 | `defusedxml` | XML parsing | Used when available to block entity expansion attacks. Falls back to stdlib `xml.etree.ElementTree` when not installed (documented risk — entity expansion not mitigated in fallback mode). |
@@ -57,7 +57,7 @@ These are **observations, not assessments**. The scanner reports what it sees. C
 
 | Version | Supported |
 |---|---|
-| 1.13.x | Yes (current) |
-| 1.12.x | Security fixes only |
-| 1.0–1.11.x | No (schema-stable but unsupported; please upgrade) |
+| 1.15.x | Yes (current) |
+| 1.14.x | Security fixes only |
+| 1.0–1.13.x | No (schema-stable but unsupported; please upgrade) |
 | < 1.0 | No |
