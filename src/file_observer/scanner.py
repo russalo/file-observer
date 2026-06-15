@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.15.0
+    Version:    1.15.1
     Schema:     1.9
     Python:     >= 3.12
     Spec:       docs/v1.15.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.15.0"
-LOGIC_VERSION = "1.5.0"   # v1.15.0 — cross-platform hardening: HEIC/HEIF/AVIF detection (ftyp+brand) corrects the no-libmagic fallback mislabeling iPhone photos as video/mp4. MIME-detection change (v1.3 precedent: MIME tier = LOGIC). Prior 1.4.3 = v1.9.1 stat-failure path fix.
+SCANNER_VERSION = "1.15.1"
+LOGIC_VERSION = "1.5.1"   # v1.15.1 — HEIC/HEIF/AVIF recognition: generic HEIF brands (heif/mif1/msf1) relabel image/heic→image/heif; .heic/.heif/.avif added to SUPPORTED_EXTENSIONS + registered extension MIMEs (recognized, not degraded). MIME-detection change. Prior 1.5.0 = v1.15.0 HEIC detection.
 SCHEMA_VERSION = "1.9"   # v1.14.0 — promotion pass: pdf.parser + provenance + application provisional→stable + stability surfaced in --schema
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -142,6 +142,14 @@ mimetypes.add_type("application/vnd.openxmlformats-officedocument.wordprocessing
 mimetypes.add_type("application/vnd.ms-excel", ".xls")
 mimetypes.add_type("application/msword", ".doc")
 mimetypes.add_type("application/rtf", ".rtf")
+# v1.15.1: HEIC/HEIF/AVIF — stdlib mimetypes may not know them on every platform /
+# Python version (extension_mime null where it doesn't). Pin the canonical types
+# deterministically across OSes, matching the
+# brand→MIME sniff (heic→image/heic, generic heif/mif1/msf1→image/heif, avif→image/avif)
+# so a recognized image extension always has an extension_mime.
+mimetypes.add_type("image/heic", ".heic")
+mimetypes.add_type("image/heif", ".heif")
+mimetypes.add_type("image/avif", ".avif")
 
 
 SUPPORTED_EXTENSIONS = {
@@ -149,6 +157,8 @@ SUPPORTED_EXTENSIONS = {
     ".html", ".htm", ".xml", ".toml", ".png", ".msg",
     ".jpg", ".jpeg", ".css", ".vx", ".eml", ".xlsx",
     ".doc", ".xls", ".jsonl",
+    ".heic", ".heif", ".avif",   # v1.15.1: recognized image formats (detected since
+                                 # v1.15; no specialist yet — extraction is v1.16)
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -785,11 +795,13 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
     # (mp4/mov). MORE-SPECIFIC image brands MUST precede the generic ftyp→video/mp4
     # below, or the no-libmagic fallback mislabels every iPhone photo as video/mp4
     # (v1.15 fix; signatures are tested in order).
-    (((4, b"ftyp"), (8, b"heic")), "image/heic"),
-    (((4, b"ftyp"), (8, b"heix")), "image/heic"),
-    (((4, b"ftyp"), (8, b"heif")), "image/heic"),
-    (((4, b"ftyp"), (8, b"mif1")), "image/heic"),   # generic HEIF still image
-    (((4, b"ftyp"), (8, b"msf1")), "image/heic"),   # HEIF image sequence
+    (((4, b"ftyp"), (8, b"heic")), "image/heic"),   # HEVC-coded HEIF
+    (((4, b"ftyp"), (8, b"heix")), "image/heic"),   # HEVC-coded HEIF (10-bit)
+    # v1.15.1: generic HEIF brands report image/heif, NOT image/heic — observe-don't-
+    # interpret (the brand doesn't assert HEVC coding, so don't claim it).
+    (((4, b"ftyp"), (8, b"heif")), "image/heif"),   # generic HEIF
+    (((4, b"ftyp"), (8, b"mif1")), "image/heif"),   # generic HEIF still image
+    (((4, b"ftyp"), (8, b"msf1")), "image/heif"),   # HEIF image sequence
     (((4, b"ftyp"), (8, b"avif")), "image/avif"),
     (((4, b"ftyp"), (8, b"avis")), "image/avif"),   # AVIF image sequence
     (((4, b"ftyp"),), "video/mp4"),
@@ -5199,9 +5211,10 @@ class Scanner:
             found = [s for s in found if s["format"] != "riff_container"]
             seen_formats.discard("riff_container")
         # v1.15: same pattern for ISO-BMFF `ftyp` — a recognized image brand
-        # (HEIC/AVIF) supersedes the generic video/mp4 ftyp label, so a real
+        # (HEIC/HEIF/AVIF) supersedes the generic video/mp4 ftyp label, so a real
         # iPhone photo emits one signature, not a false image+video polyglot.
-        if seen_formats & {"image/heic", "image/avif"}:
+        # (v1.15.1: image/heif added when generic HEIF brands split off image/heic.)
+        if seen_formats & {"image/heic", "image/heif", "image/avif"}:
             found = [s for s in found if s["format"] != "video/mp4"]
             seen_formats.discard("video/mp4")
         found.sort(key=lambda x: x["offset"])

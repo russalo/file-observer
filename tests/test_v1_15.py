@@ -24,8 +24,11 @@ def _ftyp(brand: bytes) -> bytes:
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.15.0", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.5.0", f"LOGIC: {LOGIC_VERSION!r}"   # MIME-detection change (HEIC)
+    # v1.15 floor — the exact current-version pin lives in the newest release test
+    # (test_v1_15_1). v1.15.0 introduced LOGIC 1.5.0; later releases only grow it.
+    def _v(s): return tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 15, 0), f"SCANNER regressed below 1.15.0: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 5, 0), f"LOGIC regressed below 1.5.0: {LOGIC_VERSION!r}"   # HEIC MIME change
     assert SCHEMA_VERSION == "1.9", f"SCHEMA should be unchanged: {SCHEMA_VERSION!r}"
 
 
@@ -39,14 +42,17 @@ class TestHeicBrandDetection:
     @pytest.mark.parametrize("brand,expect", [
         (b"heic", "image/heic"),
         (b"heix", "image/heic"),
-        (b"heif", "image/heic"),
-        (b"mif1", "image/heic"),   # generic HEIF still image
-        (b"msf1", "image/heic"),   # HEIF image sequence
+        # generic HEIF brands relabel to image/heif in v1.15.1 (see test_v1_15_1);
+        # here just assert they sniff as SOME image type, not video.
+        (b"heif", "image"),
+        (b"mif1", "image"),
+        (b"msf1", "image"),
         (b"avif", "image/avif"),
         (b"avis", "image/avif"),
     ])
     def test_image_brands_sniff_as_image(self, scanner, brand, expect):
-        assert scanner._sniff_mime(_ftyp(brand)) == expect
+        got = scanner._sniff_mime(_ftyp(brand))
+        assert got.startswith(expect) if expect == "image" else got == expect
 
     @pytest.mark.parametrize("brand", [b"isom", b"mp42", b"mp41", b"M4V ", b"qt  ", b"dash"])
     def test_video_brands_still_sniff_as_video(self, scanner, brand):
