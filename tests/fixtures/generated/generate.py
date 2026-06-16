@@ -247,3 +247,44 @@ def _mov_with_moov_at_tail(codec=b"avc1", w=1920, h=1080,
 
 (OUT / "video_h264.mov").write_bytes(_mov_with_moov_at_tail())
 print(f"wrote video_h264.mov           minimal ISOBMFF (moov-at-tail) fixture")
+
+
+# ---- v1.18: ISOBMFF .mov with Apple QuickTime keys (make/model) + GPS-presence ----
+# Self-authored QuickTime metadata: moov→meta(NOT a FullBox)→{hdlr, keys, ilst}. `keys`
+# is the ordered key table (`mdta` namespace); `ilst` items are typed by 1-based index
+# into it; each item's `data` box holds the value. Exercises the v1.18 make/model +
+# gps_present/gps_source + geotagged path. License-clean; the GPS string is fabricated
+# (NOT real coordinates — real geotagged clips stay local-gitignored).
+def _mov_with_qt_keys(make=b"TestMake", model=b"TestPhone X",
+                      iso6709=b"+12.3456-098.7654+010.000/", iso_meta=False):
+    # iso_meta=True → wrap the meta body in a 4-byte version/flags (the ISO `.mp4`
+    # FullBox form, children at +12) instead of the QuickTime `.mov` form (children at +8).
+    def box(typ, body): return struct.pack(">I", 8 + len(body)) + typ + body
+    mvhd = box(b"mvhd", b"\x00\x00\x00\x00" + struct.pack(">IIII", 3658232843, 0, 600, 3000) + b"\x00" * 80)
+    tkhd = box(b"tkhd", b"\x00\x00\x00\x07" + b"\x00" * 72 + struct.pack(">II", 1920 << 16, 1080 << 16))
+    stsd = box(b"stsd", b"\x00\x00\x00\x00" + struct.pack(">I", 1) + box(b"avc1", b"\x00" * 8))
+    mdia = box(b"mdia", box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 13) + box(b"minf", box(b"stbl", stsd)))
+    trak = box(b"trak", tkhd + mdia)
+    keystrs, vals = [b"com.apple.quicktime.make", b"com.apple.quicktime.model"], [make, model]
+    if iso6709:
+        keystrs.append(b"com.apple.quicktime.location.ISO6709"); vals.append(iso6709)
+    keys_body = b"\x00\x00\x00\x00" + struct.pack(">I", len(keystrs))
+    for k in keystrs:
+        keys_body += struct.pack(">I", 8 + len(k)) + b"mdta" + k
+    ilst_body = b""
+    for i, v in enumerate(vals, start=1):
+        data = box(b"data", struct.pack(">II", 1, 0) + v)
+        ilst_body += struct.pack(">I", 8 + len(data)) + struct.pack(">I", i) + data
+    meta_body = box(b"hdlr", b"\x00" * 8 + b"mdir" + b"\x00" * 13) + box(b"keys", keys_body) + box(b"ilst", ilst_body)
+    if iso_meta:
+        meta_body = b"\x00\x00\x00\x00" + meta_body   # ISO FullBox version/flags → children at +12
+    meta = box(b"meta", meta_body)
+    moov = box(b"moov", mvhd + trak + meta)
+    ftyp = box(b"ftyp", b"qt  " + b"\x00\x00\x00\x00" + b"qt  ")
+    return ftyp + box(b"mdat", b"\x00" * 64) + moov
+
+
+(OUT / "video_qt_gps.mov").write_bytes(_mov_with_qt_keys())
+(OUT / "video_qt_nogps.mov").write_bytes(_mov_with_qt_keys(iso6709=None))
+(OUT / "video_qt_iso_mp4.mp4").write_bytes(_mov_with_qt_keys(iso_meta=True))   # ISO FullBox meta (.mp4 form)
+print("wrote video_qt_gps.mov + video_qt_nogps.mov + video_qt_iso_mp4.mp4  (Apple QuickTime keys, both meta forms)")

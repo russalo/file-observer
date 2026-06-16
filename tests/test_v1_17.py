@@ -33,10 +33,11 @@ VIDEO_EXTS = (".mp4", ".mov", ".m4v")
 
 
 def test_release_version_surfaces():
-    # v1.17.0 is the newest release — exact current-version pins.
-    assert SCANNER_VERSION == "1.17.0", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.7.0", f"LOGIC: {LOGIC_VERSION!r}"     # new extraction surface
-    assert SCHEMA_VERSION == "1.11", f"SCHEMA: {SCHEMA_VERSION!r}"   # additive video namespace
+    # v1.17 floor — the exact current-version pin lives in the newest release test.
+    def _v(s): return tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 17, 0), f"SCANNER regressed below 1.17.0: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 7, 0), f"LOGIC regressed below 1.7.0: {LOGIC_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 11), f"SCHEMA regressed below 1.11: {SCHEMA_VERSION!r}"
 
 
 # --------------------------------------------------------------------------- registries
@@ -48,8 +49,10 @@ class TestRegistries:
         assert ext in SUPPORTED_EXTENSIONS
 
     def test_video_fields_declared(self):
-        assert SPECIALIST_FIELDS["video"] == [
-            "codec", "duration_s", "width", "height", "creation_date"]
+        # v1.17 container/track fields — a subset; later releases extend the namespace
+        # (v1.18 adds make/model/gps_present/gps_source).
+        assert {"codec", "duration_s", "width", "height", "creation_date"} <= set(
+            SPECIALIST_FIELDS["video"])
 
     def test_video_mime_guard(self):
         assert {"video/mp4", "video/quicktime"} <= SPECIALIST_MIME_GUARD["video"]
