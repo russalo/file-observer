@@ -31,6 +31,29 @@ def test_version_surfaces_stay_in_sync():
     assert m.group(1) == SCANNER_VERSION, f"docstring {m.group(1)} != SCANNER_VERSION {SCANNER_VERSION}"
 
 
+def test_readme_version_references_current():
+    """README hand-maintains the current version in three spots and has drifted three
+    minors running (caught reactively in #75/#78/#79). Guard them so a stale README
+    fails CI instead of a bot. The historical RFC rows for PRIOR versions stay — this
+    only pins the CURRENT-release claims to the constants."""
+    from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
+
+    root = Path(__file__).resolve().parent.parent
+    readme = (root / "README.md").read_text(encoding="utf-8")
+
+    # (1) the example manifest shows the current scanner + logic versions
+    assert f'"scanner_version": "{SCANNER_VERSION}"' in readme, \
+        f"README example manifest scanner_version is stale (want {SCANNER_VERSION})"
+    assert f'"logic_version": "{LOGIC_VERSION}"' in readme, \
+        f"README example manifest logic_version is stale (want {LOGIC_VERSION})"
+    # (2) the at-a-glance Version cell is current
+    assert f"| **Version** | `{SCANNER_VERSION}` |" in readme, \
+        f"README Version table cell is stale (want {SCANNER_VERSION})"
+    # (3) the Documentation table links the current release RFC as the current spec
+    assert f"docs/v{SCANNER_VERSION}_RFC_Specification.md" in readme, \
+        f"README does not reference the current release RFC (docs/v{SCANNER_VERSION}_RFC_Specification.md)"
+
+
 def test_canonical_top_level_api():
     """The documented public API imports from file_observer."""
     from file_observer import Scanner, ScannerConfig, manifest_to_json  # noqa: F401
