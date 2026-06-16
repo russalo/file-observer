@@ -265,7 +265,8 @@ def _mov_with_qt_keys(make=b"TestMake", model=b"TestPhone X",
     stsd = box(b"stsd", b"\x00\x00\x00\x00" + struct.pack(">I", 1) + box(b"avc1", b"\x00" * 8))
     mdia = box(b"mdia", box(b"hdlr", b"\x00" * 8 + b"vide" + b"\x00" * 13) + box(b"minf", box(b"stbl", stsd)))
     trak = box(b"trak", tkhd + mdia)
-    keystrs, vals = [b"com.apple.quicktime.make", b"com.apple.quicktime.model"], [make, model]
+    keystrs, vals = [b"com.apple.quicktime.make", b"com.apple.quicktime.model",
+                     b"com.apple.quicktime.creationdate"], [make, model, b"2024-01-01T00:00:00-0800"]
     if iso6709:
         keystrs.append(b"com.apple.quicktime.location.ISO6709"); vals.append(iso6709)
     keys_body = b"\x00\x00\x00\x00" + struct.pack(">I", len(keystrs))

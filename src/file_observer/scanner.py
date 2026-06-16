@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.19.0
-    Schema:     1.12
+    Version:    1.20.0
+    Schema:     1.13
     Python:     >= 3.12
-    Spec:       docs/v1.19.0_RFC_Specification.md (current)
+    Spec:       docs/v1.20.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.19.0"
-LOGIC_VERSION = "1.9.0"   # v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.12"   # v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.20.0"
+LOGIC_VERSION = "1.10.0"   # v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.13"   # v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -720,7 +720,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
         "width", "height", "bit_depth", "make", "model", "orientation",
         "datetime_original", "gps_present", "xmp_present",
     ],
-    "video": ["codec", "duration_s", "width", "height", "creation_date",
+    "video": ["codec", "duration_s", "width", "height", "creation_date", "creation_date_qt",
               "make", "model", "gps_present", "gps_source"],
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
@@ -1795,7 +1795,7 @@ def _parse_moov(moov: bytes) -> dict:
     """Parse a standalone moov box buffer (offset 0). Container/track + (v1.18) Apple
     capture device + GPS-presence."""
     out: dict = {"codec": None, "duration_s": None, "width": None, "height": None,
-                 "creation_date": None, "make": None, "model": None,
+                 "creation_date": None, "creation_date_qt": None, "make": None, "model": None,
                  "gps_present": False, "gps_source": None}
     msize = struct.unpack(">I", moov[:4])[0] if len(moov) >= 4 else len(moov)
     end = min(msize, len(moov))
@@ -1811,6 +1811,10 @@ def _parse_moov(moov: bytes) -> dict:
             keys = _qt_keys(moov, meta[0], min(meta[0] + meta[1], len(moov)))
             out["make"] = _qt_text(keys.get(b"com.apple.quicktime.make"))
             out["model"] = _qt_text(keys.get(b"com.apple.quicktime.model"))
+            # v1.20: the QuickTime creationdate key — capture moment WITH timezone (the
+            # truer capture time; mvhd `creation_date` is file-finalization, UTC). Surfaced
+            # AS-IS, SEPARATE from creation_date — never reconciled (observe-don't-interpret).
+            out["creation_date_qt"] = _qt_text(keys.get(b"com.apple.quicktime.creationdate"))
             if keys.get(_QT_GPS_KEY):   # NON-EMPTY value — a tombstone/empty box is not a location (leg-2/Gemini)
                 out["gps_present"] = True
                 out["gps_source"] = _QT_GPS_KEY.decode("ascii")   # the exact mechanism (presence, not coords)
@@ -4501,7 +4505,7 @@ class Scanner:
         # (location.ISO6709 — presence + mechanism, NOT coordinates) → geotagged.
         moov = self._read_moov(path)
         meta: dict[str, Any] = {"codec": None, "duration_s": None, "width": None,
-                                "height": None, "creation_date": None,
+                                "height": None, "creation_date": None, "creation_date_qt": None,
                                 "make": None, "model": None,
                                 "gps_present": False, "gps_source": None}
         if moov is None:
