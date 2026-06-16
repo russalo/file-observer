@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.21.0
+    Version:    1.21.1
     Schema:     1.13
     Python:     >= 3.12
     Spec:       docs/v1.21.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.21.0"
-LOGIC_VERSION = "1.11.0"   # v1.21.0 — content-aware recognition (Option B): unsupported_extension no longer fires on recognized text (text/* or known text-app MIME) even with an unlisted extension; the diagnostic now means "unidentifiable". Recognition-only, no new extraction. supported/unsupported counters shift. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCANNER_VERSION = "1.21.1"
+LOGIC_VERSION = "1.11.1"   # v1.21.1 — PDF-header FP fix: the find-anywhere %PDF- magic rule is bounded to the first PDF_HEADER_MAX_OFFSET (256) bytes (_Within sentinel), so source/text files containing a deep literal %PDF- (.java/.py/.md/.xls at offset >=864) are no longer misclassified application/pdf in format_signatures / the no-libmagic _sniff_mime tier. Measured: 1015/1015 corpus PDFs preserved (max real offset 174), FPs 10->2 (the 2 offset-29 .tsd residuals are undecidable by bytes, accepted). Surfaced by puresniff's FP sweep (sibling-project corpus teaching the observer). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B): unsupported_extension no longer fires on recognized text (text/* or known text-app MIME) even with an unlisted extension; the diagnostic now means "unidentifiable". Recognition-only, no new extraction. supported/unsupported counters shift. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.13"   # unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -795,10 +795,31 @@ def _field_stability(namespace: str, field: str) -> str:
 # Labels that are valid MIME types (contain "/") are usable by detect_mime's
 # pure-Python fallback; the one non-MIME label ("riff_container") is
 # format_signatures-only and skipped by _sniff_mime.
-MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
+
+
+class _Within:
+    """Signature-offset sentinel (v1.21.1): the pattern must START within the
+    first ``n`` bytes of the sample — a *bounded* find-anywhere. Used for the PDF
+    header: real PDFs tolerate a few leading bytes before ``%PDF-`` (whitespace /
+    BOM / junk — measured max offset 174 across 1015 corpus PDFs), but the old
+    unbounded find-anywhere (offset ``None``) misclassified source/text files that
+    merely *contain* the literal ``%PDF-`` deep in their first 8 KB (2 .java, .py,
+    .md, .xls — all at offset >=864) as application/pdf. 256 keeps every real PDF
+    and rejects those. (The 2 residual .tsd FPs at offset 29 are undecidable by
+    bytes — a %PDF-1.x at byte 29 is indistinguishable from a PDF with 29 leading
+    junk bytes — and accepted.)"""
+    __slots__ = ("n",)
+
+    def __init__(self, n: int) -> None:
+        self.n = n
+
+
+PDF_HEADER_MAX_OFFSET = 256
+
+MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes], ...], str]] = [
     (((0, b"\x89PNG\r\n\x1a\n"),), "image/png"),
     (((0, b"\xff\xd8\xff"),), "image/jpeg"),
-    (((None, b"%PDF-"),), "application/pdf"),
+    (((_Within(PDF_HEADER_MAX_OFFSET), b"%PDF-"),), "application/pdf"),
     (((0, b"GIF87a"),), "image/gif"),
     (((0, b"GIF89a"),), "image/gif"),
     # RIFF container — sub-types (marker at offset 8) MUST precede the generic
@@ -5891,17 +5912,22 @@ class Scanner:
 
     @staticmethod
     def _signature_matches(
-        sample: bytes, constraints: tuple[tuple[int | None, bytes], ...]
+        sample: bytes, constraints: tuple[tuple[int | None | _Within, bytes], ...]
     ) -> int | None:
         """v1.3: return the anchor offset if ALL (offset, pattern) constraints
         match the head sample, else None. offset=int is anchored; offset=None
-        means the pattern occurs anywhere in the sample. Shared by
-        scan_signatures and _sniff_mime so the two never drift apart."""
+        means the pattern occurs anywhere in the sample; offset=_Within(n) means
+        it must START within the first n bytes (bounded find-anywhere, v1.21.1).
+        Shared by scan_signatures and _sniff_mime so the two never drift apart."""
         if not constraints:
             return None
         anchor: int | None = None
         for offset, pattern in constraints:
-            if offset is not None:
+            if isinstance(offset, _Within):
+                pos = sample.find(pattern)
+                if pos < 0 or pos > offset.n:
+                    return None
+            elif offset is not None:
                 if sample[offset:offset + len(pattern)] != pattern:
                     return None
                 pos = offset

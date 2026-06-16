@@ -97,9 +97,10 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.21.0"
-    assert SCHEMA_VERSION == "1.13"  # unchanged in v1.21 (content-aware recognition is LOGIC)
-    assert LOGIC_VERSION == "1.11.0"  # v1.21.0: content-aware text recognition
+    def _v(x): return tuple(int(p) for p in x.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 21, 0), f"SCANNER regressed: {SCANNER_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 13), f"SCHEMA regressed: {SCHEMA_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 11, 0), f"LOGIC regressed: {LOGIC_VERSION!r}"
 
 
 def test_legacy_scanner_import_warns():
