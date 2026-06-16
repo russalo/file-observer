@@ -34,7 +34,9 @@ def test_release_version_surfaces():
 
 def _extract(path):
     sc = Scanner(source_dir=path.parent, config=ScannerConfig(enable_specialists=True))
-    return sc.extract_specialist_metadata(path, path.suffix.lower(), path.read_bytes()[:8192])
+    with open(path, "rb") as fh:        # read only the 8 KB head, not the whole clip (leg-4)
+        sample = fh.read(8192)
+    return sc.extract_specialist_metadata(path, path.suffix.lower(), sample)
 
 
 class TestField:
