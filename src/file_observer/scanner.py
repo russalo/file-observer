@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.18.0
+    Version:    1.19.0
     Schema:     1.12
     Python:     >= 3.12
-    Spec:       docs/v1.18.0_RFC_Specification.md (current)
+    Spec:       docs/v1.19.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.18.0"
-LOGIC_VERSION = "1.8.0"   # v1.18.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCANNER_VERSION = "1.19.0"
+LOGIC_VERSION = "1.9.0"   # v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.12"   # v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -2467,11 +2467,22 @@ class Scanner:
         if q.error_files:
             quality_parts.append(f"{q.error_files:,} errors")
         quality_line = ", ".join(quality_parts)
+        # v1.19: aggregate safety flags by NAME (not a bare count) — deterministic.
+        flag_counts: dict[str, int] = {}
+        for r in manifest.files:
+            for fl in r.safety_flags:
+                flag_counts[fl] = flag_counts.get(fl, 0) + 1
         extras: list[str] = []
-        if q.safety_flags:
-            extras.append(f"{q.safety_flags} safety flags")
+        if flag_counts:
+            named = ", ".join(f"{name} ×{c}" for name, c in sorted(flag_counts.items()))
+            extras.append(f"safety flags: {named}")
+        # v1.19: comment on the ambiguous — content-vs-extension MIME mismatches + polyglots
+        # are honest signals of uncertainty, not failures; surface them, don't paper over.
+        if q.mime_mismatches:
+            extras.append(f"{q.mime_mismatches} content-vs-extension MIME "
+                          f"mismatch{'es' if q.mime_mismatches != 1 else ''}")
         if q.polyglots_detected:
-            extras.append(f"{q.polyglots_detected} polyglots")
+            extras.append(f"{q.polyglots_detected} polyglot{'s' if q.polyglots_detected != 1 else ''}")
         if q.duplicate_cluster_count:
             extras.append(f"{q.duplicate_cluster_count} duplicate clusters "
                           f"({q.redundant_file_count} redundant copies)")
@@ -2510,8 +2521,43 @@ class Scanner:
                 any_count = summary.get("files_with_any_pattern", 0)
                 if any_count > 0:
                     vec_parts.append(f"filename_patterns matched {any_count} of {applied} files")
+            elif vid == "provenance":   # v1.19: the vector the old summary skipped
+                toolchains = summary.get("toolchains", [])
+                applied = v["applied_to_count"]
+                if toolchains:
+                    top = toolchains[0]["name"]   # already count-sorted
+                    vec_parts.append(f"provenance found {len(toolchains)} toolchain"
+                                     f"{'s' if len(toolchains) != 1 else ''} across {applied} files (top: {top})")
         if vec_parts:
             lines.append("Vectors: " + ". ".join(vec_parts) + ".")
+
+        # v1.19: capture metadata — geotagged count (from safety flags) + distinct capture
+        # devices (image/video make+model). Surfaces the v1.16–v1.18 story the old summary missed.
+        geo = flag_counts.get("geotagged", 0)
+        devices = sorted({
+            f"{(md.get('make') or '').strip()} {(md.get('model') or '').strip()}".strip()
+            for r in manifest.files
+            for ns in ("image", "video")
+            for md in [(r.specialist_metadata or {}).get(ns) or {}]
+            if md.get("make") or md.get("model")
+        })
+        cap_parts: list[str] = []
+        if geo:
+            cap_parts.append(f"{geo} geotagged")
+        if devices:
+            shown = ", ".join(devices[:5]) + (f" +{len(devices) - 5} more" if len(devices) > 5 else "")
+            cap_parts.append(f"captured by {shown}")
+        if cap_parts:
+            lines.append("Capture: " + "; ".join(cap_parts) + ".")
+
+        # v1.19: preservation (provisional) — files in non-current formats, the migration signal.
+        obs = sum(1 for r in manifest.files
+                  if r.preservation and r.preservation.get("format_obsolescence") not in (None, "current"))
+        if obs:
+            mig = sum(1 for r in manifest.files
+                      if r.preservation and r.preservation.get("migration_recommended"))
+            note = f"Preservation: {obs} file{'s' if obs != 1 else ''} in non-current formats"
+            lines.append(note + (f" ({mig} migration-recommended)." if mig else "."))
 
         # Line 4: top directories
         if q.per_directory_summary:
@@ -6145,6 +6191,85 @@ def schema_to_markdown(doc: dict[str, Any]) -> str:
     return "\n".join(L)
 
 
+def schema_to_summary(doc: dict[str, Any]) -> str:
+    """v1.19: a human-readable PROSE rendering of the schema document — the readable
+    counterpart to `schema_to_json` / `schema_to_markdown`. Walks the SAME `doc` (single
+    source of truth → cannot drift from the structured schema). Deterministic, and
+    COMPLETE: it names every enumerated element (a guard test asserts no registry element
+    is dropped). This is the 'what this tool CAN observe' summary, sibling to the per-scan
+    'what this scan FOUND' summary."""
+    sp = doc["specialists"]
+    L: list[str] = []
+    L.append(f"File Observer {doc['scanner_version']} — what it can observe")
+    L.append("")
+    L.append(f"(LOGIC {doc['logic_version']} / SCHEMA {doc['schema_version']}. This is the "
+             f"COMPLETE observable surface of this build — what it CAN emit, independent of "
+             f"any particular scan; the prose counterpart to `--schema --format json|md`.)")
+    L.append("")
+    L.append("File Observer is an observation layer: it recursively discovers files and "
+             "emits a deterministic JSON manifest — identity, filesystem metadata, content "
+             "signals — without ingesting, OCRing, embedding, or classifying. Every value "
+             "is a bounded observation; a null means 'not observed within bounds', never "
+             "'absent from the file'.")
+    L.append("")
+    L.append("EVERY file gets the universal layer: identity + path-derived fields, "
+             "filesystem metadata, a SHA-256 checksum, MIME analysis (content-vs-extension), "
+             "routing flags (is_binary / requires_vision / requires_specialist_tool), and "
+             "structural file signatures (file_signature / format_signatures / is_polyglot).")
+    L.append("")
+
+    # Specialists — group extensions by namespace, name what each extracts.
+    L.append("FORMAT SPECIALISTS — for these extensions it extracts more (only when "
+             "specialists are enabled; off by default):")
+    ns_exts: dict[str, list[str]] = {}
+    for ext, ns in sp["namespaces"].items():
+        ns_exts.setdefault(ns, []).append(ext)
+    for ns in sorted(ns_exts):
+        exts = ", ".join(sorted(ns_exts[ns]))
+        fields = ", ".join(f["name"] for f in sp["fields"].get(ns, []))
+        L.append(f"  • {ns} ({exts}): {fields or '—'}")
+    # any namespace with fields but content-detected (no extension), e.g. chatlog
+    for ns in sorted(sp["fields"]):
+        if ns not in ns_exts:
+            fields = ", ".join(f["name"] for f in sp["fields"][ns])
+            L.append(f"  • {ns} (content-detected): {fields}")
+    L.append("")
+
+    # Vectors.
+    L.append("VECTORS — named observation units computed over the scan:")
+    for v in doc["vectors"]:
+        L.append(f"  • {v['vector_id']} ({v['scope']}-scoped, {v['stability']})")
+    L.append("")
+
+    # Safety flags.
+    L.append("SAFETY FLAGS — structural disclosures, NOT threat verdicts:")
+    for name, desc in doc["safety_flags"].items():
+        L.append(f"  • {name} — {desc}")
+    L.append("")
+
+    # The rest of the surface, named for completeness but compactly.
+    L.append("MIME detection tiers: " + " → ".join(doc["mime_tiers"]) + ".")
+    trig = doc["provenance_triggers"]
+    L.append(f"Signal provenance — every derived field records how it was produced, via one "
+             f"of {len(trig)} triggers: {', '.join(sorted(trig))}.")
+    ecodes = doc["error_codes"]
+    L.append(f"Non-fatal errors are structured ({len(ecodes)} codes): {', '.join(sorted(ecodes))}.")
+    sigs = doc["format_signatures"]
+    L.append(f"Structural format signatures recognized ({len(sigs)}): {', '.join(sigs)}.")
+    pres = doc["preservation_tiers"]
+    tier_strs = "; ".join(f"{tier} ({', '.join(exts)})" for tier, exts in sorted(pres.items()))
+    L.append(f"Format-preservation tiers: {tier_strs}.")
+    L.append("reference_tokens subcategories: "
+             + ", ".join(doc["reference_tokens_subcategories"]) + ".")
+    L.append("filename_patterns subcategories: "
+             + ", ".join(doc["filename_patterns_subcategories"]) + ".")
+    L.append("")
+    L.append("Everything above is observe-only and deterministic: identical inputs + "
+             "identical ScanContext → identical output. Specialists are gated (default off); "
+             "what is observed never changes how a file is treated downstream.")
+    return "\n".join(L)
+
+
 def manifest_to_jsonl(manifest: ScanManifest) -> str:
     lines: list[str] = []
     # Header line with schema_version, context, meta, stats, routing_summary, delta, manifest_checksum, vectors_collected
@@ -6364,7 +6489,7 @@ def main() -> None:
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
     parser.add_argument("--schema", action="store_true", help="Print the complete output-surface description (every field, specialist, vector, safety_flag, error code, provenance trigger, format signature, preservation tier) and exit. Does NOT scan. Use --schema-format json|md (default json). (v1.13)")
-    parser.add_argument("--schema-format", choices=["json", "md"], default="json", help="Format for --schema output: json (default) or md. Only meaningful with --schema.")
+    parser.add_argument("--schema-format", choices=["json", "md", "summary"], default="json", help="Format for --schema output: json (default), md, or summary (human-readable prose — what the tool can observe, v1.19). Only meaningful with --schema.")
     args = parser.parse_args()
 
     # v1.13: --schema short-circuits the scan path entirely (like --help). It
@@ -6392,6 +6517,8 @@ def main() -> None:
         doc = build_schema_document()
         if args.schema_format == "md":
             sys.stdout.write(schema_to_markdown(doc) + "\n")
+        elif args.schema_format == "summary":
+            sys.stdout.write(schema_to_summary(doc) + "\n")
         else:
             sys.stdout.write(schema_to_json(doc) + "\n")
         return
