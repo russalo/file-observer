@@ -189,17 +189,22 @@ class TestRoutingFlags:
         assert rec.requires_specialist_tool is True
         assert rec.specialist_tool == "document_extraction"
 
-    def test_unsupported_extension_marked(self, manifest: ScanManifest) -> None:
-        # .filepart is not in SUPPORTED_EXTENSIONS
-        unsupported = [f for f in manifest.files if f.extension == ".filepart"]
-        if unsupported:
-            codes = [e.code for e in unsupported[0].errors]
-            assert "unsupported_extension" in codes
-        else:
-            # If no .filepart fixtures exist, verify any unsupported extension is flagged
-            unsup = [f for f in manifest.files
-                     if any(e.code == "unsupported_extension" for e in f.errors)]
-            assert len(unsup) >= 0  # non-fatal if all extensions are now supported
+    def test_unsupported_extension_marked(self, manifest: ScanManifest, tmp_path: Path) -> None:
+        from tests.conftest import LIBMAGIC_AVAILABLE
+        # v1.21 content-aware: the `.filepart` fixtures are ZERO-byte partial-download
+        # placeholders → libmagic types them inode/x-empty → recognized (identified as empty),
+        # so they are no longer flagged unsupported_extension. (Libmagic-dependent: on the
+        # pure-Python fallback an empty file falls to the extension tier — accepted §6.2a gap.)
+        if LIBMAGIC_AVAILABLE:
+            for f in manifest.files:
+                if f.extension == ".filepart":
+                    assert f.mime_type == "inode/x-empty"
+                    assert "unsupported_extension" not in [e.code for e in f.errors]
+        # The mechanism still fires for a genuinely-unidentifiable file (binary, unknown ext) —
+        # NUL bytes → octet-stream on both the libmagic and pure-Python paths.
+        (tmp_path / "mystery.qzx").write_bytes(b"\x00\xff\x01\xfe" * 64)
+        rec = Scanner(source_dir=tmp_path).scan().files[0]
+        assert "unsupported_extension" in [e.code for e in rec.errors]
 
 
 # ---------------------------------------------------------------------------
