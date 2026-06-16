@@ -90,7 +90,7 @@ The golden rule: **same input + same config = same output.** If your change coul
 
 ### Bump the right version
 
-File Observer tracks three versions independently: **`SCANNER_VERSION`** (the release), **`LOGIC_VERSION`** (routing/extraction *behavior* — anything that changes an observed value), **`SCHEMA_VERSION`** (the manifest *contract* — new fields/namespaces/vectors). If your change affects output, the right one(s) must bump. A new observable surface is additive → MINOR + a SCHEMA bump. See **[CONVENTIONS.md §1](docs/CONVENTIONS.md)** for the which-bumps-when rules (a `test_packaging.py` guard keeps `SCANNER_VERSION` / `pyproject.toml` / the module docstring in sync — they can't silently drift).
+File Observer tracks three versions independently: **`SCANNER_VERSION`** (the release), **`LOGIC_VERSION`** (routing/extraction *behavior* — anything that changes an observed value), **`SCHEMA_VERSION`** (the manifest *contract* — new fields/namespaces/vectors). If your change affects output, the right one(s) must bump. **Distinguish two cases:** a new *field / namespace / vector* is a manifest-shape change → MINOR + a **`SCHEMA_VERSION`** bump; a new *value* of an existing field (a provenance trigger, format signature, safety-flag value, error code) does **NOT** bump `SCHEMA_VERSION` — you still regenerate `docs/SCHEMA.md` (next section) so it reflects the value, but the contract shape is unchanged (e.g. v1.15.1 added `image/heif` to `format_signatures` with SCHEMA unchanged). See **[CONVENTIONS.md §1](docs/CONVENTIONS.md)** for the which-bumps-when rules (a `test_packaging.py` guard keeps `SCANNER_VERSION` / `pyproject.toml` / the module docstring in sync — they can't silently drift).
 
 ### Update docs in the same PR
 
