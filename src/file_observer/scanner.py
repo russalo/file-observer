@@ -2525,9 +2525,11 @@ class Scanner:
                 toolchains = summary.get("toolchains", [])
                 applied = v["applied_to_count"]
                 if toolchains:
+                    # TRUE total — toolchains[] is truncated to top_n (leg-4/Codex undercount)
+                    total = summary.get("distinct_toolchains", len(toolchains))
                     top = toolchains[0]["name"]   # already count-sorted
-                    vec_parts.append(f"provenance found {len(toolchains)} toolchain"
-                                     f"{'s' if len(toolchains) != 1 else ''} across {applied} files (top: {top})")
+                    vec_parts.append(f"provenance found {total} toolchain"
+                                     f"{'s' if total != 1 else ''} across {applied} files (top: {top})")
         if vec_parts:
             lines.append("Vectors: " + ". ".join(vec_parts) + ".")
 
@@ -2537,9 +2539,10 @@ class Scanner:
         devices = sorted({
             f"{(md.get('make') or '').strip()} {(md.get('model') or '').strip()}".strip()
             for r in manifest.files
+            if r.specialist_metadata
             for ns in ("image", "video")
-            for md in [(r.specialist_metadata or {}).get(ns) or {}]
-            if md.get("make") or md.get("model")
+            for md in [r.specialist_metadata.get(ns)]
+            if isinstance(md, dict) and (md.get("make") or md.get("model"))   # leg-4: guard non-dict
         })
         cap_parts: list[str] = []
         if geo:
@@ -6225,9 +6228,11 @@ def schema_to_summary(doc: dict[str, Any]) -> str:
     for ext, ns in sp["namespaces"].items():
         ns_exts.setdefault(ns, []).append(ext)
     for ns in sorted(ns_exts):
-        exts = ", ".join(sorted(ns_exts[ns]))
+        exts = sorted(ns_exts[ns])
+        tool = sp["tools"].get(exts[0], "")   # name the semantic tool too (leg-2 completeness)
+        via = f" via {tool}" if tool else ""
         fields = ", ".join(f["name"] for f in sp["fields"].get(ns, []))
-        L.append(f"  • {ns} ({exts}): {fields or '—'}")
+        L.append(f"  • {ns}{via} ({', '.join(exts)}): {fields or '—'}")
     # any namespace with fields but content-detected (no extension), e.g. chatlog
     for ns in sorted(sp["fields"]):
         if ns not in ns_exts:

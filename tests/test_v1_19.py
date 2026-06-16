@@ -105,6 +105,13 @@ class TestProseSchema:
         for ns in set(SPECIALIST_NAMESPACE.values()):
             assert ns in prose, f"namespace {ns} missing"
 
+    def test_names_every_specialist_tool(self, prose):
+        # leg-2/Gemini: the structured schema enumerates specialists.tools — the prose must
+        # not silently drop them (the completeness claim covers tools too).
+        from file_observer.scanner import SPECIALIST_TOOLS
+        for tool in set(SPECIALIST_TOOLS.values()):
+            assert tool in prose, f"specialist tool {tool} missing from prose schema"
+
     def test_names_key_capture_fields(self, prose):
         # the v1.16-v1.18 story must be visible
         for f in ("make", "model", "gps_present", "gps_source", "datetime_original"):
