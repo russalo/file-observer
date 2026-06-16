@@ -49,9 +49,13 @@ def test_readme_version_references_current():
     # (2) the at-a-glance Version cell is current
     assert f"| **Version** | `{SCANNER_VERSION}` |" in readme, \
         f"README Version table cell is stale (want {SCANNER_VERSION})"
-    # (3) the Documentation table links the current release RFC as the current spec
-    assert f"docs/v{SCANNER_VERSION}_RFC_Specification.md" in readme, \
-        f"README does not reference the current release RFC (docs/v{SCANNER_VERSION}_RFC_Specification.md)"
+    # (3) the Documentation table links the current MINOR's RFC. RFCs are per-minor —
+    # patches are HISTORY-only and reuse the minor's RFC (e.g. v1.15.1/.2 have no own RFC)
+    # — so derive the link from major.minor.0, not the full version (leg-4 Codex P2).
+    major, minor, _patch = SCANNER_VERSION.split(".")
+    rfc_doc = f"docs/v{major}.{minor}.0_RFC_Specification.md"
+    assert rfc_doc in readme, \
+        f"README does not reference the current minor's RFC ({rfc_doc})"
 
 
 def test_canonical_top_level_api():
