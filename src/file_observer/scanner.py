@@ -3038,8 +3038,14 @@ class Scanner:
         #    is vetoed by the printable ratio, and `image/svg+xml` text (which `is_binary` rejects
         #    via the image/ prefix) is allowed by it; the BOM arm rescues UTF-16/32 text, whose
         #    interleaved NULs fail the ratio just as they do in `detect_binary`. [leg-2]
+        #  - content-derived MIME only: recognition must rest on observed content, so a MIME
+        #    that came from the EXTENSION fallback (`mimetypes`, both content tiers failed) does
+        #    NOT count — otherwise the flag would depend on the platform's stdlib mime database
+        #    (/etc/mime.types varies cross-machine), and signatureless text on the no-libmagic
+        #    path would be "recognized" by extension, contradicting RFC §6.2a. [leg-4 Codex P2]
         recognized_text = (
             _is_recognized_text(mime_type)
+            and mime_prov.trigger != "extension_fallback"
             and not read_failed
             and (_detect_unicode_bom(sample) is not None or self.looks_like_text(sample))
         )

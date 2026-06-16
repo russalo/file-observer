@@ -98,6 +98,18 @@ class TestRecognition:
         assert rec.mime_type.startswith("text/")
         assert not self._unsup(rec)
 
+    def test_extension_fallback_mime_not_recognized(self, tmp_path):
+        # recognition must rest on OBSERVED CONTENT: a MIME that came from the extension
+        # fallback (mimetypes; no libmagic + no content signature) does NOT recognize — else
+        # the flag depends on the platform mimetypes DB and contradicts RFC §6.2a. [leg-4 Codex]
+        (tmp_path / "app.py").write_text("import os\nx = 1\n")
+        sc = Scanner(source_dir=tmp_path, config=ScannerConfig())
+        sc._magic = None                      # force the no-libmagic path
+        rec = sc.scan().files[0]
+        assert rec.mime_type.startswith("text/")                       # mimetypes says text...
+        assert rec.signal_provenance["mime_type"]["trigger"] == "extension_fallback"  # ...by ext
+        assert self._unsup(rec)               # so NOT content-recognized on the fallback
+
     def test_read_failure_not_recognized(self, tmp_path, monkeypatch):
         # a read-failed file has NO observed content — an extension/empty-sample text MIME must
         # not flip it to "recognized"; it's degraded, flagged, and not counted supported. [leg-2]
