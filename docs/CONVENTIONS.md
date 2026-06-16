@@ -211,78 +211,29 @@ This section is for **us**. It is the running list of everything File Observer c
 | `Version:` | scanner.py module docstring |
 | `Schema:` | scanner.py module docstring |
 
-### 4.2 Specialist tools
+### 4.2 Output surface — canonical: `docs/SCHEMA.md`
 
-11 extension-keyed specialists + 1 content-detected specialist; 6 namespaces; 6 specialist tool names.
+The complete, **current** inventory of specialist tools, namespaces, per-namespace fields,
+vectors, safety flags, error codes, provenance triggers, format signatures, preservation
+tiers, and MIME tiers is **auto-generated from the live registries** by `--schema` (v1.13)
+and committed as **`docs/SCHEMA.md`**. It is drift-guarded (`test_committed_schema_md_matches_generated`)
+and completeness-guarded (a registry can't omit an emitted value). **Read the inventory there
+— do not hand-maintain a second copy in this file.** (This section used to enumerate the
+surface and quietly drifted several minors behind; the v1.13 self-description made the hand
+list redundant, so it was replaced with this pointer.)
 
-**Extension-keyed** (dispatched via `SPECIALIST_TOOLS[extension]`):
+Refresh: `python -m file_observer.scanner --schema --schema-format md > docs/SCHEMA.md`
+(or `--schema-format summary` for the human-readable prose, v1.19).
 
-| Extension | Tool | Namespace |
-|---|---|---|
-| `.pdf` | `pdf_extraction` | `pdf` |
-| `.png` | `image_structure` | `image` |
-| `.jpg`, `.jpeg` | `image_structure` | `image` |
-| `.msg` | `email_envelope` | `email` |
-| `.eml` | `email_envelope` | `email` |
-| `.xlsx` | `spreadsheet_structure` | `spreadsheet` |
-| `.xls` | `spreadsheet_structure` | `spreadsheet` |
-| `.docx` | `document_extraction` | `document` |
-| `.doc` | `document_extraction` | `document` |
-| `.rtf` | `document_extraction` | `document` |
+Two decisions worth recording that the generated schema doesn't capture:
 
-**Content-detected** (activates via `_detect_chatlog_pattern` on the decoded baseline text; not registered in `SPECIALIST_TOOLS` / `SPECIALIST_NAMESPACE` because those are extension-keyed, would risk accidental routing, and would mis-inventory a content-based dispatch as extension-based):
-
-| Trigger | Tool | Namespace |
-|---|---|---|
-| Content-detected on `.txt`/`.md`/`.mdx`/`.jsonl`/`.json`: prose speaker labels (stop-list filtered; ≥2 distinct, ≥3 total, ≥1 recurring) **with** the v1.4 content-shape gate (`utterance_ratio≥0.6`, FP-lexicon/version-tag-structure/FAQ defenses; density surfaced not gated) **or** ≥5 `### `/≥3 dividers **with** a speaker co-signal **or** conversational JSON/JSONL (≥3 messages, ≥2 distinct speakers) — see chatlog method_version 9 in §1.4 | `chatlog_signals` (`CHATLOG_TOOL`) | `chatlog` (`CHATLOG_NAMESPACE`) |
-
-### 4.3 Specialist metadata fields by namespace
-
-| Namespace | Fields |
-|---|---|
-| `pdf` | has_text_streams, page_count, title, author, producer, creator, creation_date, encrypted, pdf_version, sample_text_marker_density, **text_detected** (v1.5, STABLE v1.10), **xref_type** (v1.7, STABLE v1.10 — classic/stream/none), **parser** (v1.8, STABLE v1.14 — pypdf/stdlib/none, the decode tier that filled an object-stream `page_count`/`/Info`) |
-| `image` | width, height, bit_depth (PNG only) |
-| `email` | subject, from, to, date, message_id, has_attachments |
-| `spreadsheet` | sheet_names, header_rows (XLSX only), format (`biff` or `ooxml`), **application** (OOXML `app.xml` v1.6 + OLE2 v1.10, STABLE v1.14) |
-| `document` | title, author, word_count (DOCX only), heading_count (DOCX only), **application** (OOXML `app.xml` v1.6 + OLE2 v1.10, STABLE v1.14) |
-| `chatlog` | turn_count, speaker_labels, section_marker_count, section_marker_styles, avg_turn_chars, max_turn_chars, min_turn_chars, reference_tokens.{at_mentions, wiki_links, code_fence_blocks, url_count}, top_capitalized_tokens, capitalized_token_count, vocabulary_size_estimate, **speaker_turn_counts / speaker_turn_chars / alternation** (v1.2, provisional) |
-
-### 4.4 Magic signatures
-
-`MAGIC_SIGNATURES` (v1.3: generalized to multi-constraint `(constraints, label)`): PNG, JPEG, PDF, GIF (87a/89a); RIFF sub-types WebP/WAV/AVI (offset-8 marker) + a generic `riff_container` (non-MIME label, `format_signatures`-only, suppressed when a sub-type matches); archives gzip/xz/7z/zstd/RAR/ZIP + bzip2 (`BZh`+block-magic); images/data TIFF (LE/BE)/SQLite/Parquet; OLE2/RTF/ELF/PostScript; media MP4 (`ftyp`@4)/Matroska/MP3 (`ID3`+version)/FLAC/OGG. Used by `file_signature`/`format_signatures`/`is_polyglot` AND (v1.3) as `detect_mime`'s pure-Python content fallback when libmagic is unavailable (only MIME-valid labels). Short 2-byte ASCII magics (PE `MZ`, BMP) were deliberately NOT included — they collide with prose; ID3/bzip2 carry a corroborating byte for the same reason (review).
-
-### 4.5 Safety flags
-
-4 currently:
-- `has_javascript` (PDF, sample buffer)
-- `has_macros` (DOCX, requires `enable_specialists`, ZIP central directory)
-- `has_ole_objects` (RTF, sample buffer)
-- `has_external_references` (XML, sample buffer)
-
-### 4.6 Quality block fields
-
-Core counters in `ScanQuality`: total_files, clean_files, degraded_files, error_files, mime_mismatches, polyglots_detected, specialist_failures, unsupported_extensions, safety_flags, **chatlog_files** (v0.8). Plus `per_directory_summary[]` (v0.9, stable) and the v1.1 additions (PROMOTED STABLE v1.10): **duplicate_clusters** / duplicate_cluster_count / redundant_file_count and **specialist_stats** (per-tool attempted/succeeded/failed).
-
-### 4.7 Error codes
-
-| Code | Stage | Meaning |
-|---|---|---|
-| `universal_stat_failed` | universal | `path.stat()` raised |
-| `universal_read_failed` | universal | `read_sample`/`hash_file` `open()` raised (permissions/vanished/special file) — v1.8.1; degrades to a record + this error, never aborts the scan |
-| `unsupported_extension` | universal | Extension not in SUPPORTED_EXTENSIONS |
-| `mime_type_fallback` | universal | libmagic unavailable |
-| `baseline_decode_failed` | baseline | Text decoding raised |
-| `specialist_probe_failed` | specialist | Specialist returned null or raised |
-| `json_parse_failed` | specialist | JSON validation failed |
-| `xml_parse_failed` | structural | XML parser raised (not from truncation) |
-| `toml_parse_failed` | structural | TOML parser raised (not from truncation) |
-
-### 4.8 Vectors registry
-
-Six vectors ship in `vectors_collected[]` (see §1.4 for method_versions):
-`chatlog` (content-detected), `reference_tokens` (per-file, 7 subcategories),
-`author_aggregate` (corpus-scoped), `provenance` (corpus-scoped, v1.6, STABLE v1.14),
-`filename_patterns` (per-file, 6 booleans), `preservation` (per-file, v1.10, provisional).
+- **Chatlog is content-detected, not extension-keyed** — it activates via
+  `_detect_chatlog_pattern` on decoded baseline text, NOT through `SPECIALIST_TOOLS` /
+  `SPECIALIST_NAMESPACE` (those are extension-keyed; registering chatlog there would risk
+  accidental routing and mis-inventory a content-based dispatch as extension-based). See
+  chatlog `method_version` in §1.4.
+- **Short 2-byte ASCII magics are deliberately excluded** from `MAGIC_SIGNATURES` (PE `MZ`,
+  BMP) — they collide with prose; `ID3` / bzip2 carry a corroborating byte for the same reason.
 
 ### 4.9 Customer dictionaries (future v0.10+)
 
@@ -300,7 +251,7 @@ Required before merge:
 - [ ] `README.md` (repo root) — version, schema, feature table updated
 - [ ] `docs/HISTORY.md` — new version row added; "Drafts in Flight" updated
 - [ ] `CLAUDE.md` — spec references and roadmap updated
-- [ ] `docs/CONVENTIONS.md` (this file) — tracking inventory updated for any new specialists, fields, signatures, flags, error codes, vectors
+- [ ] `docs/CONVENTIONS.md` (this file) — updated only if a *convention* changed (naming, version rules, promotion path). The output-surface inventory is no longer hand-maintained here — it lives in the auto-generated `docs/SCHEMA.md` (next item)
 - [ ] **`docs/SCHEMA.md` regenerated** (since v1.13) — any change to the output surface (a new field, vector, specialist, safety_flag, error code, or provenance trigger) MUST be reflected in the generated schema doc + its source registry (`ERROR_CODES` / `SAFETY_FLAGS` / `PROVENANCE_TRIGGERS` / `SPECIALIST_FIELDS`). Regenerate: `python -c "from file_observer.scanner import build_schema_document, schema_to_markdown; open('docs/SCHEMA.md','w').write(schema_to_markdown(build_schema_document())+chr(10))"`. The drift-guard test (`test_committed_schema_md_matches_generated`) fails if it's stale; the completeness tests fail if a registry is missing an emitted value.
 - [ ] `docs/PUBLIC_CONTRACT.md` — updated only if a public contract field changed
 - [ ] `docs/STANDARDS_TRACKING.md` — touch point pass: review Awareness, Moving toward, Obligations against this version's scope

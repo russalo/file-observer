@@ -88,9 +88,21 @@ Bug fix, feature, or refactor — pick one. Mixed PRs are harder to review and h
 
 The golden rule: **same input + same config = same output.** If your change could produce different output for the same input, it needs a `method_version` bump on the affected vector and a new identity digest.
 
+### Bump the right version
+
+File Observer tracks three versions independently: **`SCANNER_VERSION`** (the release), **`LOGIC_VERSION`** (routing/extraction *behavior* — anything that changes an observed value), **`SCHEMA_VERSION`** (the manifest *contract* — new fields/namespaces/vectors). If your change affects output, the right one(s) must bump. A new observable surface is additive → MINOR + a SCHEMA bump. See **[CONVENTIONS.md §1](docs/CONVENTIONS.md)** for the which-bumps-when rules (a `test_packaging.py` guard keeps `SCANNER_VERSION` / `pyproject.toml` / the module docstring in sync — they can't silently drift).
+
 ### Update docs in the same PR
 
 If your change affects behavior, update the relevant docs. Don't make the reviewer chase documentation drift.
+
+**If you add any output surface** — a field, namespace, vector, safety flag, error code, provenance trigger, or format signature — you must (a) register it in the relevant registry, and (b) **regenerate the schema doc**:
+
+```bash
+python -m file_observer.scanner --schema --schema-format md > docs/SCHEMA.md
+```
+
+A drift-guard test (`test_committed_schema_md_matches_generated`) fails the build otherwise. `docs/SCHEMA.md` is code-derived — never hand-edit it.
 
 ---
 
@@ -102,6 +114,8 @@ Before submitting:
 - [ ] New tests added for new behavior
 - [ ] No regressions in existing tests
 - [ ] Determinism preserved
+- [ ] Correct version(s) bumped (`SCANNER` / `LOGIC` / `SCHEMA` — see CONVENTIONS §1)
+- [ ] `docs/SCHEMA.md` regenerated if you added an output surface
 - [ ] Documentation updated if behavior changed
 - [ ] CLA signed (first-time contributors)
 
@@ -155,7 +169,7 @@ Open an issue describing:
 - How it preserves determinism
 - Schema impact (new fields? type changes?)
 
-We'll discuss approach before implementation starts.
+We'll discuss approach before implementation starts. **A new minor** (a new field / namespace / vector / specialist) gets a short design RFC in `docs/` (`docs/vX.Y.0_RFC_Specification.md`) agreed before code; **patches** (bug fixes, hardening) ship with a `HISTORY.md` entry only. New parsers carry the **bounded-observation / never-crash** mandate — cap every attacker-controlled length/count, degrade to an honest null, never raise out of a per-file scan.
 
 ---
 
