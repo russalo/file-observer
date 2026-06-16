@@ -70,9 +70,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.17.0"
-    assert SCHEMA_VERSION == "1.11"  # v1.17.0: video specialist namespace (additive)
-    assert LOGIC_VERSION == "1.7.0"  # v1.17.0: video container-metadata extraction surface
+    assert SCANNER_VERSION == "1.18.0"
+    assert SCHEMA_VERSION == "1.12"  # v1.18.0: video make/model/gps_present/gps_source (additive)
+    assert LOGIC_VERSION == "1.8.0"  # v1.18.0: video capture-device + GPS-presence extraction
 
 
 def test_legacy_scanner_import_warns():

@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.17.0
-    Schema:     1.11
+    Version:    1.18.0
+    Schema:     1.12
     Python:     >= 3.12
-    Spec:       docs/v1.17.0_RFC_Specification.md (current)
+    Spec:       docs/v1.18.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.17.0"
-LOGIC_VERSION = "1.7.0"   # v1.17.0 — video container metadata: codec/duration_s/width/height/creation_date for MP4/MOV/M4V (ISOBMFF moov/mvhd/tkhd/stsd, stdlib struct). New extraction surface (video_structure specialist routing for .mp4/.mov/.m4v). Prior 1.6.0 = v1.16.0 image EXIF.
-SCHEMA_VERSION = "1.11"   # v1.17.0 — new video specialist namespace (codec/duration_s/width/height/creation_date), additive
+SCANNER_VERSION = "1.18.0"
+LOGIC_VERSION = "1.8.0"   # v1.18.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.12"   # v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -330,7 +330,7 @@ SAFETY_FLAGS: dict[str, str] = {
     "has_ole_objects": "RTF contains \\objemb or \\objlink",
     "has_external_references": "XML contains <!ENTITY with SYSTEM or PUBLIC",
     "extraction_permission_bypassed": "owner-locked encrypted PDF: EXTRACT permission not set but metadata extracted anyway (v1.12)",
-    "geotagged": "image EXIF carries a GPS IFD (location present; coordinates NOT extracted) (v1.16)",
+    "geotagged": "image EXIF (GPS IFD) or video (ISO-6709 location box) carries location; presence only, coordinates NOT extracted (v1.16 image, v1.18 video)",
 }
 
 # v1.13: PROVENANCE_TRIGGERS — the complete signal_provenance trigger surface,
@@ -720,7 +720,8 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
         "width", "height", "bit_depth", "make", "model", "orientation",
         "datetime_original", "gps_present", "xmp_present",
     ],
-    "video": ["codec", "duration_s", "width", "height", "creation_date"],
+    "video": ["codec", "duration_s", "width", "height", "creation_date",
+              "make", "model", "gps_present", "gps_source"],
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
     "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
@@ -1725,16 +1726,96 @@ def _video_track(data: bytes, moov_o: int, moov_end: int) -> dict:
     return out
 
 
+_QT_GPS_KEY = b"com.apple.quicktime.location.ISO6709"
+# child box types that begin a `meta` box — used to detect the QuickTime-vs-ISO form.
+_META_CHILDREN = {b"hdlr", b"keys", b"ilst", b"iinf", b"iloc", b"pitm",
+                  b"dinf", b"iref", b"iprp", b"idat", b"ipro"}
+
+
+def _meta_child_start(data: bytes, o: int, end: int) -> int:
+    """A `meta` box comes in two forms (leg-2/Gemini): QuickTime `.mov` `meta` is NOT a
+    FullBox → first child at o+8 (its type at o+12); ISO `.mp4` `meta` IS a FullBox (4-byte
+    version/flags) → first child at o+12 (its type at o+16). Detect by which offset yields a
+    known meta-child box type, so make/model/GPS are found on BOTH .mov and .mp4 (else an
+    ISO-meta MP4 silently drops everything). Default QuickTime."""
+    if o + 16 <= end and data[o + 12:o + 16] in _META_CHILDREN:   # QuickTime: child type at o+12
+        return o + 8
+    if o + 20 <= end and data[o + 16:o + 20] in _META_CHILDREN:   # ISO FullBox: child type at o+16
+        return o + 12
+    return o + 8
+
+
+def _qt_keys(moov: bytes, meta_o: int, meta_end: int) -> dict[bytes, bytes]:
+    """v1.18: Apple QuickTime metadata — `meta`→`keys` (ordered key table) + `ilst`
+    (values, items typed by 1-based index into the key table) → {key: value_bytes}.
+    Handles BOTH `meta` forms via `_meta_child_start` (QuickTime `.mov` children at +8,
+    ISO `.mp4` at +12). All reads bounds-guarded; never-crash."""
+    out: dict[bytes, bytes] = {}
+    keys: list[bytes] = []
+    child = _meta_child_start(moov, meta_o, meta_end)
+    kb = _box_find(moov, "keys", child, meta_end)
+    lb = _box_find(moov, "ilst", child, meta_end)
+    if not kb or not lb:
+        return out
+    ko, ks = kb
+    kend = min(ko + ks, len(moov))
+    if ko + 16 > kend:
+        return out
+    n = int.from_bytes(moov[ko + 12:ko + 16], "big")
+    p = ko + 16
+    for _ in range(n):
+        if p + 8 > kend:                       # bounded by the box, not n (attacker count)
+            break
+        ksz = int.from_bytes(moov[p:p + 4], "big")
+        if ksz < 8 or p + ksz > kend:
+            break
+        keys.append(moov[p + 8:p + ksz])       # entry: size(4) + namespace(4) + key string
+        p += ksz
+    lo, ls = lb
+    for _t, io, isz in _iter_isobmff(moov, lo + 8, lo + ls):
+        if io + 8 > len(moov):
+            break
+        idx = int.from_bytes(moov[io + 4:io + 8], "big")   # item box "type" = 1-based key index
+        db = _box_find(moov, "data", io + 8, min(io + isz, len(moov)))
+        if not db or not (0 < idx <= len(keys)):
+            continue
+        do, ds = db
+        out[keys[idx - 1]] = moov[do + 16:min(do + ds, len(moov))]   # data: size+type+ver+locale, value at +16
+    return out
+
+
+def _qt_text(val: bytes | None) -> str | None:
+    """Decode an Apple-key UTF-8 string value, as-is (observe-don't-interpret)."""
+    if not val:
+        return None
+    return val.decode("utf-8", "replace").strip("\x00").strip() or None
+
+
 def _parse_moov(moov: bytes) -> dict:
-    """Parse a standalone moov box buffer (offset 0). Container/track half only."""
+    """Parse a standalone moov box buffer (offset 0). Container/track + (v1.18) Apple
+    capture device + GPS-presence."""
     out: dict = {"codec": None, "duration_s": None, "width": None, "height": None,
-                 "creation_date": None}
+                 "creation_date": None, "make": None, "model": None,
+                 "gps_present": False, "gps_source": None}
     msize = struct.unpack(">I", moov[:4])[0] if len(moov) >= 4 else len(moov)
     end = min(msize, len(moov))
     mvhd = _box_find(moov, "mvhd", 8, end)
     if mvhd:
         out.update(_parse_mvhd(moov, mvhd[0]))
     out.update(_video_track(moov, 0, end))
+    # v1.18: Apple QuickTime keys (make/model) + GPS-presence. Apple-first (Android
+    # udta/©xyz deferred until a sample validates it — §8 Q1).
+    meta = _box_find(moov, "meta", 8, end)
+    if meta:
+        try:
+            keys = _qt_keys(moov, meta[0], min(meta[0] + meta[1], len(moov)))
+            out["make"] = _qt_text(keys.get(b"com.apple.quicktime.make"))
+            out["model"] = _qt_text(keys.get(b"com.apple.quicktime.model"))
+            if keys.get(_QT_GPS_KEY):   # NON-EMPTY value — a tombstone/empty box is not a location (leg-2/Gemini)
+                out["gps_present"] = True
+                out["gps_source"] = _QT_GPS_KEY.decode("ascii")   # the exact mechanism (presence, not coords)
+        except Exception:
+            pass
     return out
 
 
@@ -4366,17 +4447,23 @@ class Scanner:
         return None
 
     def _extract_video_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
-        # Container/track half (v1.17): codec / duration_s / width / height / creation_date.
-        # Apple QuickTime keys (make/model) + GPS-presence are gated on real iPhone .mov.
+        # v1.17 container/track half: codec / duration_s / width / height / creation_date.
+        # v1.18 Apple half: make / model (QuickTime keys) + gps_present / gps_source
+        # (location.ISO6709 — presence + mechanism, NOT coordinates) → geotagged.
         moov = self._read_moov(path)
         meta: dict[str, Any] = {"codec": None, "duration_s": None, "width": None,
-                                "height": None, "creation_date": None}
+                                "height": None, "creation_date": None,
+                                "make": None, "model": None,
+                                "gps_present": False, "gps_source": None}
         if moov is None:
             return meta
         try:
             meta.update(_parse_moov(moov))
         except Exception:
             pass
+        if meta.get("gps_present"):
+            # observe-with-disclosure (the v1.16 image pattern), now for video.
+            meta["_safety_extras"] = ["geotagged"]
         return meta
 
     def _extract_eml_metadata(self, sample: bytes) -> dict[str, Any] | None:

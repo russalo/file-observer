@@ -26,6 +26,13 @@ the public format definitions:
   placed AFTER `mdat` (the tail), so it exercises the v1.17 `video_structure` tail-scan
   (real `.mov` put `moov` at the end — measured 61/62). Container-half fields only
   (codec/duration/dims/creation_date). No third-party video — license-clean.
+- **Video w/ Apple keys (`video_qt_gps.mov` / `video_qt_nogps.mov`)** — self-authored
+  QuickTime metadata: `moov`→`meta`(not a FullBox)→`{hdlr, keys, ilst}` carrying
+  `com.apple.quicktime.make`/`.model` and (gps variant) `.location.ISO6709`. Exercises the
+  v1.18 `make`/`model` + `gps_present`/`gps_source` + `geotagged` path, GPS-present and
+  GPS-absent. `video_qt_iso_mp4.mp4` is the **ISO FullBox `meta`** form (standard `.mp4`,
+  children at +12) vs the QuickTime `.mov` form (+8) — proves both are parsed.
+  **Fabricated coordinates** — real geotagged clips stay local-gitignored.
 
 Regenerate: `python tests/fixtures/generated/generate.py`. Tested by
 `tests/test_fixture_coverage.py`.
