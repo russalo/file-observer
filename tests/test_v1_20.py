@@ -27,9 +27,10 @@ VID = Path(__file__).parent.parent / "scratch" / "v1_18_corpus" / "video"
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.20.0", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.10.0", f"LOGIC: {LOGIC_VERSION!r}"    # new extracted value
-    assert SCHEMA_VERSION == "1.13", f"SCHEMA: {SCHEMA_VERSION!r}"   # new field
+    def _v(x): return tuple(int(p) for p in x.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 20, 0), f"SCANNER regressed: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 10, 0), f"LOGIC regressed: {LOGIC_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 13), f"SCHEMA regressed: {SCHEMA_VERSION!r}"
 
 
 def _extract(path):

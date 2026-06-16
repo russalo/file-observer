@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.20.0
+    Version:    1.21.0
     Schema:     1.13
     Python:     >= 3.12
-    Spec:       docs/v1.20.0_RFC_Specification.md (current)
+    Spec:       docs/v1.21.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.20.0"
-LOGIC_VERSION = "1.10.0"   # v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.13"   # v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.21.0"
+LOGIC_VERSION = "1.11.0"   # v1.21.0 — content-aware recognition (Option B): unsupported_extension no longer fires on recognized text (text/* or known text-app MIME) even with an unlisted extension; the diagnostic now means "unidentifiable". Recognition-only, no new extraction. supported/unsupported counters shift. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.13"   # unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -310,7 +310,7 @@ SPECIALIST_FAILURE_CODES = frozenset({ERR_SPECIALIST_PROBE_FAILED, ERR_PDF_ENCRY
 ERROR_CODES: dict[str, str] = {
     ERR_UNIVERSAL_STAT_FAILED: "file stat() failed (deleted mid-scan / permissions / TOCTOU)",
     ERR_UNIVERSAL_READ_FAILED: "file open/read failed after stat succeeded (permissions, handle errors)",
-    ERR_UNSUPPORTED_EXTENSION: "extension not in the specialist registry and not a recognized common type",
+    ERR_UNSUPPORTED_EXTENSION: "could not identify the file — extension not in SUPPORTED_EXTENSIONS AND content not recognized as text (v1.21 content-aware)",
     ERR_MIME_TYPE_FALLBACK: "MIME detection fell back to the extension guess (libmagic absent/null)",
     ERR_BASELINE_DECODE_FAILED: "text decoding failed across the full charset cascade",
     ERR_SPECIALIST_PROBE_FAILED: "a specialist probe or extraction raised / returned null",
@@ -419,6 +419,30 @@ TEXT_APP_MIMES = {
     "application/yaml",
     "application/x-yaml",
 }
+
+# v1.21: content-aware recognition (RFC §6 = Option B). A file is RECOGNIZED (not
+# `unsupported_extension`) when its CONTENT is text — `text/*` or a known structured-text
+# application type — even if its extension isn't in SUPPORTED_EXTENSIONS. So
+# `unsupported_extension` means "couldn't identify it", not "extension not in our list".
+# (libmagic types source as text/x-script.python / text/x-java / text/x-c …, and JS/TS/SVG
+# as the application/* + image/svg+xml entries below.)
+RECOGNIZED_TEXT_APP_MIMES = TEXT_APP_MIMES | {
+    "application/javascript",
+    "application/x-javascript",
+    "application/ecmascript",
+    "image/svg+xml",
+    # libmagic types a zero-byte file `inode/x-empty` — a POSITIVE identification, not
+    # "unidentifiable". An empty file decodes cleanly as the empty string (trivially text,
+    # never binary), so it's recognized, not flagged. (e.g. empty `__init__.py` / `py.typed`.)
+    "inode/x-empty",
+}
+
+
+def _is_recognized_text(mime_type: str | None) -> bool:
+    """v1.21: True when the content MIME marks the file as text (so it's recognized, not
+    `unsupported_extension`). Content-first; null/unknown → False (genuinely unidentified)."""
+    return bool(mime_type) and (mime_type.startswith("text/")
+                                or mime_type in RECOGNIZED_TEXT_APP_MIMES)
 
 # Unicode byte-order marks. Order matters: UTF-32 LE (ff fe 00 00) shares its
 # first two bytes with UTF-16 LE (ff fe), so 4-byte BOMs MUST be checked first.
@@ -2682,9 +2706,16 @@ class Scanner:
         )
 
     def _compute_stats(self, records: list[FileRecord]) -> ScanStats:
+        # supported ⟺ NOT flagged unsupported_extension AND recognized (extension listed or
+        # text content). The first clause tracks the emission decision exactly (no drift from
+        # what scan_file emitted); the second is redundant on the normal path but restores the
+        # right answer for the stat-failure early-return record (v1.9.1 path) — it skips the
+        # emission site entirely (octet-stream mime, no flag), so "not flagged" alone would
+        # mis-count a stat-failed *unlisted-extension* file as supported (leg-1 v1.21).
         supported = sum(
             1 for r in records
-            if r.extension in SUPPORTED_EXTENSIONS
+            if not any(e.code == ERR_UNSUPPORTED_EXTENSION for e in r.errors)
+            and (r.extension in SUPPORTED_EXTENSIONS or _is_recognized_text(r.mime_type))
         )
         total = len(records)
         return ScanStats(
@@ -2996,10 +3027,26 @@ class Scanner:
         )
         provenance["requires_vision"] = asdict(vision_prov)
 
-        if extension not in SUPPORTED_EXTENSIONS:
+        # v1.21 (Option B): recognized by extension OR by text content. `unsupported_extension`
+        # now means "couldn't identify it" — it no longer fires on recognized text whose
+        # extension we simply hadn't listed (the candidate-scan finding: ~9k such files).
+        # Recognition is content-first, vetoed by what we actually observed:
+        #  - `not read_failed`: with no readable content we can't claim the bytes are text —
+        #    an extension-fallback MIME alone must not flip an unreadable file to "recognized"
+        #    (mirrors the stat-failure record's exclusion from the supported count). [leg-2]
+        #  - BOM or printable-ratio: a lying MIME (libmagic calls NUL-bearing bytes `text/plain`)
+        #    is vetoed by the printable ratio, and `image/svg+xml` text (which `is_binary` rejects
+        #    via the image/ prefix) is allowed by it; the BOM arm rescues UTF-16/32 text, whose
+        #    interleaved NULs fail the ratio just as they do in `detect_binary`. [leg-2]
+        recognized_text = (
+            _is_recognized_text(mime_type)
+            and not read_failed
+            and (_detect_unicode_bom(sample) is not None or self.looks_like_text(sample))
+        )
+        if extension not in SUPPORTED_EXTENSIONS and not recognized_text:
             errors.append(ErrorRecord(
                 code=ERR_UNSUPPORTED_EXTENSION,
-                message=f"Extension '{extension}' is not in supported file types",
+                message=f"Could not identify '{extension or path.name}' (extension not recognized and content is not text)",
                 stage="universal",
             ))
 
