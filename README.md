@@ -43,8 +43,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.12",
-  "context": { "scanner_version": "1.19.0", "logic_version": "1.9.0", "...": "…" },
+  "schema_version": "1.13",
+  "context": { "scanner_version": "1.20.0", "logic_version": "1.10.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,11 +76,11 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.19.0` |
-| **Schema** | `1.12` |
+| **Version** | `1.20.0` |
+| **Schema** | `1.13` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 1008 passed, 1 skipped; ran clean (zero fatal errors) — see "Validated at scale" below |
+| **Tests** | 1018 passed, 1 skipped; ran clean (zero fatal errors) — see "Validated at scale" below |
 
 ---
 
@@ -282,7 +282,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.19.0 RFC Specification](docs/v1.19.0_RFC_Specification.md) | Current release spec — human-readable surfaces refresh (freshened scan `summary` + `--schema --format summary` prose). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.20.0 RFC Specification](docs/v1.20.0_RFC_Specification.md) | Current release spec — `video.creation_date_qt` (the Apple QuickTime creationdate key, capture moment + timezone). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.19.0 RFC Specification](docs/v1.19.0_RFC_Specification.md) | Prior — human-readable surfaces refresh (scan `summary` + `--schema --format summary` prose). |
 | [v1.18.0 RFC Specification](docs/v1.18.0_RFC_Specification.md) | Prior — video capture device + GPS-presence (Apple QuickTime keys). |
 | [v1.17.0 RFC Specification](docs/v1.17.0_RFC_Specification.md) | Prior — video container metadata (codec/duration/dims/creation_date). |
 | [v1.16.0 RFC Specification](docs/v1.16.0_RFC_Specification.md) | Prior — image capture-metadata (EXIF for JPEG & HEIC, GPS-presence → `geotagged`). |
