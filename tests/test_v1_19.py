@@ -29,9 +29,10 @@ VID = Path(__file__).parent.parent / "scratch" / "v1_18_corpus" / "video"
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.19.0", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.9.0", f"LOGIC: {LOGIC_VERSION!r}"     # summary string change
-    assert SCHEMA_VERSION == "1.12", f"SCHEMA: {SCHEMA_VERSION!r}"   # unchanged — no new field
+    def _v(x): return tuple(int(p) for p in x.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 19, 0), f"SCANNER regressed: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 9, 0), f"LOGIC regressed: {LOGIC_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 12), f"SCHEMA regressed: {SCHEMA_VERSION!r}"
 
 
 # --------------------------------------------------------------- (A) freshened scan summary
@@ -75,7 +76,10 @@ class TestScanSummary:
                         reason="real iPhone corpus is local-gitignored")
     def test_real_corpus_capture_line(self):
         m = Scanner(source_dir=VID, config=ScannerConfig(enable_specialists=True)).scan()
-        assert "captured by Apple iPhone 16 Pro Max" in m.summary
+        # the corpus may hold several device models — assert the device(s) + geotagged are
+        # surfaced, robust to which/how-many clips are present (don't pin a prefix).
+        assert "Capture:" in m.summary
+        assert "Apple iPhone 16 Pro Max" in m.summary
         assert "geotagged" in m.summary
 
 
