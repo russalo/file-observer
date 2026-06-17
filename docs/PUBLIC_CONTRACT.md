@@ -205,6 +205,35 @@ the prior attempt failed (the per-file `errors` hold that); it only points at wh
 is worth another look. Empty when there is no previous manifest or nothing
 previously failed. Stable as part of the `delta` object.
 
+### 1.12 The `--schema` Self-Description Document (build-time interface)
+
+`file-observer --schema --format json` emits a deterministic description of the
+build's complete output surface and exits without scanning (introduced at schema
+1.8 / v1.13; see §3). **Its envelope shape is a committed build-time interface**,
+versioned by `schema_doc_version` (currently `2`):
+
+- The document is a JSON object carrying `scanner_version`, `logic_version`,
+  `schema_version`, `schema_doc_version`, the structural sections (`manifest`,
+  `specialists`, `vectors`), and the enumeration sections (`safety_flags`,
+  `error_codes`, `provenance_triggers`, `format_signatures`, `preservation_tiers`,
+  `mime_tiers`, `reference_tokens_subcategories`, `filename_patterns_subcategories`).
+- `manifest` is `{RecordName: [{"name": str, "type": str, "stability": "stable"|"provisional"}, …]}`.
+- A **backward-incompatible change to this shape** (renaming/removing an envelope
+  key, changing the field-object key set, re-nesting `manifest`) **bumps
+  `schema_doc_version`** — a consumer's re-snapshot signal.
+
+**Committed: the shape. Not frozen: the field inventory.** Which fields appear
+(and their `stability`) evolves additively with the build — tracked by
+`schema_version`/`SCHEMA_VERSION`, not `schema_doc_version`. But a field marked
+`stable` inherits the §6 backward-compatibility policy (not removed/retyped
+without a MAJOR `SCHEMA_VERSION` bump + deprecation), so consuming the **names of
+stable fields** off `--schema` is exactly as safe as consuming the manifest.
+
+**Not committed:** the provenance `trigger` strings `--schema` lists remain opaque
+per §2.2 — `--schema` describes the current surface, it does not freeze those.
+
+Committed 2026-06-17 (v1.21.2), once `--schema` gained a real consumer.
+
 ---
 
 ## 2. What Consumers Should NOT Rely On
@@ -276,6 +305,7 @@ Files in `scratch/` and any document with `_DRAFT` in the filename are not commi
 | `1.4` | 1.5.0 | PDF specialist head+tail read (additive): `specialist_metadata.pdf.text_detected` (bool, provisional). `page_count`/`producer` now reliably populated (read from the trailer, not just the 8 KB head). `requires_vision` for PDFs is refined — born-digital PDFs with compressed content streams are no longer mis-flagged as needing vision (`LOGIC_VERSION` 1.3.0→1.4.0). Object-stream PDFs (PDF 1.5+) return `page_count=None` (honest null). No existing field changed/removed/retyped. |
 | `1.5` | 1.6.0 | Production-provenance dimension (additive): a corpus-scoped `provenance` vector in `vectors_collected[]` (normalized `toolchains`, `production_years`, `digitization`; provisional), plus an additive `application` field on docx/xlsx specialist metadata. Pure aggregation — `LOGIC_VERSION` unchanged (1.4.0). No existing field changed/removed/retyped. |
 | `1.6` | 1.7.0 | Structural-anchor PDF reader (additive): `specialist_metadata.pdf.xref_type` (`classic`/`stream`/`none`, provisional) — the structural observable. `page_count`/`/Info` are now read by following the PDF's index (`startxref` → trailer → root → page tree, parsing the xref table + `/Prev`) — precise on incremental updates and > 64 MB files; on the corpus, identical values to v1.5 (zero regression). Specialist extraction only — `LOGIC_VERSION` unchanged (1.4.0). No existing field changed/removed/retyped. |
+| `1.13` | 1.21.2 | **`--schema` document shape formally committed (patch), schema unchanged.** The `--schema --format json` envelope becomes a binding build-time interface versioned by `schema_doc_version` (= `2`): top-level `scanner_version`/`logic_version`/`schema_version`/`schema_doc_version` + the structural sections + enumerations, with `manifest` = `{RecordName: [{name, type, stability}]}`; a backward-incompatible *shape* change bumps `schema_doc_version`. The field *inventory* is not frozen by this (it grows additively, tracked by `SCHEMA_VERSION`); a `stable`-marked field keeps its §6 promise, so reading stable field names off `--schema` is as safe as reading the manifest. See §1.12. Prompted by the first real `--schema` consumer (gazetteer). Byte-identical scan output; `LOGIC_VERSION`/`SCHEMA_VERSION` unchanged (1.11.0 / 1.13); `schema_doc_version` unchanged (the shape is committed, not changed). No existing field changed/removed/retyped. |
 | `1.13` | 1.21.1 | **Provisional-designation correction, schema unchanged (patch).** The v1.16 image-EXIF fields (`make`/`model`/`orientation`/`datetime_original`/`gps_present`/`xmp_present`) and the entire v1.17–1.20 `video` namespace are corrected from STABLE to **provisional** in `--schema` — they had emitted stable only because of an intake-registry oversight (recent fields should be provisional, the data-gathering tier, pending a promotion pass). Manifest **byte-identical** (stability lives only in `--schema`, not the manifest); `LOGIC_VERSION`/`SCHEMA_VERSION` unchanged (1.11.0 / 1.13). The old image dimensions (`width`/`height`/`bit_depth`) stay stable. No existing field changed/removed/retyped — only a stability *promise level* corrected (a weakening that's safe here: these were never enumerated stable in the binding contract, and no consumer depended on the annotation yet). |
 | `1.13` | 1.21.0 | **Content-aware text recognition, schema unchanged.** `unsupported_extension` no longer fires when a file's CONTENT is recognized as text (`text/*` or a known structured-text application type, or `inode/x-empty`), even if the extension isn't listed — the diagnostic now means "couldn't identify it," not "extension not in our list." Recognition gates on content (a content-derived MIME + printable-ratio/BOM), never the extension-fallback MIME. Recognition only — no new field, no new extraction; `supported`/`degraded` counters shift for text-with-unlisted-extension. `LOGIC_VERSION` 1.10.0→1.11.0. No existing field changed/removed/retyped. |
 | `1.13` | 1.20.0 | **Video QuickTime creation date (additive):** `specialist_metadata.video.creation_date_qt` — the Apple `com.apple.quicktime.creationdate` key (capture moment WITH timezone), kept SEPARATE from `video.creation_date` (mvhd/UTC); never reconciled (observe-don't-interpret). `LOGIC_VERSION` 1.9.0→1.10.0. `SCHEMA_VERSION` 1.12→1.13 (a new field). No existing field changed/removed/retyped. |

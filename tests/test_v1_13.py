@@ -77,6 +77,42 @@ class TestSchemaSurface:
                        "preservation", "author_aggregate", "provenance"}
 
 
+class TestSchemaEnvelopeIsContractCommitted:
+    """PUBLIC_CONTRACT §1.12 (committed v1.21.2): the `--schema --format json`
+    envelope SHAPE is a committed build-time interface, versioned by
+    `schema_doc_version`. This guards the SHAPE (not the field inventory, which
+    grows additively) so it can't break a consumer silently — the producer end
+    of gazetteer's live==snapshot tripwire. A backward-incompatible shape change
+    must be a deliberate `schema_doc_version` bump, not an accident this catches."""
+
+    # The full committed top-level envelope (§1.12).
+    COMMITTED_ENVELOPE_KEYS = frozenset({
+        "scanner_version", "logic_version", "schema_version", "schema_doc_version",
+        "manifest", "specialists", "vectors",
+        "safety_flags", "error_codes", "provenance_triggers", "format_signatures",
+        "preservation_tiers", "mime_tiers",
+        "reference_tokens_subcategories", "filename_patterns_subcategories",
+    })
+
+    def test_committed_envelope_keys_present(self, schema_doc):
+        missing = self.COMMITTED_ENVELOPE_KEYS - set(schema_doc)
+        assert not missing, f"--schema dropped committed envelope keys: {sorted(missing)}"
+
+    def test_schema_doc_version_is_int(self, schema_doc):
+        # consumers pin on it; a bump is the documented re-snapshot signal
+        assert isinstance(schema_doc["schema_doc_version"], int)
+
+    def test_manifest_is_record_to_field_objects(self, schema_doc):
+        manifest = schema_doc["manifest"]
+        assert isinstance(manifest, dict) and manifest
+        for record, fields in manifest.items():
+            assert isinstance(fields, list), record
+            for f in fields:
+                # the committed field-object shape: {name, type, stability}
+                assert {"name", "type", "stability"} <= set(f), f"{record}: {f}"
+                assert f["stability"] in ("stable", "provisional"), f"{record}.{f['name']}"
+
+
 # ---------------------------------------------------------------------------
 # Completeness cross-checks against a real scan (the load-bearing contract)
 # ---------------------------------------------------------------------------
