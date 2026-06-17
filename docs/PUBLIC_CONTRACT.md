@@ -246,7 +246,7 @@ These fields exist in the manifest but are subject to change in MINOR releases w
 
 **Promoted to stable in v1.10** (now under the backward-compat policy — not removable/retypable without a MAJOR bump): `quality.duplicate_clusters` / `duplicate_cluster_count` / `redundant_file_count`, `quality.specialist_stats`, `errors[].detail`, `specialist_metadata.pdf.text_detected`, `specialist_metadata.pdf.xref_type`.
 
-**Candidate tier (below provisional, v1.10):** some observations (CAD coverage, image EXIF, word-twisting provenance) are tracked + measured in the review apparatus but are **NOT in the manifest** at all — they carry no contract status until promoted to provisional. The ladder is `candidate → provisional → stable`; see `CONVENTIONS.md`.
+**Candidate tier (below provisional, v1.10):** some observations (CAD coverage, word-twisting provenance) are tracked + measured in the review apparatus but are **NOT in the manifest** at all — they carry no contract status until promoted to provisional. (Image EXIF was a candidate here until v1.16 built it into the manifest; it is now a provisional field, listed above.) The ladder is `candidate → provisional → stable`; see `CONVENTIONS.md`.
 
 The following were promoted to stable in v0.11: `vectors_collected[]`, `reference_tokens`, `quality.per_directory_summary[]`, `specialist_metadata.email.body_chatlog`, `filename_patterns`.
 
