@@ -80,7 +80,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 | **Schema** | `1.13` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
-| **Tests** | 1018 passed, 1 skipped; ran clean (zero fatal errors) — see "Validated at scale" below |
+| **Tests** | 1047 passed, 1 skipped; ran clean (zero fatal errors) — see "Validated at scale" below |
 
 ---
 
