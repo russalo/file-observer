@@ -75,7 +75,7 @@ Every entry in `files` has these stable fields:
 | `tags` | array of strings | **Stable** — extracted inline tags |
 | `asset_matches` | array of strings | **Stable** — matched asset/companion references |
 | `frontmatter` | object | **Stable shape** — markdown frontmatter (`exists`/`keys`/`raw`) |
-| `structural` | object | **Stable shape** — structural signals (title, headings, document keys, CSV headers, technology hints) |
+| `structural` | object | **Stable shape** — structural signals (`title`/`heading_structure`/`csv_headers`/`document_keys`/`technology_hints`/`filename_date`) |
 | `preservation` | object | **Provisional** (since v1.10) — `format_obsolescence` (`current`/`at_risk`/`obsolete`) + `migration_recommended` (bool), from a closed obsolescence table |
 | `errors` | array of objects | **Stable** — error codes stable (see error code registry); `errors[].detail` is **Stable** (since 1.2, promoted 1.10) |
 
@@ -107,7 +107,8 @@ The `specialist_tool` field uses semantic names that describe **what kind of dow
 | Tool name | Files routed to it |
 |---|---|
 | `pdf_extraction` | `.pdf` |
-| `image_structure` | `.png`, `.jpg`, `.jpeg` |
+| `image_structure` | `.png`, `.jpg`, `.jpeg`, `.heic`, `.heif`, `.avif` |
+| `video_structure` | `.mp4`, `.mov`, `.m4v` (since 1.17) |
 | `email_envelope` | `.msg`, `.eml` |
 | `spreadsheet_structure` | `.xlsx`, `.xls` |
 | `document_extraction` | `.docx`, `.doc`, `.rtf` |
@@ -122,7 +123,7 @@ The `errors` array on each FileRecord contains entries with stable `code` values
 | Code | Stage | Meaning |
 |---|---|---|
 | `universal_stat_failed` | universal | File could not be stat'd |
-| `unsupported_extension` | universal | Extension not in supported set |
+| `unsupported_extension` | universal | Could not identify the file — its extension isn't in the supported set AND its content isn't recognized as text (content-aware since v1.21; previously "extension not in supported set"). |
 | `mime_type_fallback` | universal | Content-based MIME unavailable, used extension fallback |
 | `baseline_decode_failed` | baseline | Text decoding raised an exception |
 | `specialist_probe_failed` | specialist | Specialist returned null or raised an exception |
