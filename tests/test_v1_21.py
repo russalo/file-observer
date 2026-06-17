@@ -20,7 +20,7 @@ from file_observer.scanner import (
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.21.0", f"got {SCANNER_VERSION!r}"
+    assert SCANNER_VERSION == "1.21.1", f"got {SCANNER_VERSION!r}"
     assert LOGIC_VERSION == "1.11.0", f"LOGIC: {LOGIC_VERSION!r}"    # recognition routing change
     assert SCHEMA_VERSION == "1.13", f"SCHEMA: {SCHEMA_VERSION!r}"   # unchanged — no new field
 

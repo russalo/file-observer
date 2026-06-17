@@ -58,6 +58,25 @@ def test_readme_version_references_current():
         f"README does not reference the current minor's RFC ({rfc_doc})"
 
 
+def test_contract_docs_version_references_current():
+    """The binding contract docs hand-maintain the current version and have drifted
+    behind the build (PUBLIC_CONTRACT §3 history lagged 6 minors; surfaced by a
+    consumer). Guard them so a stale contract doc fails CI instead of a consumer.
+    Same disease/cure as test_readme_version_references_current."""
+    from file_observer.scanner import SCANNER_VERSION
+
+    root = Path(__file__).resolve().parent.parent
+    contract = (root / "docs" / "PUBLIC_CONTRACT.md").read_text(encoding="utf-8")
+    conventions = (root / "docs" / "CONVENTIONS.md").read_text(encoding="utf-8")
+
+    # PUBLIC_CONTRACT §3 Schema Version History must carry a row for the current build
+    assert f"| {SCANNER_VERSION} |" in contract, \
+        f"PUBLIC_CONTRACT §3 history has no row for current SCANNER_VERSION {SCANNER_VERSION}"
+    # CONVENTIONS §1.1 current-version stamp must match the constant
+    assert f"**Current:** `{SCANNER_VERSION}`" in conventions, \
+        f"CONVENTIONS §1.1 SCANNER current stamp is stale (want {SCANNER_VERSION})"
+
+
 def test_canonical_top_level_api():
     """The documented public API imports from file_observer."""
     from file_observer import Scanner, ScannerConfig, manifest_to_json  # noqa: F401
@@ -97,7 +116,7 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.21.0"
+    assert SCANNER_VERSION == "1.21.1"
     assert SCHEMA_VERSION == "1.13"  # unchanged in v1.21 (content-aware recognition is LOGIC)
     assert LOGIC_VERSION == "1.11.0"  # v1.21.0: content-aware text recognition
 
