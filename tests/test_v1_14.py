@@ -76,6 +76,18 @@ class TestStabilityAnnotation:
         fr = {x["name"]: x["stability"] for x in schema_doc["manifest"]["FileRecord"]}
         assert fr["preservation"] == "provisional"
 
+    def test_capture_metadata_fields_are_provisional(self, schema_doc):
+        # v1.21.1: image-EXIF (v1.16) + the whole video namespace (v1.17–1.20) are
+        # provisional in --schema (corrected intake oversight that emitted them stable).
+        for f in ("make", "model", "orientation", "datetime_original", "gps_present", "xmp_present"):
+            assert _field_stability(schema_doc, "image", f) == "provisional", f"image.{f}"
+        for f in ("codec", "duration_s", "width", "height", "creation_date",
+                  "creation_date_qt", "make", "model", "gps_present", "gps_source"):
+            assert _field_stability(schema_doc, "video", f) == "provisional", f"video.{f}"
+        # the OLD image dimensions stay STABLE (not swept into the correction)
+        for f in ("width", "height", "bit_depth"):
+            assert _field_stability(schema_doc, "image", f) == "stable", f"image.{f}"
+
     def test_every_schema_element_has_a_stability_label(self, schema_doc):
         valid = {"stable", "provisional"}
         for ns, fields in schema_doc["specialists"]["fields"].items():
@@ -99,6 +111,14 @@ class TestProvisionalRegistryMatchesContract:
             ("chatlog", "speaker_turn_counts"),
             ("chatlog", "speaker_turn_chars"),
             ("chatlog", "alternation"),
+            # v1.21.1: image-EXIF (v1.16) + the whole video namespace (v1.17–1.20) are
+            # provisional (promotion-pass candidates) — corrected from an intake oversight
+            # that had them emitting as stable. Old image dimensions stay stable (not here).
+            ("image", "make"), ("image", "model"), ("image", "orientation"),
+            ("image", "datetime_original"), ("image", "gps_present"), ("image", "xmp_present"),
+            ("video", "codec"), ("video", "duration_s"), ("video", "width"), ("video", "height"),
+            ("video", "creation_date"), ("video", "creation_date_qt"), ("video", "make"),
+            ("video", "model"), ("video", "gps_present"), ("video", "gps_source"),
         })
         assert PROVISIONAL_VECTORS == frozenset({"preservation"})
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({

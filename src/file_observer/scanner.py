@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.21.0
+    Version:    1.21.1
     Schema:     1.13
     Python:     >= 3.12
     Spec:       docs/v1.21.0_RFC_Specification.md (current)
@@ -78,7 +78,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.21.0"
+SCANNER_VERSION = "1.21.1"
 LOGIC_VERSION = "1.11.0"   # v1.21.0 — content-aware recognition (Option B): unsupported_extension no longer fires on recognized text (text/* or known text-app MIME) even with an unlisted extension; the diagnostic now means "unidentifiable". Recognition-only, no new extraction. supported/unsupported counters shift. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.13"   # unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
@@ -772,6 +772,29 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("chatlog", "speaker_turn_counts"),
     ("chatlog", "speaker_turn_chars"),
     ("chatlog", "alternation"),
+    # v1.21.1: the v1.16 image-EXIF fields are provisional (recent; promotion-pass
+    # candidates). They emitted as stable only because they were never registered here
+    # — an intake oversight; corrected. The OLD image dimensions (width/height/bit_depth,
+    # stable since 0.5) are intentionally NOT listed. Manifest byte-identical (stability
+    # lives only in `--schema`, not the manifest).
+    ("image", "make"),
+    ("image", "model"),
+    ("image", "orientation"),
+    ("image", "datetime_original"),
+    ("image", "gps_present"),
+    ("image", "xmp_present"),
+    # v1.21.1: the whole `video` namespace is recent (v1.17–1.20) → all provisional
+    # (promotion-pass candidates), same intake-oversight correction.
+    ("video", "codec"),
+    ("video", "duration_s"),
+    ("video", "width"),
+    ("video", "height"),
+    ("video", "creation_date"),
+    ("video", "creation_date_qt"),
+    ("video", "make"),
+    ("video", "model"),
+    ("video", "gps_present"),
+    ("video", "gps_source"),
 })
 PROVISIONAL_VECTORS: frozenset[str] = frozenset({"preservation"})
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
