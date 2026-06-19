@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.22.0
+    Version:    1.22.1
     Schema:     1.13
     Python:     >= 3.12
     Spec:       docs/v1.22.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.22.0"
-LOGIC_VERSION = "1.12.0"   # v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCANNER_VERSION = "1.22.1"
+LOGIC_VERSION = "1.12.1"   # v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.13"   # unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -910,6 +910,19 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
 # BINARY OLE2 (same `email` namespace) and must STAY distrusted when unsigned — a lying
 # text `.msg` would otherwise bypass the guard (leg-2/Gemini HIGH). Keep this set TINY.
 EXTENSION_TRUSTED_MIMES: set[str] = {"message/rfc822"}
+
+# v1.22.1: per-EXTENSION guard augmentation, for when libmagic gives a CONTENT MIME the
+# namespace guard doesn't list but the extension legitimately implies. `.eml` is a TEXT email
+# format — libmagic types body-dominated mail (HTML bodies, quirky leading headers) as
+# `text/plain` / `text/html`, NOT `message/rfc822`, which the OLE2-shaped `email` guard
+# rejected → the specialist was skipped on ~38% of real `.eml`. Accept text for `.eml` ONLY,
+# so a lying text-typed `.msg` (binary OLE2, same `email` namespace) STAYS distrusted — the
+# same extension-gated discipline as EXTENSION_TRUSTED_MIMES (the v1.15.2 sibling fix). The
+# stdlib email.parser self-validates; a misnamed text `.eml` yields whatever it finds
+# (observe-don't-interpret). Keep this map TINY + extension-specific.
+EXTENSION_EXTRA_GUARD_MIMES: dict[str, set[str]] = {
+    ".eml": {"text/plain", "text/html"},
+}
 
 # v0.8: identifiers for the chatlog specialist. Not registered in
 # SPECIALIST_TOOLS / SPECIALIST_NAMESPACE because those are extension-keyed
@@ -3310,6 +3323,10 @@ class Scanner:
                 # MIME guard: skip specialist if content doesn't match expected format
                 ns = SPECIALIST_NAMESPACE.get(extension)
                 guard = SPECIALIST_MIME_GUARD.get(ns, set()) if ns else set()
+                # v1.22.1: fold in any per-extension extra MIMEs (e.g. `.eml` accepts text/plain
+                # & text/html — libmagic types body-dominated mail as text, not message/rfc822).
+                # Extension-specific, so a lying text-typed `.msg` in the same namespace stays out.
+                guard = guard | EXTENSION_EXTRA_GUARD_MIMES.get(extension, set())
                 # When MIME was extension-derived (fallback), also verify via format_signatures
                 mime_from_extension = provenance.get("mime_type", {}).get("trigger") == "extension_fallback"
                 if mime_from_extension and guard and format_signatures:
