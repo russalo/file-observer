@@ -116,9 +116,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.23.0"
-    assert SCHEMA_VERSION == "1.14"  # v1.23.0: preservation promoted provisional→stable (contract change)
-    assert LOGIC_VERSION == "1.12.1"  # unchanged — v1.23 promotion is designation-only
+    assert SCANNER_VERSION == "1.23.1"
+    assert SCHEMA_VERSION == "1.14"  # unchanged — v1.23.1 is a LOGIC-only FP fix
+    assert LOGIC_VERSION == "1.12.2"  # v1.23.1: PDF-header FP fix (C1/C2 split, MIME-sniff window)
 
 
 def test_legacy_scanner_import_warns():

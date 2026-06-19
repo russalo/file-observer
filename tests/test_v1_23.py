@@ -41,9 +41,10 @@ def _filerecord_field_stability(doc, field):
 
 
 def test_version_surfaces():
-    assert SCANNER_VERSION == "1.23.0", f"got {SCANNER_VERSION!r}"
-    assert SCHEMA_VERSION == "1.14", f"SCHEMA: {SCHEMA_VERSION!r}"   # promotion = contract change
-    assert LOGIC_VERSION == "1.12.1", f"LOGIC: {LOGIC_VERSION!r}"    # unchanged — designation-only
+    # floors, not exact — v1.23.1+ supersede this release (the patch bumps SCANNER/LOGIC).
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 23, 0), f"got {SCANNER_VERSION!r}"
+    assert SCHEMA_VERSION == "1.14", f"SCHEMA: {SCHEMA_VERSION!r}"   # promotion = contract change (frozen here)
+    assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 12, 1), f"LOGIC: {LOGIC_VERSION!r}"
 
 
 def test_preservation_promoted_to_stable():

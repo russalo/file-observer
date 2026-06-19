@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.23.0
+    Version:    1.23.1
     Schema:     1.14
     Python:     >= 3.12
     Spec:       docs/v1.23.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.23.0"
-LOGIC_VERSION = "1.12.1"   # v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCANNER_VERSION = "1.23.1"
+LOGIC_VERSION = "1.12.2"   # v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.14"   # v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -820,10 +820,28 @@ def _field_stability(namespace: str, field: str) -> str:
 # Labels that are valid MIME types (contain "/") are usable by detect_mime's
 # pure-Python fallback; the one non-MIME label ("riff_container") is
 # format_signatures-only and skipped by _sniff_mime.
-MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None, bytes], ...], str]] = [
+class _Within:
+    """v1.23.1 — a bounded find-anywhere: the pattern must START within the first `n`
+    bytes. ENFORCED in the MIME sniff (C1, `_sniff_mime`) — a stray deep `%PDF-` in a
+    source/text file must NOT type the file `application/pdf` (the FP puresniff's
+    clean-room sweep found, loose since v1.3). IGNORED in `scan_signatures` (C2,
+    `enforce_window=False`) — a real PDF embedded deep in a polyglot must still register
+    its `format_signature` so `is_polyglot` stays honest. The MIME judgment is sharpened
+    WITHOUT suppressing the polyglot OBSERVATION (the observe-don't-interpret resolution;
+    the blanket-window alternative was declined because it suppressed both). Real PDFs
+    tolerate a few leading bytes before `%PDF-` (whitespace/BOM/junk — measured max offset
+    128 across 1012 corpus PDFs); 256 keeps every real PDF (2x headroom) and rejects deep
+    literals (the lone >256 case in the corpus is a `.py` file with `%PDF-1.4` in a string)."""
+    __slots__ = ("n",)
+    def __init__(self, n: int) -> None:
+        self.n = n
+
+PDF_HEADER_MAX_OFFSET = 256
+
+MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes], ...], str]] = [
     (((0, b"\x89PNG\r\n\x1a\n"),), "image/png"),
     (((0, b"\xff\xd8\xff"),), "image/jpeg"),
-    (((None, b"%PDF-"),), "application/pdf"),
+    (((_Within(PDF_HEADER_MAX_OFFSET), b"%PDF-"),), "application/pdf"),
     (((0, b"GIF87a"),), "image/gif"),
     (((0, b"GIF89a"),), "image/gif"),
     # RIFF container — sub-types (marker at offset 8) MUST precede the generic
@@ -5917,7 +5935,10 @@ class Scanner:
         found: list[dict[str, Any]] = []
         seen_formats: set[str] = set()
         for constraints, fmt in MAGIC_SIGNATURES:
-            off = self._signature_matches(sample, constraints)
+            # v1.23.1: C2 = find-anywhere even for `_Within` rules — a deep-embedded
+            # signature (a real PDF in a polyglot beyond the header window) MUST still
+            # register so `is_polyglot` stays honest. The window is C1-only (the MIME sniff).
+            off = self._signature_matches(sample, constraints, enforce_window=False)
             if off is not None:
                 found.append({"format": fmt, "offset": off})
                 seen_formats.add(fmt)
@@ -5939,17 +5960,29 @@ class Scanner:
 
     @staticmethod
     def _signature_matches(
-        sample: bytes, constraints: tuple[tuple[int | None, bytes], ...]
+        sample: bytes,
+        constraints: tuple[tuple[int | None | "_Within", bytes], ...],
+        *,
+        enforce_window: bool = True,
     ) -> int | None:
         """v1.3: return the anchor offset if ALL (offset, pattern) constraints
-        match the head sample, else None. offset=int is anchored; offset=None
-        means the pattern occurs anywhere in the sample. Shared by
-        scan_signatures and _sniff_mime so the two never drift apart."""
+        match the head sample, else None. offset=int is anchored; offset=None is
+        find-anywhere; offset=_Within(n) is a BOUNDED find-anywhere — the pattern
+        must START within the first n bytes when `enforce_window` (the MIME sniff,
+        C1), but plain find-anywhere when not (scan_signatures, C2: a deep-embedded
+        signature must still register). Shared by scan_signatures and _sniff_mime
+        so the two never drift apart (v1.23.1)."""
         if not constraints:
             return None
         anchor: int | None = None
         for offset, pattern in constraints:
-            if offset is not None:
+            if isinstance(offset, _Within):
+                pos = sample.find(pattern)
+                if pos < 0:
+                    return None
+                if enforce_window and pos > offset.n:   # bounded find-anywhere (C1 sniff)
+                    return None
+            elif offset is not None:
                 if sample[offset:offset + len(pattern)] != pattern:
                     return None
                 pos = offset
