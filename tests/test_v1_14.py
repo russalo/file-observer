@@ -71,10 +71,12 @@ class TestStabilityAnnotation:
     def test_held_fields_are_provisional(self, schema_doc):
         for f in ("content_shape", "speaker_turn_counts", "speaker_turn_chars", "alternation"):
             assert _field_stability(schema_doc, "chatlog", f) == "provisional", f
-        assert _vector_stability(schema_doc, "preservation") == "provisional"
-        # preservation is also a FileRecord field
+        # preservation was PROMOTED to stable in v1.23.0 (see test_v1_23) — the chatlog family stays held.
+        assert _vector_stability(schema_doc, "preservation") == "stable"
         fr = {x["name"]: x["stability"] for x in schema_doc["manifest"]["FileRecord"]}
-        assert fr["preservation"] == "provisional"
+        assert fr["preservation"] == "stable"
+        # format_signatures/is_polyglot stay provisional (held-by-design, §2.4 — vocabulary stays fluid)
+        assert fr["format_signatures"] == "provisional" and fr["is_polyglot"] == "provisional"
 
     def test_capture_metadata_fields_are_provisional(self, schema_doc):
         # v1.21.1: image-EXIF (v1.16) + the whole video namespace (v1.17–1.20) are
@@ -120,11 +122,12 @@ class TestProvisionalRegistryMatchesContract:
             ("video", "creation_date"), ("video", "creation_date_qt"), ("video", "make"),
             ("video", "model"), ("video", "gps_present"), ("video", "gps_source"),
         })
-        assert PROVISIONAL_VECTORS == frozenset({"preservation"})
+        assert PROVISIONAL_VECTORS == frozenset()  # v1.23.0 promoted `preservation` (was the only one)
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({
-            ("FileRecord", "preservation"),
-            ("FileRecord", "format_signatures"),  # §2.4 internal field set
-            ("FileRecord", "is_polyglot"),         # §2.4 internal field set
+            # v1.23.0 promoted ("FileRecord","preservation") → stable; the two below are held-by-DESIGN
+            # (§2.4, permanently-informational — the signature vocabulary intentionally stays fluid).
+            ("FileRecord", "format_signatures"),
+            ("FileRecord", "is_polyglot"),
         })
 
 

@@ -43,8 +43,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.13",
-  "context": { "scanner_version": "1.22.1", "logic_version": "1.12.1", "...": "…" },
+  "schema_version": "1.14",
+  "context": { "scanner_version": "1.23.0", "logic_version": "1.12.1", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,8 +76,8 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.22.1` |
-| **Schema** | `1.13` |
+| **Version** | `1.23.0` |
+| **Schema** | `1.14` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
 | **Tests** | 1047 passed, 1 skipped; ran clean (zero fatal errors) — see "Validated at scale" below |
@@ -282,7 +282,7 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.22.0 RFC Specification](docs/v1.22.0_RFC_Specification.md) | Current release spec — content-aware recognition for binary (completes the v1.21 text arc: `unsupported_extension` now fires only when content genuinely couldn't be identified, for any file type). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.23.0 RFC Specification](docs/v1.23.0_RFC_Specification.md) | Current release spec — promotion pass: the `preservation` format-obsolescence signal graduates provisional → stable (designation-only; SCHEMA 1.14). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.20.0 RFC Specification](docs/v1.20.0_RFC_Specification.md) | Prior — `video.creation_date_qt` (the Apple QuickTime creationdate key, capture moment + timezone). |
 | [v1.19.0 RFC Specification](docs/v1.19.0_RFC_Specification.md) | Prior — human-readable surfaces refresh (scan `summary` + `--schema --format summary` prose). |
 | [v1.18.0 RFC Specification](docs/v1.18.0_RFC_Specification.md) | Prior — video capture device + GPS-presence (Apple QuickTime keys). |

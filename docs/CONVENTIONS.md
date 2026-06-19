@@ -18,7 +18,7 @@ The scanner has five distinct things that carry versions. They are independent �
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.22.1`
+**Current:** `1.23.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic — code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent �
 - MAJOR (x.0 → x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `1.13`  (1.12→1.13 at v1.20.0 — the `video.creation_date_qt` field; 1.9→1.10/1.11/1.12 across v1.16–1.18 capture-metadata)
+**Current:** `1.14`  (1.13→1.14 at v1.23.0 — promotion: `preservation` provisional→stable, designation-only; 1.12→1.13 at v1.20.0 — the `video.creation_date_qt` field; 1.9→1.10/1.11/1.12 across v1.16–1.18 capture-metadata)
 **Note:** This IS a public contract field. As of v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, since v0.9)
@@ -64,9 +64,9 @@ The scanner has five distinct things that carry versions. They are independent �
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.22.1 | Internal |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.23.0 | Internal |
 | Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.12.1 | Internal* |
-| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.13 | **Public** |
+| Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.14 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
 
