@@ -116,9 +116,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.22.0"
+    assert SCANNER_VERSION == "1.22.1"
     assert SCHEMA_VERSION == "1.13"  # unchanged through v1.22 (content-aware recognition is LOGIC)
-    assert LOGIC_VERSION == "1.12.0"  # v1.22.0: content-aware recognition extended to binary
+    assert LOGIC_VERSION == "1.12.1"  # v1.22.1: .eml MIME-guard relaxation (extraction-dispatch)
 
 
 def test_legacy_scanner_import_warns():
