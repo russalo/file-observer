@@ -20,9 +20,11 @@ from file_observer.scanner import (
 
 
 def test_release_version_surfaces():
-    assert SCANNER_VERSION == "1.21.2", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.11.0", f"LOGIC: {LOGIC_VERSION!r}"    # recognition routing change
-    assert SCHEMA_VERSION == "1.13", f"SCHEMA: {SCHEMA_VERSION!r}"   # unchanged — no new field
+    # v1.21 floor — the exact current-version pin now lives in the newest release test (test_v1_22).
+    def _v(s): return tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 21, 0), f"SCANNER regressed below v1.21: {SCANNER_VERSION!r}"
+    assert _v(LOGIC_VERSION) >= (1, 11, 0), f"LOGIC regressed below 1.11.0: {LOGIC_VERSION!r}"
+    assert _v(SCHEMA_VERSION) >= (1, 13), f"SCHEMA regressed below 1.13: {SCHEMA_VERSION!r}"
 
 
 class TestPredicate:
