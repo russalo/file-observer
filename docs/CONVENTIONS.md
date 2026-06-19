@@ -185,14 +185,16 @@ logic + evidence of value**, not age.
   for any new parser path (v1.8.1).
 - **stable** — under the backward-compat policy; not removable/retypable without a MAJOR bump.
 
-**Candidate registry (v1.10):**
+**Candidate registry (v1.10) — ACTIVE candidates:**
 | Candidate | Held because | Sweep-side harvest (not in the manifest) | Promotion trigger |
 |---|---|---|---|
 | CAD (DGN/DWG) | heavy new parser on untrusted binary | prevalence via `format_sig_dist` + `recognition_candidates.B_by_family[cad]` (19 `.dwg`, 2026-06-17 scout) | enough real-corpus CAD to justify a red-teamed reader |
-| image EXIF | location/privacy sensitivity | EXIF-presence count (marker only, never GPS values) | demand + a settled observe-presence framing |
 | word-twisting provenance | data-gated on the tagged RPG corpus | the corpus tagging itself (external) | tagged corpus exists + hypothesis validates |
-| binary content-recognition (Candidate A) | a LOGIC/routing change (NOT a field): extends the v1.21 `unsupported_extension` recognition arc from text to positively-identified binary; scope on real data first | `recognition_candidates.A_*` in `corpus_sweep` — recognized-but-flagged-unsupported population by MIME (**944 of 1,119 flags across 19.5k files**, 2026-06-17 scout) | decision to fire `unsupported_extension` only on genuinely-unidentified (octet-stream) content — a recognition-only LOGIC minor |
 | office/media extraction (Candidate B): `.pptx`/`.ppt`/`.odt`/`.ods`/`.odp`, `.mp3`/`.jp2`/`.tiff` | new specialist parsers on untrusted binary (the v1.8.1 never-crash/bounded bar doesn't relax) | `recognition_candidates.B_by_family` in `corpus_sweep` — office/media/cad incidence (2026-06-17 scout) | a consumer/value for a given family + a red-teamed reader (FO already does OOXML word/excel + OLE doc/xls — these complete the family) |
+
+**Graduated out of the candidate tier (recorded so the ladder shows its history):**
+- **image EXIF** → built into the manifest as **provisional fields in v1.16** (designation corrected to provisional in v1.21.1). See PUBLIC_CONTRACT §2.4.
+- **binary content-recognition (Candidate A)** → **SHIPPED as v1.22.0**. It was a routing/LOGIC candidate (not a manifest field), so it graduated by *shipping* (the recognition-only `unsupported_extension`-for-binary change), not by becoming a provisional field. The `recognition_candidates.A_*` sweep harvest stays in `corpus_sweep` (now ~0 — it measures the fix having landed).
 
 A field enters at **candidate or provisional, never directly stable.**
 
