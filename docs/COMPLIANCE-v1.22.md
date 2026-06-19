@@ -38,6 +38,15 @@ version-sync, SCHEMA.md) green.
 | 3 · empirical corpus sweep | drift on tracked signals (mime/format_sig/chatlog/polyglot, libmagic on+off) + Layer-A workers-equality + the candidate-A harvest | **Clean.** **Layer-A: workers=4 byte-identical to serial on all corpora.** **Zero drift on every tracked detection signal** — the only diff is the new `format_gaps` corpus (no baseline; benign) — confirming v1.22 changes an error code's firing, not any tracked detection signal (held even vs a 1.15.0 baseline: the 1.15→1.22 span was all extraction/error changes). **Candidate-A harvest collapsed 944→4** recognized-but-flagged (139/143 remaining are genuinely octet-stream): the fix landed; the 4 are the §6.2a residual (a flagged non-octet file can only be extension-fallback or veto-failed text — never content-identified binary, by the gate's construction), correctly kept. Baseline re-anchored to 1.22.0 (it had been stale at 1.15.0). |
 | 4 · PR bots (Codex / Gemini Code Assist / Copilot) | on PR open | _(triaged-and-grounded before merge)_ |
 
+## CI matrix (the cross-platform reviewer, v1.15)
+The ubuntu/macOS/Windows + forced-no-libmagic matrix caught what the local run (Linux + libmagic)
+couldn't: `test_recognized_text_still_recognized` asserted an UNLISTED-extension prose file types
+`text/*`, which is true only with libmagic — on the no-libmagic path the pure-Python sniff matches
+only BINARY signatures, so signatureless text with an unlisted extension falls to octet-stream and
+stays flagged (the documented §6.2a gap, **production behavior unchanged by v1.22**). Fix: the test
+gained `@pytest.mark.requires_libmagic` (skips on the no-libmagic job), mirroring the v1.21 text
+tests. **A test-side libmagic-dependency, not a production bug** — the matrix earning its keep again.
+
 ## Version axes (RFC §5)
 SCANNER 1.21.2→1.22.0; **LOGIC 1.11.0→1.12.0** (routing + counter shift); **SCHEMA unchanged 1.13**
 (an existing error code fires on fewer files — no new field). README/CONVENTIONS/PUBLIC_CONTRACT §3/

@@ -113,6 +113,10 @@ class TestStillFlagged:
 
 
 class TestTextUnchangedFromV121:
+    @pytest.mark.requires_libmagic   # typing UNLISTED-extension prose as text/* needs libmagic; on
+    # the no-libmagic path the pure-Python sniff matches only BINARY signatures, so signatureless
+    # text with an unlisted extension falls to octet-stream and stays flagged (the documented §6.2a
+    # gap, unchanged by v1.22). The binary cases above need no marker — zip has a PK sniff signature.
     def test_recognized_text_still_recognized(self, tmp_path):
         f = tmp_path / f"notes{UNLISTED}"
         f.write_text("This is ordinary readable English prose, recognized as text.\n" * 5)
