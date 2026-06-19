@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from file_observer.scanner import (
     Scanner,
     ScannerConfig,
@@ -49,6 +51,9 @@ def test_version_surfaces():
     assert SCHEMA_VERSION == "1.13", f"SCHEMA: {SCHEMA_VERSION!r}"  # unchanged
 
 
+@pytest.mark.requires_libmagic  # the text/plain typing IS the libmagic behavior under test; on the
+# no-libmagic path the .eml gets extension-fallback message/rfc822 (already handled by v1.15.2), so
+# this libmagic-path fix doesn't apply there and the text/plain precondition wouldn't hold.
 def test_text_typed_eml_now_extracts(tmp_path):
     f = tmp_path / "quirky.eml"
     f.write_text(QUIRKY_EML)
@@ -60,6 +65,9 @@ def test_text_typed_eml_now_extracts(tmp_path):
     assert not _probe_failed(rec), "the email specialist must no longer be skipped on a text-typed .eml"
 
 
+@pytest.mark.requires_libmagic  # precondition is the libmagic text/plain typing; on no-libmagic the
+# .msg gets an extension-fallback MIME (vnd.ms-outlook) — still distrusted (unsigned, not in
+# EXTENSION_TRUSTED_MIMES), but not text/plain, so the precondition is libmagic-specific.
 def test_text_typed_msg_stays_distrusted(tmp_path):
     # a real .msg is OLE2; a text/plain .msg is lying/misnamed — the guard MUST still reject it
     # (the leg-2/Gemini lying-.msg HIGH). The .eml relaxation must NOT leak to .msg.
