@@ -14,8 +14,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
-
 from file_observer.scanner import (
     Scanner,
     ScannerConfig,
@@ -51,32 +49,30 @@ def test_version_surfaces():
     assert SCHEMA_VERSION == "1.13", f"SCHEMA: {SCHEMA_VERSION!r}"  # unchanged
 
 
-@pytest.mark.requires_libmagic  # the text/plain typing IS the libmagic behavior under test; on the
-# no-libmagic path the .eml gets extension-fallback message/rfc822 (already handled by v1.15.2), so
-# this libmagic-path fix doesn't apply there and the text/plain precondition wouldn't hold.
-def test_text_typed_eml_now_extracts(tmp_path):
+def test_body_dominated_eml_extracts(tmp_path):
+    # An .eml with quirky leading headers + a plain body. However the LOCAL libmagic types it —
+    # text/plain on Linux (the v1.22.1 fix path), message/rfc822 on another platform's magic DB, or
+    # extension-fallback message/rfc822 with no libmagic (the v1.15.2 path) — the envelope MUST
+    # extract. Assert the OUTCOME, not the platform-variant MIME (libmagic's DB differs across OSes,
+    # the v1.22.0 lesson). The deterministic mechanism proof is test_guard_is_extension_specific.
     f = tmp_path / "quirky.eml"
     f.write_text(QUIRKY_EML)
     rec = _scan_one(f)
-    assert rec.mime_type == "text/plain", f"precondition: libmagic types it text/plain (got {rec.mime_type})"
     em = (rec.specialist_metadata or {}).get("email", {})
-    assert em.get("subject") == "Quirky", "v1.22.1: a text-typed .eml must extract its envelope"
+    assert em.get("subject") == "Quirky", "a body-dominated .eml must extract its envelope"
     assert "alice@example.com" in (em.get("from") or "")
-    assert not _probe_failed(rec), "the email specialist must no longer be skipped on a text-typed .eml"
+    assert not _probe_failed(rec), "the email specialist must not be skipped on a body-dominated .eml"
 
 
-@pytest.mark.requires_libmagic  # precondition is the libmagic text/plain typing; on no-libmagic the
-# .msg gets an extension-fallback MIME (vnd.ms-outlook) — still distrusted (unsigned, not in
-# EXTENSION_TRUSTED_MIMES), but not text/plain, so the precondition is libmagic-specific.
-def test_text_typed_msg_stays_distrusted(tmp_path):
-    # a real .msg is OLE2; a text/plain .msg is lying/misnamed — the guard MUST still reject it
-    # (the leg-2/Gemini lying-.msg HIGH). The .eml relaxation must NOT leak to .msg.
+def test_msg_non_ole2_stays_distrusted(tmp_path):
+    # a real .msg is OLE2; a text/misnamed .msg must NOT extract — the .eml relaxation must not leak
+    # to .msg (the leg-2/Gemini lying-.msg HIGH). Holds on every path: libmagic-text → OLE2-guard
+    # reject; no-libmagic → extension-fallback vnd.ms-outlook, unsigned, not in EXTENSION_TRUSTED_MIMES.
     f = tmp_path / "fake.msg"
     f.write_text("Subject: not a real msg\nFrom: x@y.com\n\njust text\n")
     rec = _scan_one(f)
-    assert rec.mime_type == "text/plain"
-    assert not (rec.specialist_metadata or {}).get("email"), "a text-typed .msg must NOT extract"
-    assert _probe_failed(rec), "a text-typed .msg must stay distrusted (OLE2-only guard)"
+    assert not (rec.specialist_metadata or {}).get("email"), "a non-OLE2 .msg must NOT extract"
+    assert _probe_failed(rec), "a non-OLE2 .msg must stay distrusted (OLE2-only guard)"
 
 
 def test_guard_is_extension_specific():
