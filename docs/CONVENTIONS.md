@@ -18,14 +18,14 @@ The scanner has five distinct things that carry versions. They are independent �
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.23.2`
+**Current:** `1.23.3`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic — code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
 **Where it lives:** `LOGIC_VERSION` constant in `src/file_observer/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `1.12.3`  (1.12.2→1.12.3 at v1.23.2 — corroborated PDF-header sniff: `%PDF-` window 256→1024 + structural corroboration; prior 1.12.1→1.12.2 at v1.23.1 — PDF-header FP fix)
+**Current:** `1.12.4`  (1.12.3→1.12.4 at v1.23.3 — bzip2 dual-magic + `_OneOf` matcher, recognizes empty bzip2; 1.12.2→1.12.3 at v1.23.2 — corroborated PDF-header sniff: `%PDF-` window 256→1024 + structural corroboration; prior 1.12.1→1.12.2 at v1.23.1 — PDF-header FP fix)
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -64,8 +64,8 @@ The scanner has five distinct things that carry versions. They are independent �
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.23.2 | Internal |
-| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.12.3 | Internal* |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.23.3 | Internal |
+| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.12.4 | Internal* |
 | Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.14 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |

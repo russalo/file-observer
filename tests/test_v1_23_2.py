@@ -34,8 +34,9 @@ _PDF_BODY = b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n1 0 obj\n<< /Type /Catalog /Pages 2 0
 
 
 def test_version_surfaces():
-    assert SCANNER_VERSION == "1.23.2", SCANNER_VERSION
-    assert LOGIC_VERSION == "1.12.3", LOGIC_VERSION   # MIME-sniff routing change
+    # floors — v1.23.3+ supersede this release (the bzip2 dual-magic patch bumps SCANNER/LOGIC)
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 23, 2), SCANNER_VERSION
+    assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 12, 3), LOGIC_VERSION
     assert SCHEMA_VERSION == "1.14", SCHEMA_VERSION    # unchanged
     assert PDF_HEADER_MAX_OFFSET == 1024               # widened from 256 to match sample[:1024]
 

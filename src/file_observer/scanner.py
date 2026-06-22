@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.23.2
+    Version:    1.23.3
     Schema:     1.14
     Python:     >= 3.12
     Spec:       docs/v1.23.0_RFC_Specification.md (current)
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.23.2"
-LOGIC_VERSION = "1.12.3"   # v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCANNER_VERSION = "1.23.3"
+LOGIC_VERSION = "1.12.4"   # v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.14"   # v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -843,6 +843,17 @@ class _Within:
         self.n = n
         self.corroborate = corroborate
 
+
+class _OneOf:
+    """v1.23.3 — fixed-offset alternation: the bytes at the constraint's int offset must equal ANY
+    of `options`. FO's equivalent of the puresniff clean-room replica's `_ByteIn`, added for the
+    bzip2 signature so a data-less (empty-payload) bzip2 — which carries the end-of-stream magic at
+    offset 4 instead of the block magic — is still recognized, while prose and an invalid level byte
+    are rejected. Lives in the PATTERN slot at a normal int offset; generalizes like `_Within`."""
+    __slots__ = ("options",)
+    def __init__(self, *options: bytes) -> None:
+        self.options = options
+
 # v1.23.2: a PDF's first 8 KB carries object structure right after the header — at least one
 # of these tokens appears in any real PDF head and is rare in prose that merely mentions
 # `%PDF-`. Corroborates the `%PDF-` MIME-sniff (C1) so a deep literal with no structure is
@@ -850,7 +861,15 @@ class _Within:
 PDF_STRUCTURE_TOKENS = (b" 0 obj", b"endobj", b"/Type", b"xref", b"trailer", b"%%EOF")
 PDF_HEADER_MAX_OFFSET = 1024
 
-MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes], ...], str]] = [
+# v1.23.3 bzip2: "BZh" + a block-size level digit '1'-'9' + a 6-byte stream magic — either the
+# compressed-block magic (0x314159265359 "1AY&SY") OR, for an empty/data-less payload, the
+# end-of-stream magic (0x177245385090). Reconciled 0/0 with the puresniff clean-room replica: the
+# EOS alternative recognizes empty bzip2 (was a false-negative); the level digit + 6-byte magic
+# reject prose ("BZh9 is the max...") and an invalid level byte.
+_BZIP2_LEVELS = _OneOf(*(str(d).encode() for d in range(1, 10)))
+_BZIP2_STREAM_MAGIC = _OneOf(b"1AY&SY", b"\x17rE8P\x90")
+
+MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes | _OneOf], ...], str]] = [
     (((0, b"\x89PNG\r\n\x1a\n"),), "image/png"),
     (((0, b"\xff\xd8\xff"),), "image/jpeg"),
     (((_Within(PDF_HEADER_MAX_OFFSET, corroborate=PDF_STRUCTURE_TOKENS), b"%PDF-"),), "application/pdf"),
@@ -870,9 +889,9 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes], ...], str
     # archives / compression
     (((0, b"PK\x03\x04"),), "application/zip"),
     (((0, b"\x1f\x8b"),), "application/gzip"),
-    # bzip2: "BZh" + level digit + block magic — the second constraint rules out
-    # prose like "BZh is not..." (review: bare "BZh" matched text).
-    (((0, b"BZh"), (4, b"1AY&SY")), "application/x-bzip2"),
+    # bzip2 (v1.23.3): "BZh" + level digit + {block magic OR end-of-stream magic} — see
+    # _BZIP2_LEVELS / _BZIP2_STREAM_MAGIC. Recognizes empty bzip2; rejects prose + invalid level.
+    (((0, b"BZh"), (3, _BZIP2_LEVELS), (4, _BZIP2_STREAM_MAGIC)), "application/x-bzip2"),
     (((0, b"\xfd7zXZ\x00"),), "application/x-xz"),
     (((0, b"7z\xbc\xaf\x27\x1c"),), "application/x-7z-compressed"),
     (((0, b"\x28\xb5\x2f\xfd"),), "application/zstd"),
@@ -6004,7 +6023,10 @@ class Scanner:
                     if offset.corroborate and not any(t in sample for t in offset.corroborate):
                         return None
             elif offset is not None:
-                if sample[offset:offset + len(pattern)] != pattern:
+                if isinstance(pattern, _OneOf):
+                    if not any(sample[offset:offset + len(opt)] == opt for opt in pattern.options):
+                        return None
+                elif sample[offset:offset + len(pattern)] != pattern:
                     return None
                 pos = offset
             else:
