@@ -80,3 +80,17 @@ def test_embedded_real_pdf_in_polyglot_registers(tmp_path):
     _, sigs, is_poly = _sc(tmp_path).scan_signatures(sample)
     assert {"image/png", "application/pdf"} <= {s["format"] for s in sigs}
     assert is_poly is True
+
+
+def test_anchored_signature_beats_windowed_pdf(tmp_path):
+    # leg-4 Codex P2 on PR #92: a real GIF89a (offset-0 anchor) carrying an embedded PDF body
+    # inside the widened 1024-byte window must sniff as image/gif, NOT application/pdf — the
+    # anchored header wins over the windowed `%PDF-`. (Pre-fix this returned application/pdf;
+    # in v1.23.1 it fell past the 256 window and matched GIF.)
+    sample = b"GIF89a" + b"\x00" * 291 + _PDF_BODY     # GIF89a@0; %PDF- at offset 297, with structure
+    sc = _sc(tmp_path)
+    assert sc._sniff_mime(sample) == "image/gif"
+    # ...and the embedded PDF is still recorded as a polyglot (C2 find-anywhere, anchored-first is C1-only).
+    _, sigs, is_poly = sc.scan_signatures(sample)
+    assert {"image/gif", "application/pdf"} <= {s["format"] for s in sigs}
+    assert is_poly is True

@@ -6021,12 +6021,27 @@ class Scanner:
         table order puts specific signatures (RIFF sub-types) first. Signatures
         are precise enough not to collide with prose (review: dropped the 2-byte
         MZ/BM; ID3 and bzip2 carry a corroborating byte), so no text-gate is
-        needed — PDF/RTF/PostScript (ASCII-headed) still sniff correctly."""
+        needed — PDF/RTF/PostScript (ASCII-headed) still sniff correctly.
+
+        v1.23.2: ANCHORED signatures (offset-0/N or find-anywhere) are evaluated
+        BEFORE windowed (`_Within`) signatures — a definitive header anchor (e.g.
+        `GIF89a` at offset 0) wins over a `%PDF-` that merely appears within the
+        widened 1024-byte window. Without this, a real GIF/RIFF/ZIP carrying an
+        embedded PDF body in its first 1 KB would mis-sniff as application/pdf
+        (the `%PDF-` rule sits early in the table); the offset-0 anchor is the
+        authoritative claim, and `is_polyglot` (C2) still records the embedded PDF.
+        (leg-4 Codex P2 on PR #92.)"""
         if not sample:
             return None
-        for constraints, fmt in MAGIC_SIGNATURES:
-            if "/" in fmt and self._signature_matches(sample, constraints) is not None:
-                return fmt
+        def _windowed(constraints: tuple) -> bool:
+            return any(isinstance(off, _Within) for off, _ in constraints)
+        # pass 1 = anchored signatures (authoritative), pass 2 = windowed ones.
+        for windowed in (False, True):
+            for constraints, fmt in MAGIC_SIGNATURES:
+                if "/" not in fmt or _windowed(constraints) != windowed:
+                    continue
+                if self._signature_matches(sample, constraints) is not None:
+                    return fmt
         return None
 
     def detect_safety_flags(self, extension: str, sample: bytes, zip_entries: list[str] | None = None) -> list[str]:
