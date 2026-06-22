@@ -18,14 +18,14 @@ The scanner has five distinct things that carry versions. They are independent �
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.23.1`
+**Current:** `1.23.2`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic — code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
 **Where it lives:** `LOGIC_VERSION` constant in `src/file_observer/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `1.12.2`  (1.12.1→1.12.2 at v1.23.1 — PDF-header FP fix: `%PDF-` bounded to a 256-byte window in the MIME sniff)
+**Current:** `1.12.3`  (1.12.2→1.12.3 at v1.23.2 — corroborated PDF-header sniff: `%PDF-` window 256→1024 + structural corroboration; prior 1.12.1→1.12.2 at v1.23.1 — PDF-header FP fix)
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -64,8 +64,8 @@ The scanner has five distinct things that carry versions. They are independent �
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.23.1 | Internal |
-| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.12.2 | Internal* |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.23.2 | Internal |
+| Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.12.3 | Internal* |
 | Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.14 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
 | Customer dictionary (v0.10+) | `term_dictionary_id` | `ns_desc_period` | n/a | **Public** (when shipped) |
@@ -191,7 +191,7 @@ logic + evidence of value**, not age.
 | CAD (DGN/DWG) | heavy new parser on untrusted binary | prevalence via `format_sig_dist` + `recognition_candidates.B_by_family[cad]` (19 `.dwg`, 2026-06-17 scout) | enough real-corpus CAD to justify a red-teamed reader |
 | word-twisting provenance | data-gated on the tagged RPG corpus | the corpus tagging itself (external) | tagged corpus exists + hypothesis validates |
 | office/media extraction (Candidate B): `.pptx`/`.ppt`/`.odt`/`.ods`/`.odp`, `.mp3`/`.jp2`/`.tiff` | new specialist parsers on untrusted binary (the v1.8.1 never-crash/bounded bar doesn't relax) | `recognition_candidates.B_by_family` in `corpus_sweep` — office/media/cad incidence (2026-06-17 scout) | a consumer/value for a given family + a red-teamed reader (FO already does OOXML word/excel + OLE doc/xls — these complete the family) |
-| corroborated-header MIME sniff (the v1.23.1 Codex-P2 follow-up) | the offset-only window can't separate a real header at offset 257–1024 from a deep literal (e.g. the `.py` `%PDF-1.4` at 864 sits inside the 1024 PDF tolerance); the robust fix — widen to the 1024 spec tolerance AND require a corroborating structural token (`endobj`/`xref`/`trailer`) — exceeds a window-tweak patch | the puresniff clean-room replica (which surfaced the v1.23.1 FP) is the venue to design the robust signature; sweep harvest = count of no-libmagic files with `%PDF-` at offset 257–1024 (currently ~0 in 19.5k corpus) | a real corpus file regresses (renamed/junk-prefixed PDF, no-libmagic) OR puresniff lands the corroborated signature → adopt cross-replica |
+| **[SHIPPED v1.23.2]** corroborated-header MIME sniff (the v1.23.1 Codex-P2 follow-up) | the offset-only window can't separate a real header at offset 257–1024 from a deep literal (e.g. the `.py` `%PDF-1.4` at 864 sits inside the 1024 PDF tolerance); the robust fix — widen to the 1024 spec tolerance AND require a corroborating structural token (`endobj`/`xref`/`trailer`) — exceeds a window-tweak patch | the puresniff clean-room replica (which surfaced the v1.23.1 FP) is the venue to design the robust signature; sweep harvest = count of no-libmagic files with `%PDF-` at offset 257–1024 (currently ~0 in 19.5k corpus) | a real corpus file regresses (renamed/junk-prefixed PDF, no-libmagic) OR puresniff lands the corroborated signature → adopt cross-replica |
 
 **Graduated out of the candidate tier (recorded so the ladder shows its history):**
 - **image EXIF** → built into the manifest as **provisional fields in v1.16** (designation corrected to provisional in v1.21.1). See PUBLIC_CONTRACT §2.4.

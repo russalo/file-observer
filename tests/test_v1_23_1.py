@@ -29,17 +29,20 @@ def _sc(tmp_path):
 
 
 def test_version_surfaces():
-    assert SCANNER_VERSION == "1.23.1", f"got {SCANNER_VERSION!r}"
-    assert LOGIC_VERSION == "1.12.2", f"LOGIC: {LOGIC_VERSION!r}"   # MIME-sniff routing change
+    # floors — v1.23.2+ supersede this release (widened the window to 1024 + added corroboration)
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 23, 1), f"got {SCANNER_VERSION!r}"
+    assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 12, 2), f"LOGIC: {LOGIC_VERSION!r}"
     assert SCHEMA_VERSION == "1.14", f"SCHEMA: {SCHEMA_VERSION!r}"  # unchanged
 
 
 def test_deep_stray_pdf_literal_not_typed_pdf(tmp_path):
     # C1 FP fix: a `%PDF-` deep in a source/text file must NOT type it application/pdf.
     sample = b"// a source file\n" + b"x" * 900 + b"%PDF-1.4 mentioned in a string literal\n"
-    assert sample.find(b"%PDF-") > PDF_HEADER_MAX_OFFSET   # precondition: it's deep
+    # v1.23.2: this literal now falls inside the widened 1024-byte window but is rejected for
+    # lacking PDF structure (corroboration) — either way, not pdf.
+    assert not any(t in sample for t in (b" 0 obj", b"endobj", b"/Type", b"xref", b"trailer", b"%%EOF"))
     assert _sc(tmp_path)._sniff_mime(sample) != "application/pdf", \
-        "a deep stray %PDF- must not be typed application/pdf (the C1 window — pre-patch this FAILED)"
+        "a structureless stray %PDF- must not be typed application/pdf"
 
 
 def test_deep_pdf_literal_still_in_format_signatures(tmp_path):
@@ -57,7 +60,7 @@ def test_real_pdf_at_head_still_sniffed(tmp_path):
 
 def test_pdf_with_small_leading_offset_still_sniffed(tmp_path):
     # real PDFs tolerate a few leading bytes (BOM/whitespace/junk) before %PDF- — within the window
-    sample = b"\xef\xbb\xbf" + b" " * 100 + b"%PDF-1.5\n"   # offset 103 < 256
+    sample = b"\xef\xbb\xbf" + b" " * 100 + b"%PDF-1.5\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"   # offset 103, with structure
     assert _sc(tmp_path)._sniff_mime(sample) == "application/pdf"
 
 
