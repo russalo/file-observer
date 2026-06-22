@@ -109,8 +109,14 @@ def _hostile_files() -> dict[str, bytes]:
     }
 
 
-@pytest.mark.parametrize("name,data", list(_hostile_files().items()))
-def test_hostile_file_through_full_scanner(name, data):
+# Parametrize on the short NAME only — NOT the bytes. pytest renders param values into the
+# test-ID, and on Windows a >32767-char ID blows the env-var limit at setup (matrix-caught).
+_HOSTILE = _hostile_files()
+
+
+@pytest.mark.parametrize("name", list(_HOSTILE))
+def test_hostile_file_through_full_scanner(name):
+    data = _HOSTILE[name]
     d = Path(tempfile.mkdtemp())
     (d / name).write_bytes(data)
     cfg = ScannerConfig(enable_specialists=True)
