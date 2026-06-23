@@ -21,8 +21,8 @@ It scans `sample_data/` twice (into `out/run-a` and `out/run-b`) and compares th
 Two runs, two manifests, **one checksum**:
 
 ```
-run A manifest_checksum: 2db7f239719fabc6f5d221f4a362806e61d28e1fa3a5dd1fb8a48d71018f3e6b
-run B manifest_checksum: 2db7f239719fabc6f5d221f4a362806e61d28e1fa3a5dd1fb8a48d71018f3e6b
+run A manifest_checksum: <64-char sha256>
+run B manifest_checksum: <64-char sha256>   # ← identical
 IDENTICAL — same bytes in, same observation out.
 ```
 

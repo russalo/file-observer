@@ -32,7 +32,7 @@ The `delta` block in the second manifest:
 
 ```json
 {
-  "previous_manifest_checksum": "23e0f8547a72e000dc422fb266db57ff563baee86a0fd946174e9949a1978b70",
+  "previous_manifest_checksum": "<sha256 of the prev manifest>",
   "added":     [".env.example"],
   "modified":  ["app.py"],
   "removed":   ["config.yaml"],

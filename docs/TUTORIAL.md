@@ -78,8 +78,10 @@ The fields that matter most in a pipeline:
 - `is_binary`, `requires_specialist_tool`, `requires_vision` — derived routing flags.
 - `signal_provenance` — per-derived-field record of *how* it was derived (`layer`,
   `method`, `trigger`). Nothing derived is unexplained.
-- `safety_flags` — structural indicators (`has_javascript`, `has_macros`, …) —
-  observations, never threat verdicts.
+- `safety_flags` — structural indicators (`has_javascript`, `has_macros`,
+  `geotagged`, …) — observations, never threat verdicts.
+- `preservation` — a format-obsolescence signal (`current` / `at_risk` /
+  `obsolete`, plus `migration_recommended`) for archival triage.
 
 `manifest_checksum` (top level) is the SHA-256 over the whole manifest minus the
 volatile `scan_id`/`generated_at`. It is the determinism contract.
@@ -95,10 +97,16 @@ parsing). Add `--specialists` to pull structured metadata per format:
 file-observer path/to/folder --specialists -o out
 ```
 
-PDF yields `page_count`, `producer`, `xref_type`, encryption state, …; images
-yield dimensions; Office formats yield author/title/application; emails yield
-the envelope. Specialists observe within declared byte bounds — `null` means
-"not seen within bounds," not "absent."
+PDF yields `page_count`, `producer`, `xref_type`, encryption state, …; **images**
+(JPEG/HEIC) yield dimensions *plus* EXIF capture metadata — `make`/`model`,
+`orientation`, `datetime_original`, `gps_present`, `xmp_present`; **video**
+(`.mp4`/`.mov`/`.m4v`) yields `codec`, `duration_s`, dimensions, capture dates
+(`creation_date` and the timezone-bearing `creation_date_qt`), and Apple-device
+`make`/`model` + GPS-presence; Office formats yield author/title/application
+(plus word/heading counts, sheet names); emails yield the envelope
+(subject/from/to/date). GPS-presence on a photo or video also raises the
+`geotagged` safety flag. Specialists observe within declared byte bounds —
+`null` means "not seen within bounds," not "absent."
 
 ## 6. Chatlog detection
 
