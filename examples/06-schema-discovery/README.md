@@ -19,17 +19,17 @@ file-observer --schema --schema-format md   # human-readable
 
 ## What you get
 
-A description of everything the build can emit, introspected from the installed code so it's always accurate for *your* version:
+A description of everything the build can emit, introspected from the installed code so it's always accurate for *your* version (counts shown as `N` — run it for your build's actual numbers):
 
 ```
-scanner 1.13.0 / logic 1.4.3 / schema 1.8
-manifest:            12   (dataclasses: FileRecord, DeltaRecord, ErrorRecord, …)
-specialists:          3   (pdf, image, chatlog, … + their metadata fields)
-vectors:              6   (chatlog, reference_tokens, provenance, …)
-provenance_triggers: 39   (every `trigger` a signal_provenance entry can carry)
-error_codes:         10
-safety_flags:         5   (has_javascript, has_macros, …)
-format_signatures:   27
+scanner <your build> / logic <…> / schema <…>
+manifest:            N   (dataclasses: FileRecord, DeltaRecord, ErrorRecord, …)
+specialists:          N   (pdf, image, video, document, spreadsheet, email, chatlog — + their fields)
+vectors:              N   (chatlog, reference_tokens, provenance, …)
+provenance_triggers: N   (every `trigger` a signal_provenance entry can carry)
+error_codes:         N
+safety_flags:         N   (has_javascript, has_macros, geotagged, …)
+format_signatures:   N
 ```
 
 The JSON form is for a consumer to load; the Markdown form is human-readable — it's literally what [`docs/SCHEMA.md`](../../docs/SCHEMA.md) is generated from:

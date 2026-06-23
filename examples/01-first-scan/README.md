@@ -42,7 +42,7 @@ And top-level stats:
 ```json
 {
   "stats": { "total_files": 4, "text_files": 3, "binary_files": 1 },
-  "manifest_checksum": "1be2df6284038d24a810dd0f…"
+  "manifest_checksum": "<sha256 — build-specific>"
 }
 ```
 

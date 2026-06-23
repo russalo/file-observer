@@ -26,8 +26,8 @@ file-observer sample_tree --workers 4 -o out/w4
 Two worker counts, **one checksum**:
 
 ```
-workers=1 manifest_checksum: 3c419f0fedecef447d51e86bac56c50944426133a65a5c8087c80392e78a5d83
-workers=4 manifest_checksum: 3c419f0fedecef447d51e86bac56c50944426133a65a5c8087c80392e78a5d83
+workers=1 manifest_checksum: <64-char sha256>
+workers=4 manifest_checksum: <64-char sha256>   # ← identical
 IDENTICAL — parallelism changed the speed, not the observation.
 ```
 
