@@ -273,3 +273,17 @@ def test_jp2_magic_signature_sniffs(tmp_path):
     sc = Scanner(source_dir=tmp_path, config=ScannerConfig())
     sig = struct.pack(">I", 12) + b"jP  " + b"\x0d\x0a\x87\x0a" + struct.pack(">I", 20) + b"ftyp" + b"jp2 "
     assert sc._sniff_mime(sig) == "image/jp2"
+
+
+def test_jp2_signature_does_not_collapse_jpx_mj2(tmp_path):
+    # leg-3 (corpus sweep) catch: the JP2-family signature box is SHARED by
+    # jp2/jpx/jpm/mj2; the major brand at offset 20 distinguishes them. The jp2
+    # magic must require the `jp2 ` brand so jpx/jpm/mj2 are NOT mis-typed image/jp2.
+    import struct
+    sc = Scanner(source_dir=tmp_path, config=ScannerConfig())
+    sigbox = struct.pack(">I", 12) + b"jP  " + b"\x0d\x0a\x87\x0a"
+    def fam(brand):
+        return sigbox + struct.pack(">I", 20) + b"ftyp" + brand + struct.pack(">I", 0) + brand
+    assert sc._sniff_mime(fam(b"jp2 ")) == "image/jp2"
+    assert sc._sniff_mime(fam(b"jpx ")) != "image/jp2"
+    assert sc._sniff_mime(fam(b"mjp2")) != "image/jp2"

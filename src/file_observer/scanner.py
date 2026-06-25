@@ -922,7 +922,7 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes | _OneOf], 
     # images / data
     (((0, b"II*\x00"),), "image/tiff"),
     (((0, b"MM\x00*"),), "image/tiff"),
-    (((4, b"jP  "), (8, b"\x0d\x0a\x87\x0a")), "image/jp2"),  # v1.24: JPEG 2000 signature box
+    (((4, b"jP  "), (8, b"\x0d\x0a\x87\x0a"), (20, b"jp2 ")), "image/jp2"),  # v1.24: JP2 sig box + the jp2 major brand at offset 20 — NOT the shared-sig-box jpx/jpm/mj2
     (((0, b"SQLite format 3\x00"),), "application/vnd.sqlite3"),
     (((0, b"PAR1"),), "application/vnd.apache.parquet"),
     # OLE2 / documents / executables
