@@ -287,3 +287,30 @@ def test_jp2_signature_does_not_collapse_jpx_mj2(tmp_path):
     assert sc._sniff_mime(fam(b"jp2 ")) == "image/jp2"
     assert sc._sniff_mime(fam(b"jpx ")) != "image/jp2"
     assert sc._sniff_mime(fam(b"mjp2")) != "image/jp2"
+
+
+def test_jp2_empty_box_before_jp2h(tmp_path):
+    # leg-4 bot catch: an empty box (size == header, 8 bytes) must be SKIPPED,
+    # not terminate the box walk before jp2h is reached.
+    import struct
+    sigbox = struct.pack(">I", 12) + b"jP  " + b"\x0d\x0a\x87\x0a"
+    ftyp = struct.pack(">I", 20) + b"ftyp" + b"jp2 " + struct.pack(">I", 0) + b"jp2 "
+    freebox = struct.pack(">I", 8) + b"free"   # empty box: size == header
+    ihdr_payload = struct.pack(">II", 480, 640) + struct.pack(">H", 3) + b"\x07\x07\x00\x00"
+    ihdr = struct.pack(">I", 8 + len(ihdr_payload)) + b"ihdr" + ihdr_payload
+    jp2h = struct.pack(">I", 8 + len(ihdr)) + b"jp2h" + ihdr
+    (tmp_path / "f.jp2").write_bytes(sigbox + ftyp + freebox + jp2h)
+    img = _scan_one(tmp_path).specialist_metadata["image"]
+    assert img["width"] == 640 and img["height"] == 480  # found jp2h past the empty box
+
+
+def test_pptx_slide_count_windows_backslash_paths(tmp_path):
+    # leg-4 bot catch: a non-conformant zip with backslash member names must still
+    # match the slide-parts fallback (\\ normalized to /).
+    p = tmp_path / "deck.pptx"
+    with zipfile.ZipFile(p, "w") as zf:
+        zf.writestr("[Content_Types].xml", b'<?xml version="1.0"?><Types/>')
+        zf.writestr("ppt\\slides\\slide1.xml", b"<p:sld/>")
+        zf.writestr("ppt\\slides\\slide2.xml", b"<p:sld/>")
+    rec = _scan_one(tmp_path)
+    assert rec.specialist_metadata["presentation"]["slide_count"] == 2

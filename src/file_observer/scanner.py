@@ -4651,7 +4651,7 @@ class Scanner:
                     size = struct.unpack(">Q", head[i+8:i+16])[0]
                     hdr = 16
                 box_end = len(head) if size == 0 else i + size
-                if box_end <= i + hdr or box_end > len(head):
+                if box_end < i + hdr or box_end > len(head):  # < hdr = malformed; == hdr is a valid empty box (skip it)
                     box_end = len(head)
                 if typ == want:
                     return i + hdr, box_end
@@ -5156,7 +5156,7 @@ class Scanner:
                 except Exception:
                     pass
             if out["slide_count"] is None:  # fallback: count slide parts
-                n = sum(1 for nm in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", nm))
+                n = sum(1 for nm in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", nm.replace("\\", "/")))  # normalize non-conformant backslash zip paths
                 out["slide_count"] = n  # honest count of slide parts in the budget window
             return out
         finally:
