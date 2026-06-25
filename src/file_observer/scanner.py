@@ -283,6 +283,11 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".eml": "email_envelope",
     ".xlsx": "spreadsheet_structure",
     ".xls": "spreadsheet_structure",
+    # v1.24 (Candidate B, phase 1): office extraction
+    ".pptx": "presentation_structure",
+    ".odp": "presentation_structure",
+    ".odt": "document_extraction",
+    ".ods": "spreadsheet_structure",
 }
 
 # Error code constants
@@ -726,6 +731,11 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".docx": "document",
     ".doc": "document",
     ".rtf": "document",
+    # v1.24 (Candidate B, phase 1)
+    ".pptx": "presentation",
+    ".odp": "presentation",
+    ".odt": "document",
+    ".ods": "spreadsheet",
 }
 
 # v1.13: SPECIALIST_FIELDS — the metadata fields each specialist namespace can
@@ -746,6 +756,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
     ],
     "video": ["codec", "duration_s", "width", "height", "creation_date", "creation_date_qt",
               "make", "model", "gps_present", "gps_source"],
+    "presentation": ["slide_count", "title", "author", "application"],  # v1.24 (Candidate B)
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
     "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
@@ -795,6 +806,11 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("video", "model"),
     ("video", "gps_present"),
     ("video", "gps_source"),
+    # v1.24 (Candidate B): the new `presentation` namespace — provisional on arrival
+    ("presentation", "slide_count"),
+    ("presentation", "title"),
+    ("presentation", "author"),
+    ("presentation", "application"),
 })
 PROVISIONAL_VECTORS: frozenset[str] = frozenset()  # v1.23.0 promoted `preservation` → stable (was the only one)
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
@@ -939,11 +955,14 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "video": {"video/mp4", "video/quicktime", "video/x-m4v", "application/mp4",
               "application/octet-stream"},
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
-    "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "presentation": {"application/zip", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                     "application/vnd.oasis.opendocument.presentation", "application/vnd.ms-office",
+                     "application/octet-stream"},  # v1.24 (Candidate B)
+    "spreadsheet": {"application/zip", "application/vnd.oasis.opendocument.spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      "application/vnd.ms-excel", "application/x-ole-storage", "application/CDFV2",
                      "application/vnd.ms-office",  # v1.15.2: libmagic's generic OLE2-office MIME
                      "application/octet-stream"},
-    "document": {"application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "document": {"application/zip", "application/vnd.oasis.opendocument.text", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                  "application/msword", "application/x-ole-storage", "text/rtf", "application/rtf",
                  "application/CDFV2", "application/vnd.ms-office",  # v1.15.2: generic OLE2-office
                  "application/octet-stream"},
@@ -3453,7 +3472,7 @@ class Scanner:
                     # from the bounded sample (leg-4/Codex — provenance-honesty). OOXML
                     # reads the ZIP central directory; the image-EXIF path (v1.16) reads
                     # a bounded 1 MiB head (EXIF/XMP live past the sample).
-                    if extension in {".xlsx", ".docx"}:
+                    if extension in {".xlsx", ".docx", ".pptx", ".odp", ".odt", ".ods"}:
                         is_deviation = True
                         dev_reason, dev_budget = "zip_central_directory_required", eff["specialist_budget"]
                     elif extension in {".jpg", ".jpeg", ".heic", ".heif", ".avif"}:
@@ -3623,6 +3642,12 @@ class Scanner:
             return self._extract_doc_metadata(path)
         if extension == ".rtf":
             return self._extract_rtf_metadata(sample)
+        if extension in {".pptx", ".odp"}:  # v1.24 (Candidate B)
+            return self._extract_presentation_metadata(path, extension, budget)
+        if extension == ".odt":  # v1.24
+            return self._extract_odt_metadata(path, budget)
+        if extension == ".ods":  # v1.24
+            return self._extract_ods_metadata(path, budget)
         return None
 
     @staticmethod
@@ -4886,6 +4911,184 @@ class Scanner:
                 except Exception:
                     pass
             return meta
+        finally:
+            zf.close()
+
+    # ------------------------------------------------------------------
+    # v1.24 (Candidate B, phase 1) — office extraction: OOXML presentations
+    # (.pptx) + ODF text/sheet/presentation (.odt/.ods/.odp). Reuses the
+    # docx/xlsx ZIP+XML pattern (stdlib zipfile, _safe_zip_read, defused
+    # xml_fromstring), bounded to the 128 KB deviation budget. Honest null
+    # when a field is absent/unreadable within the window.
+    # ------------------------------------------------------------------
+
+    _ODF_NS = {
+        "meta": "urn:oasis:names:tc:opendocument:xmlns:meta:1.0",
+        "dc": "http://purl.org/dc/elements/1.1/",
+        "draw": "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0",
+        "table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0",
+    }
+
+    def _odf_open(self, path: Path, budget: int):
+        """Open an ODF (zip) container bounded to ``budget``; None on any error."""
+        import zipfile
+        from io import BytesIO
+        try:
+            with path.open("rb") as f:
+                raw = f.read(budget)
+        except Exception:
+            return None
+        try:
+            return zipfile.ZipFile(BytesIO(raw))
+        except Exception:
+            return None
+
+    def _odf_common_meta(self, zf: Any) -> dict[str, Any]:
+        """title / author / application / word_count from ODF ``meta.xml``
+        (Dublin Core + the ODF meta namespace). Every field honest-null when
+        absent within bounds."""
+        out: dict[str, Any] = {"title": None, "author": None, "application": None, "word_count": None}
+        raw = self._safe_zip_read(zf, "meta.xml")
+        if raw is None:
+            return out
+        try:
+            root = xml_fromstring(raw)  # raw bytes — parser detects encoding
+        except Exception:
+            return out
+        dc, me = self._ODF_NS["dc"], self._ODF_NS["meta"]
+        for el in root.iter(f"{{{dc}}}title"):
+            if el.text and el.text.strip():
+                out["title"] = el.text.strip()
+            break
+        for el in root.iter(f"{{{dc}}}creator"):
+            if el.text and el.text.strip():
+                out["author"] = el.text.strip()
+            break
+        if out["author"] is None:
+            for el in root.iter(f"{{{me}}}initial-creator"):
+                if el.text and el.text.strip():
+                    out["author"] = el.text.strip()
+                break
+        for el in root.iter(f"{{{me}}}generator"):
+            if el.text and el.text.strip():
+                out["application"] = el.text.strip()
+            break
+        for el in root.iter(f"{{{me}}}document-statistic"):
+            wc = el.get(f"{{{me}}}word-count")
+            if wc and wc.isdigit():
+                out["word_count"] = int(wc)
+            break
+        return out
+
+    def _extract_presentation_metadata(self, path: Path, extension: str, budget: int = 131072) -> dict[str, Any] | None:
+        """v1.24: presentation metadata. ``.pptx`` via OOXML docProps; ``.odp``
+        via ODF meta.xml + content.xml draw:page count. slide_count / title /
+        author / application — honest-null when absent within the budget."""
+        if extension == ".odp":
+            zf = self._odf_open(path, budget)
+            if zf is None:
+                return None
+            try:
+                m = self._odf_common_meta(zf)
+                slide_count = None
+                content = self._safe_zip_read(zf, "content.xml")
+                if content is not None:
+                    try:
+                        root = xml_fromstring(content)
+                        draw = self._ODF_NS["draw"]
+                        n = sum(1 for _ in root.iter(f"{{{draw}}}page"))
+                        slide_count = n or None
+                    except Exception:
+                        pass
+                return {"slide_count": slide_count, "title": m["title"],
+                        "author": m["author"], "application": m["application"]}
+            finally:
+                zf.close()
+        # .pptx (OOXML)
+        import zipfile
+        from io import BytesIO
+        try:
+            with path.open("rb") as f:
+                raw = f.read(budget)
+        except Exception:
+            return None
+        try:
+            zf = zipfile.ZipFile(BytesIO(raw))
+        except Exception:
+            return None
+        try:
+            out: dict[str, Any] = {"slide_count": None, "title": None, "author": None, "application": None}
+            core = self._safe_zip_read(zf, "docProps/core.xml")
+            if core is not None:
+                try:
+                    root = xml_fromstring(core.decode("utf-8", errors="replace"))
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}title"):
+                        if el.text and el.text.strip():
+                            out["title"] = el.text.strip()
+                        break
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}creator"):
+                        if el.text and el.text.strip():
+                            out["author"] = el.text.strip()
+                        break
+                except Exception:
+                    pass
+            app = self._safe_zip_read(zf, "docProps/app.xml")
+            if app is not None:
+                try:
+                    root = xml_fromstring(app)
+                    ns = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+                    for el in root.iter(f"{{{ns}}}Slides"):
+                        if el.text and el.text.isdigit():
+                            out["slide_count"] = int(el.text)
+                        break
+                    for el in root.iter(f"{{{ns}}}Application"):
+                        if el.text and el.text.strip():
+                            out["application"] = el.text.strip()
+                        break
+                except Exception:
+                    pass
+            if out["slide_count"] is None:  # fallback: count slide parts
+                n = sum(1 for nm in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", nm))
+                out["slide_count"] = n or None
+            return out
+        finally:
+            zf.close()
+
+    def _extract_odt_metadata(self, path: Path, budget: int = 131072) -> dict[str, Any] | None:
+        """v1.24: ODF text (.odt) -> title/author/word_count/application (meta.xml)."""
+        zf = self._odf_open(path, budget)
+        if zf is None:
+            return None
+        try:
+            m = self._odf_common_meta(zf)
+            return {"title": m["title"], "author": m["author"],
+                    "word_count": m["word_count"], "application": m["application"]}
+        finally:
+            zf.close()
+
+    def _extract_ods_metadata(self, path: Path, budget: int = 131072) -> dict[str, Any] | None:
+        """v1.24: ODF spreadsheet (.ods) -> sheet_names (content.xml table:table)
+        + application. format='odf' (parallels xlsx 'ooxml' / xls 'biff')."""
+        zf = self._odf_open(path, budget)
+        if zf is None:
+            return None
+        try:
+            m = self._odf_common_meta(zf)
+            sheet_names: list[str] = []
+            content = self._safe_zip_read(zf, "content.xml")
+            if content is not None:
+                try:
+                    root = xml_fromstring(content)
+                    table = self._ODF_NS["table"]
+                    for el in root.iter(f"{{{table}}}table"):
+                        name = el.get(f"{{{table}}}name")
+                        if name:
+                            sheet_names.append(name)
+                        if len(sheet_names) >= 64:  # bound (never-crash discipline)
+                            break
+                except Exception:
+                    pass
+            return {"sheet_names": sheet_names, "format": "odf", "application": m["application"]}
         finally:
             zf.close()
 
