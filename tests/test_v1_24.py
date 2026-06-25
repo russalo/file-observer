@@ -192,3 +192,76 @@ def test_version_surfaces(tmp_path):
     assert SCANNER_VERSION == "1.24.0", SCANNER_VERSION
     assert LOGIC_VERSION == "1.13.0", LOGIC_VERSION   # requires_specialist_tool routing change
     assert SCHEMA_VERSION == "1.15", SCHEMA_VERSION    # new `presentation` namespace
+
+
+# ---- v1.24 image slice: .jp2 / .tiff -------------------------------------
+
+def _jp2(path: Path, *, width=800, height=600) -> None:
+    import struct
+    sig = struct.pack(">I", 12) + b"jP  " + b"\x0d\x0a\x87\x0a"
+    ftyp = struct.pack(">I", 20) + b"ftyp" + b"jp2 " + struct.pack(">I", 0) + b"jp2 "
+    ihdr_payload = struct.pack(">II", height, width) + struct.pack(">H", 3) + b"\x07\x07\x00\x00"
+    ihdr = struct.pack(">I", 8 + len(ihdr_payload)) + b"ihdr" + ihdr_payload
+    jp2h = struct.pack(">I", 8 + len(ihdr)) + b"jp2h" + ihdr
+    path.write_bytes(sig + ftyp + jp2h)
+
+
+def _tiff(path: Path, *, width=1024, height=768, make="Canon", model="EOS") -> None:
+    import struct
+    bo = "<"
+    n = 5
+    blob_base = 8 + (2 + n * 12 + 4)
+    blobs = b""
+    def ascii_entry(tag, s):
+        nonlocal blobs
+        data = s.encode() + b"\x00"
+        if len(data) <= 4:
+            return (tag, 2, len(data), data + b"\x00" * (4 - len(data)))
+        off = blob_base + len(blobs)
+        blobs += data
+        return (tag, 2, len(data), struct.pack(bo + "I", off))
+    ents = [
+        (256, 4, 1, struct.pack(bo + "I", width)),
+        (257, 4, 1, struct.pack(bo + "I", height)),
+        ascii_entry(271, make),
+        ascii_entry(272, model),
+        (274, 3, 1, struct.pack(bo + "H", 1) + b"\x00\x00"),
+    ]
+    ents.sort(key=lambda e: e[0])
+    ifd = struct.pack(bo + "H", n)
+    for tag, typ, cnt, val in ents:
+        ifd += struct.pack(bo + "HHI", tag, typ, cnt) + val
+    ifd += struct.pack(bo + "I", 0)
+    header = b"II" + struct.pack(bo + "H", 42) + struct.pack(bo + "I", 8)
+    path.write_bytes(header + ifd + blobs)
+
+
+def test_jp2_dimensions(tmp_path):
+    _jp2(tmp_path / "scan.jp2", width=800, height=600)
+    rec = _scan_one(tmp_path)
+    assert rec.requires_specialist_tool is True
+    img = rec.specialist_metadata["image"]
+    assert img["width"] == 800 and img["height"] == 600
+
+
+def test_tiff_dimensions_and_exif(tmp_path):
+    _tiff(tmp_path / "scan.tiff", width=1024, height=768, make="Canon", model="EOS")
+    rec = _scan_one(tmp_path)
+    img = rec.specialist_metadata["image"]
+    assert img["width"] == 1024 and img["height"] == 768
+    assert img["make"] == "Canon" and img["model"] == "EOS"
+
+
+def test_tif_extension_routes(tmp_path):
+    _tiff(tmp_path / "scan.tif", width=320, height=240)
+    rec = _scan_one(tmp_path)
+    assert rec.specialist_metadata["image"]["width"] == 320
+
+
+def test_jp2_truncated_no_crash(tmp_path):
+    (tmp_path / "broken.jp2").write_bytes(b"\x00\x00\x00\x0cjP  \x0d\x0a\x87\x0a" + b"\xff" * 20)
+    m = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True)).scan()
+    assert len(m.files) == 1
+    sm = m.files[0].specialist_metadata
+    img = sm.get("image") if sm else None
+    assert img is None or img.get("width") is None

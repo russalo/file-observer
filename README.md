@@ -44,7 +44,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.14",
-  "context": { "scanner_version": "1.23.3", "logic_version": "1.12.4", "...": "…" },
+  "context": { "scanner_version": "1.24.0", "logic_version": "1.13.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,7 +76,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.23.3` |
+| **Version** | `1.24.0` |
 | **Schema** | `1.14` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -282,7 +282,7 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.23.0 RFC Specification](docs/v1.23.0_RFC_Specification.md) | Current release spec — promotion pass: the `preservation` format-obsolescence signal graduates provisional → stable (designation-only; SCHEMA 1.14). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.24.0 RFC Specification](docs/v1.24.0_RFC_Specification.md) | Current release spec — office & media extraction (Candidate B, phase 1): OOXML/ODF office (`.pptx`/`.odp`/`.odt`/`.ods`) + `.jp2`/`.tiff` dimension & EXIF extraction; new `presentation` namespace (SCHEMA 1.15). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.20.0 RFC Specification](docs/v1.20.0_RFC_Specification.md) | Prior — `video.creation_date_qt` (the Apple QuickTime creationdate key, capture moment + timezone). |
 | [v1.19.0 RFC Specification](docs/v1.19.0_RFC_Specification.md) | Prior — human-readable surfaces refresh (scan `summary` + `--schema --format summary` prose). |
 | [v1.18.0 RFC Specification](docs/v1.18.0_RFC_Specification.md) | Prior — video capture device + GPS-presence (Apple QuickTime keys). |

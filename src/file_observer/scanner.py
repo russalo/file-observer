@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.23.3
+    Version:    1.24.0
     Schema:     1.14
     Python:     >= 3.12
     Spec:       docs/v1.23.0_RFC_Specification.md (current)
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.23.3"
-LOGIC_VERSION = "1.12.4"   # v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.14"   # v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.24.0"
+LOGIC_VERSION = "1.13.0"   # v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.15"   # v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -288,6 +288,9 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".odp": "presentation_structure",
     ".odt": "document_extraction",
     ".ods": "spreadsheet_structure",
+    ".jp2": "image_structure",
+    ".tiff": "image_structure",
+    ".tif": "image_structure",
 }
 
 # Error code constants
@@ -736,6 +739,9 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".odp": "presentation",
     ".odt": "document",
     ".ods": "spreadsheet",
+    ".jp2": "image",
+    ".tiff": "image",
+    ".tif": "image",
 }
 
 # v1.13: SPECIALIST_FIELDS — the metadata fields each specialist namespace can
@@ -951,7 +957,8 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes | _OneOf], 
 SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "pdf": {"application/pdf"},
     "image": {"image/png", "image/jpeg", "image/gif", "image/webp",
-              "image/heic", "image/heif", "image/avif"},
+              "image/heic", "image/heif", "image/avif",
+              "image/jp2", "image/tiff", "image/tif"},  # v1.24 (Candidate B)
     "video": {"video/mp4", "video/quicktime", "video/x-m4v", "application/mp4",
               "application/octet-stream"},
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
@@ -3475,7 +3482,7 @@ class Scanner:
                     if extension in {".xlsx", ".docx", ".pptx", ".odp", ".odt", ".ods"}:
                         is_deviation = True
                         dev_reason, dev_budget = "zip_central_directory_required", eff["specialist_budget"]
-                    elif extension in {".jpg", ".jpeg", ".heic", ".heif", ".avif"}:
+                    elif extension in {".jpg", ".jpeg", ".heic", ".heif", ".avif", ".jp2", ".tiff", ".tif"}:
                         is_deviation = True
                         dev_reason, dev_budget = "exif_metadata_beyond_sample", self.IMAGE_METADATA_MAX_BYTES
                     elif extension in {".mp4", ".mov", ".m4v"}:
@@ -3623,6 +3630,10 @@ class Scanner:
             return self._extract_jpeg_metadata(path, sample)
         if extension in {".heic", ".heif", ".avif"}:
             return self._extract_heic_metadata(path, sample)
+        if extension == ".jp2":  # v1.24 (Candidate B)
+            return self._extract_jp2_metadata(path, sample)
+        if extension in {".tiff", ".tif"}:  # v1.24
+            return self._extract_tiff_metadata(path, sample)
         if extension in {".mp4", ".mov", ".m4v"}:
             return self._extract_video_metadata(path, sample)
         if extension == ".msg":
@@ -4613,6 +4624,99 @@ class Scanner:
         # HEIC dims come from EXIF PixelXDimension/PixelYDimension (authoritative),
         # filled by _apply_exif when width/height are still None.
         self._apply_exif(meta, _heif_exif_tiff(head), head)
+        return meta
+
+    # --- v1.24 (Candidate B, phase 1) — image extraction: .jp2 (ISOBMFF
+    # jp2h->ihdr dimensions) + .tiff/.tif (TIFF IFD0 dimensions + EXIF via the
+    # shared _parse_exif_tiff / _apply_exif path). Reuses the v1.16 bounded
+    # image-head read; bounded box/IFD walks; honest-null on truncation. ---
+
+    @staticmethod
+    def _jp2_dimensions(head: bytes) -> tuple[int | None, int | None]:
+        """JPEG 2000 (ISO/IEC 15444) dimensions from the jp2h->ihdr box. Bounded
+        box walk; honest-null on truncation / malformation."""
+        def find_box(want: bytes, start: int, end: int):
+            i, guard = start, 0
+            end = min(end, len(head))
+            while i + 8 <= end and guard < 4096:
+                guard += 1
+                size = struct.unpack(">I", head[i:i+4])[0]
+                typ = head[i+4:i+8]
+                hdr = 8
+                if size == 1:
+                    if i + 16 > len(head):
+                        break
+                    size = struct.unpack(">Q", head[i+8:i+16])[0]
+                    hdr = 16
+                box_end = len(head) if size == 0 else i + size
+                if box_end <= i + hdr or box_end > len(head):
+                    box_end = len(head)
+                if typ == want:
+                    return i + hdr, box_end
+                i = box_end
+            return None
+        jp2h = find_box(b"jp2h", 0, len(head))
+        if not jp2h:
+            return None, None
+        ihdr = find_box(b"ihdr", jp2h[0], jp2h[1])
+        if not ihdr:
+            return None, None
+        body, _ = ihdr
+        if body + 8 > len(head):
+            return None, None
+        height, width = struct.unpack(">II", head[body:body+8])
+        return width, height
+
+    def _extract_jp2_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+        """v1.24: JPEG 2000 (.jp2) — dimensions (no EXIF in the common case)."""
+        head = self._image_metadata_head(path, sample)
+        width, height = self._jp2_dimensions(head)
+        return {"width": width, "height": height}
+
+    @staticmethod
+    def _tiff_dimensions(buf: bytes) -> tuple[int | None, int | None]:
+        """TIFF dimensions from IFD0 ImageWidth(256)/ImageLength(257). These live in
+        IFD0 (not the EXIF sub-IFD), so _parse_exif_tiff does not surface them."""
+        if len(buf) < 8 or buf[:2] not in (b"II", b"MM"):
+            return None, None
+        bo = "<" if buf[:2] == b"II" else ">"
+        try:
+            off = struct.unpack(bo + "I", buf[4:8])[0]
+            if off < 8 or off + 2 > len(buf):
+                return None, None
+            n = struct.unpack(bo + "H", buf[off:off+2])[0]
+            w = h = None
+            for i in range(min(n, 512)):  # bound (never-crash)
+                e = off + 2 + i * 12
+                if e + 12 > len(buf):
+                    break
+                tag, typ, _cnt = struct.unpack(bo + "HHI", buf[e:e+8])
+                val = buf[e+8:e+12]
+                if tag in (256, 257):
+                    if typ == 3:
+                        v = struct.unpack(bo + "H", val[:2])[0]
+                    elif typ == 4:
+                        v = struct.unpack(bo + "I", val[:4])[0]
+                    else:
+                        continue
+                    if tag == 256:
+                        w = v
+                    else:
+                        h = v
+            return w, h
+        except Exception:
+            return None, None
+
+    def _extract_tiff_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+        """v1.24: TIFF (.tiff/.tif) — IFD0 dimensions + EXIF (make/model/orientation/
+        datetime_original/gps_present/xmp) via the shared image-EXIF path. A TIFF
+        file head IS the EXIF/TIFF block, so it feeds _apply_exif directly."""
+        head = self._image_metadata_head(path, sample)
+        if head[:2] not in (b"II", b"MM"):
+            return None
+        width, height = self._tiff_dimensions(head)
+        meta: dict[str, Any] = {"width": width, "height": height}
+        self._apply_exif(meta, head, head)
         return meta
 
     @staticmethod

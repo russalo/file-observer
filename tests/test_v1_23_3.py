@@ -33,9 +33,9 @@ def _sc():
 
 
 def test_version_surfaces():
-    assert SCANNER_VERSION == "1.23.3", SCANNER_VERSION
-    assert LOGIC_VERSION == "1.12.4", LOGIC_VERSION   # MIME-sniff routing change
-    assert SCHEMA_VERSION == "1.14", SCHEMA_VERSION    # unchanged
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 23, 3), SCANNER_VERSION  # floor
+    assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 12, 4), LOGIC_VERSION  # floor
+    assert tuple(map(int, SCHEMA_VERSION.split("."))) >= (1, 14), SCHEMA_VERSION  # floor (superseded per-release pin; later minors raise SCHEMA)
 
 
 def test_empty_bzip2_now_recognized():

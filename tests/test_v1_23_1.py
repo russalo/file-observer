@@ -32,7 +32,7 @@ def test_version_surfaces():
     # floors — v1.23.2+ supersede this release (widened the window to 1024 + added corroboration)
     assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 23, 1), f"got {SCANNER_VERSION!r}"
     assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 12, 2), f"LOGIC: {LOGIC_VERSION!r}"
-    assert SCHEMA_VERSION == "1.14", f"SCHEMA: {SCHEMA_VERSION!r}"  # unchanged
+    assert tuple(map(int, SCHEMA_VERSION.split("."))) >= (1, 14), SCHEMA_VERSION  # floor (superseded per-release pin; later minors raise SCHEMA)
 
 
 def test_deep_stray_pdf_literal_not_typed_pdf(tmp_path):
