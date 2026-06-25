@@ -284,7 +284,7 @@
 
 ## format_signatures
 
-`application/gzip`, `application/pdf`, `application/postscript`, `application/rtf`, `application/vnd.apache.parquet`, `application/vnd.rar`, `application/vnd.sqlite3`, `application/x-7z-compressed`, `application/x-bzip2`, `application/x-elf`, `application/x-ole-storage`, `application/x-xz`, `application/zip`, `application/zstd`, `audio/flac`, `audio/mpeg`, `audio/ogg`, `audio/wav`, `image/avif`, `image/gif`, `image/heic`, `image/heif`, `image/jpeg`, `image/png`, `image/tiff`, `image/webp`, `riff_container`, `video/mp4`, `video/x-matroska`, `video/x-msvideo`
+`application/gzip`, `application/pdf`, `application/postscript`, `application/rtf`, `application/vnd.apache.parquet`, `application/vnd.rar`, `application/vnd.sqlite3`, `application/x-7z-compressed`, `application/x-bzip2`, `application/x-elf`, `application/x-ole-storage`, `application/x-xz`, `application/zip`, `application/zstd`, `audio/flac`, `audio/mpeg`, `audio/ogg`, `audio/wav`, `image/avif`, `image/gif`, `image/heic`, `image/heif`, `image/jp2`, `image/jpeg`, `image/png`, `image/tiff`, `image/webp`, `riff_container`, `video/mp4`, `video/x-matroska`, `video/x-msvideo`
 
 ## preservation tiers
 

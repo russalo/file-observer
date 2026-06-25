@@ -19,7 +19,7 @@ def test_version_surfaces_stay_in_sync():
     drift that let pyproject / the module docstring lag the constant. (file_observer
     .__version__ is derived, so it's safe by construction; pyproject and the
     docstring are hand-maintained duplicates that need this check.)"""
-    from file_observer.scanner import SCANNER_VERSION
+    from file_observer.scanner import SCANNER_VERSION, SCHEMA_VERSION
     import file_observer.scanner as s
 
     root = Path(__file__).resolve().parent.parent
@@ -30,13 +30,20 @@ def test_version_surfaces_stay_in_sync():
     assert m, "scanner.py module docstring has no `Version:` line"
     assert m.group(1) == SCANNER_VERSION, f"docstring {m.group(1)} != SCANNER_VERSION {SCANNER_VERSION}"
 
+    # v1.24: the docstring Schema + Spec lines drifted unguarded — pin them too.
+    ms = re.search(r"Schema:\s*([0-9]+\.[0-9]+)", s.__doc__ or "")
+    assert ms and ms.group(1) == SCHEMA_VERSION, f"docstring Schema {ms and ms.group(1)} != {SCHEMA_VERSION}"
+    _maj, _min, _p = SCANNER_VERSION.split(".")
+    assert f"docs/v{_maj}.{_min}.0_RFC_Specification.md (current)" in (s.__doc__ or ""), \
+        "docstring Spec line must point at the current minor's RFC"
+
 
 def test_readme_version_references_current():
     """README hand-maintains the current version in three spots and has drifted three
     minors running (caught reactively in #75/#78/#79). Guard them so a stale README
     fails CI instead of a bot. The historical RFC rows for PRIOR versions stay — this
     only pins the CURRENT-release claims to the constants."""
-    from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
+    from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
     root = Path(__file__).resolve().parent.parent
     readme = (root / "README.md").read_text(encoding="utf-8")
@@ -56,6 +63,11 @@ def test_readme_version_references_current():
     rfc_doc = f"docs/v{major}.{minor}.0_RFC_Specification.md"
     assert rfc_doc in readme, \
         f"README does not reference the current minor's RFC ({rfc_doc})"
+    # (4) schema_version (example manifest) + the Schema quick-facts cell — drifted unguarded (v1.24)
+    assert f'"schema_version": "{SCHEMA_VERSION}"' in readme, \
+        f"README example manifest schema_version is stale (want {SCHEMA_VERSION})"
+    assert f"| **Schema** | `{SCHEMA_VERSION}` |" in readme, \
+        f"README Schema cell is stale (want {SCHEMA_VERSION})"
 
 
 def test_contract_docs_version_references_current():

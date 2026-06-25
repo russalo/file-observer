@@ -168,7 +168,7 @@ def test_office_honest_null(tmp_path):
     rec = _scan_one(tmp_path)
     pm = rec.specialist_metadata["presentation"]
     assert pm["title"] is None and pm["author"] is None and pm["application"] is None
-    assert pm["slide_count"] is None  # no <Slides>, no slide parts → honest null
+    assert pm["slide_count"] == 0  # no <Slides>; counted 0 slide parts → honest 0 (not null)
 
 
 def test_corrupt_office_never_crashes(tmp_path):
@@ -242,6 +242,7 @@ def test_jp2_dimensions(tmp_path):
     assert rec.requires_specialist_tool is True
     img = rec.specialist_metadata["image"]
     assert img["width"] == 800 and img["height"] == 600
+    assert img.get("make") is None and "xmp_present" in img  # v1.24 fix: uniform image key surface
 
 
 def test_tiff_dimensions_and_exif(tmp_path):
@@ -265,3 +266,10 @@ def test_jp2_truncated_no_crash(tmp_path):
     sm = m.files[0].specialist_metadata
     img = sm.get("image") if sm else None
     assert img is None or img.get("width") is None
+
+def test_jp2_magic_signature_sniffs(tmp_path):
+    # v1.24 review fix: jp2 must sniff on the no-libmagic path (symmetric with tiff)
+    import struct
+    sc = Scanner(source_dir=tmp_path, config=ScannerConfig())
+    sig = struct.pack(">I", 12) + b"jP  " + b"\x0d\x0a\x87\x0a" + struct.pack(">I", 20) + b"ftyp" + b"jp2 "
+    assert sc._sniff_mime(sig) == "image/jp2"

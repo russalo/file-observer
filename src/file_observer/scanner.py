@@ -6,9 +6,9 @@ extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
     Version:    1.24.0
-    Schema:     1.14
+    Schema:     1.15
     Python:     >= 3.12
-    Spec:       docs/v1.23.0_RFC_Specification.md (current)
+    Spec:       docs/v1.24.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -150,6 +150,7 @@ mimetypes.add_type("application/rtf", ".rtf")
 mimetypes.add_type("image/heic", ".heic")
 mimetypes.add_type("image/heif", ".heif")
 mimetypes.add_type("image/avif", ".avif")
+mimetypes.add_type("image/jp2", ".jp2")   # v1.24: stdlib mimetypes does not know .jp2
 
 
 SUPPORTED_EXTENSIONS = {
@@ -921,6 +922,7 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes | _OneOf], 
     # images / data
     (((0, b"II*\x00"),), "image/tiff"),
     (((0, b"MM\x00*"),), "image/tiff"),
+    (((4, b"jP  "), (8, b"\x0d\x0a\x87\x0a")), "image/jp2"),  # v1.24: JPEG 2000 signature box
     (((0, b"SQLite format 3\x00"),), "application/vnd.sqlite3"),
     (((0, b"PAR1"),), "application/vnd.apache.parquet"),
     # OLE2 / documents / executables
@@ -4671,7 +4673,9 @@ class Scanner:
         """v1.24: JPEG 2000 (.jp2) — dimensions (no EXIF in the common case)."""
         head = self._image_metadata_head(path, sample)
         width, height = self._jp2_dimensions(head)
-        return {"width": width, "height": height}
+        meta: dict[str, Any] = {"width": width, "height": height}
+        self._apply_exif(meta, None, head)  # uniform image key surface (jp2 carries no EXIF in the common case)
+        return meta
 
     @staticmethod
     def _tiff_dimensions(buf: bytes) -> tuple[int | None, int | None]:
@@ -5101,7 +5105,7 @@ class Scanner:
                         root = xml_fromstring(content)
                         draw = self._ODF_NS["draw"]
                         n = sum(1 for _ in root.iter(f"{{{draw}}}page"))
-                        slide_count = n or None
+                        slide_count = n  # honest count (0 = parsed, zero pages)
                     except Exception:
                         pass
                 return {"slide_count": slide_count, "title": m["title"],
@@ -5153,7 +5157,7 @@ class Scanner:
                     pass
             if out["slide_count"] is None:  # fallback: count slide parts
                 n = sum(1 for nm in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", nm))
-                out["slide_count"] = n or None
+                out["slide_count"] = n  # honest count of slide parts in the budget window
             return out
         finally:
             zf.close()
