@@ -21,6 +21,7 @@ Observation is bounded by design:
   64 KB).
 - Specialist extraction reads within a budget (`specialist_budget`, default
   128 KB; some formats declare larger deviations).
+- **Office/ODF metadata is bounded to containers whose ZIP central directory falls within the budget (~128 KB).** The OOXML/ODF extractors (`.docx`/`.xlsx`/`.pptx`/`.odt`/`.ods`/`.odp`) read a bounded head of the ZIP; a ZIP stores its central directory at the *end* of the archive, so a file larger than the budget has its directory beyond the read window and returns `null` metadata (honest null = not observed within bounds, never a wrong value). This bound also caps the central-directory parse against a malicious huge-directory ZIP. Real presentations (image-heavy, often > 128 KB) are the common case to hit this. A bounded *tail*-read of the central directory — handling large files while still capping against a directory-bomb — is a noted future enhancement across all office formats (v1.24 surfaced it via four-reviewer convergence).
 
 A `null` or absent field means the signal was **not observed within those
 bounds** — not that it is absent from the file. Raising the limits (see the

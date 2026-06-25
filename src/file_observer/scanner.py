@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.23.3
-    Schema:     1.14
+    Version:    1.24.0
+    Schema:     1.15
     Python:     >= 3.12
-    Spec:       docs/v1.23.0_RFC_Specification.md (current)
+    Spec:       docs/v1.24.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.23.3"
-LOGIC_VERSION = "1.12.4"   # v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.14"   # v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.24.0"
+LOGIC_VERSION = "1.13.0"   # v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.15"   # v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -150,6 +150,7 @@ mimetypes.add_type("application/rtf", ".rtf")
 mimetypes.add_type("image/heic", ".heic")
 mimetypes.add_type("image/heif", ".heif")
 mimetypes.add_type("image/avif", ".avif")
+mimetypes.add_type("image/jp2", ".jp2")   # v1.24: stdlib mimetypes does not know .jp2
 
 
 SUPPORTED_EXTENSIONS = {
@@ -283,6 +284,14 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".eml": "email_envelope",
     ".xlsx": "spreadsheet_structure",
     ".xls": "spreadsheet_structure",
+    # v1.24 (Candidate B, phase 1): office extraction
+    ".pptx": "presentation_structure",
+    ".odp": "presentation_structure",
+    ".odt": "document_extraction",
+    ".ods": "spreadsheet_structure",
+    ".jp2": "image_structure",
+    ".tiff": "image_structure",
+    ".tif": "image_structure",
 }
 
 # Error code constants
@@ -726,6 +735,14 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".docx": "document",
     ".doc": "document",
     ".rtf": "document",
+    # v1.24 (Candidate B, phase 1)
+    ".pptx": "presentation",
+    ".odp": "presentation",
+    ".odt": "document",
+    ".ods": "spreadsheet",
+    ".jp2": "image",
+    ".tiff": "image",
+    ".tif": "image",
 }
 
 # v1.13: SPECIALIST_FIELDS — the metadata fields each specialist namespace can
@@ -746,6 +763,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
     ],
     "video": ["codec", "duration_s", "width", "height", "creation_date", "creation_date_qt",
               "make", "model", "gps_present", "gps_source"],
+    "presentation": ["slide_count", "title", "author", "application"],  # v1.24 (Candidate B)
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
     "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
@@ -795,6 +813,11 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("video", "model"),
     ("video", "gps_present"),
     ("video", "gps_source"),
+    # v1.24 (Candidate B): the new `presentation` namespace — provisional on arrival
+    ("presentation", "slide_count"),
+    ("presentation", "title"),
+    ("presentation", "author"),
+    ("presentation", "application"),
 })
 PROVISIONAL_VECTORS: frozenset[str] = frozenset()  # v1.23.0 promoted `preservation` → stable (was the only one)
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
@@ -899,6 +922,7 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes | _OneOf], 
     # images / data
     (((0, b"II*\x00"),), "image/tiff"),
     (((0, b"MM\x00*"),), "image/tiff"),
+    (((4, b"jP  "), (8, b"\x0d\x0a\x87\x0a"), (20, b"jp2 ")), "image/jp2"),  # v1.24: JP2 sig box + the jp2 major brand at offset 20 — NOT the shared-sig-box jpx/jpm/mj2
     (((0, b"SQLite format 3\x00"),), "application/vnd.sqlite3"),
     (((0, b"PAR1"),), "application/vnd.apache.parquet"),
     # OLE2 / documents / executables
@@ -935,15 +959,19 @@ MAGIC_SIGNATURES: list[tuple[tuple[tuple[int | None | _Within, bytes | _OneOf], 
 SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "pdf": {"application/pdf"},
     "image": {"image/png", "image/jpeg", "image/gif", "image/webp",
-              "image/heic", "image/heif", "image/avif"},
+              "image/heic", "image/heif", "image/avif",
+              "image/jp2", "image/tiff", "image/tif"},  # v1.24 (Candidate B)
     "video": {"video/mp4", "video/quicktime", "video/x-m4v", "application/mp4",
               "application/octet-stream"},
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
-    "spreadsheet": {"application/zip", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "presentation": {"application/zip", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                     "application/vnd.oasis.opendocument.presentation", "application/vnd.ms-office",
+                     "application/octet-stream"},  # v1.24 (Candidate B)
+    "spreadsheet": {"application/zip", "application/vnd.oasis.opendocument.spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      "application/vnd.ms-excel", "application/x-ole-storage", "application/CDFV2",
                      "application/vnd.ms-office",  # v1.15.2: libmagic's generic OLE2-office MIME
                      "application/octet-stream"},
-    "document": {"application/zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "document": {"application/zip", "application/vnd.oasis.opendocument.text", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                  "application/msword", "application/x-ole-storage", "text/rtf", "application/rtf",
                  "application/CDFV2", "application/vnd.ms-office",  # v1.15.2: generic OLE2-office
                  "application/octet-stream"},
@@ -3453,10 +3481,10 @@ class Scanner:
                     # from the bounded sample (leg-4/Codex — provenance-honesty). OOXML
                     # reads the ZIP central directory; the image-EXIF path (v1.16) reads
                     # a bounded 1 MiB head (EXIF/XMP live past the sample).
-                    if extension in {".xlsx", ".docx"}:
+                    if extension in {".xlsx", ".docx", ".pptx", ".odp", ".odt", ".ods"}:
                         is_deviation = True
                         dev_reason, dev_budget = "zip_central_directory_required", eff["specialist_budget"]
-                    elif extension in {".jpg", ".jpeg", ".heic", ".heif", ".avif"}:
+                    elif extension in {".jpg", ".jpeg", ".heic", ".heif", ".avif", ".jp2", ".tiff", ".tif"}:
                         is_deviation = True
                         dev_reason, dev_budget = "exif_metadata_beyond_sample", self.IMAGE_METADATA_MAX_BYTES
                     elif extension in {".mp4", ".mov", ".m4v"}:
@@ -3604,6 +3632,10 @@ class Scanner:
             return self._extract_jpeg_metadata(path, sample)
         if extension in {".heic", ".heif", ".avif"}:
             return self._extract_heic_metadata(path, sample)
+        if extension == ".jp2":  # v1.24 (Candidate B)
+            return self._extract_jp2_metadata(path, sample)
+        if extension in {".tiff", ".tif"}:  # v1.24
+            return self._extract_tiff_metadata(path, sample)
         if extension in {".mp4", ".mov", ".m4v"}:
             return self._extract_video_metadata(path, sample)
         if extension == ".msg":
@@ -3623,6 +3655,12 @@ class Scanner:
             return self._extract_doc_metadata(path)
         if extension == ".rtf":
             return self._extract_rtf_metadata(sample)
+        if extension in {".pptx", ".odp"}:  # v1.24 (Candidate B)
+            return self._extract_presentation_metadata(path, extension, budget)
+        if extension == ".odt":  # v1.24
+            return self._extract_odt_metadata(path, budget)
+        if extension == ".ods":  # v1.24
+            return self._extract_ods_metadata(path, budget)
         return None
 
     @staticmethod
@@ -4590,6 +4628,101 @@ class Scanner:
         self._apply_exif(meta, _heif_exif_tiff(head), head)
         return meta
 
+    # --- v1.24 (Candidate B, phase 1) — image extraction: .jp2 (ISOBMFF
+    # jp2h->ihdr dimensions) + .tiff/.tif (TIFF IFD0 dimensions + EXIF via the
+    # shared _parse_exif_tiff / _apply_exif path). Reuses the v1.16 bounded
+    # image-head read; bounded box/IFD walks; honest-null on truncation. ---
+
+    @staticmethod
+    def _jp2_dimensions(head: bytes) -> tuple[int | None, int | None]:
+        """JPEG 2000 (ISO/IEC 15444) dimensions from the jp2h->ihdr box. Bounded
+        box walk; honest-null on truncation / malformation."""
+        def find_box(want: bytes, start: int, end: int):
+            i, guard = start, 0
+            end = min(end, len(head))
+            while i + 8 <= end and guard < 4096:
+                guard += 1
+                size = struct.unpack(">I", head[i:i+4])[0]
+                typ = head[i+4:i+8]
+                hdr = 8
+                if size == 1:
+                    if i + 16 > len(head):
+                        break
+                    size = struct.unpack(">Q", head[i+8:i+16])[0]
+                    hdr = 16
+                box_end = len(head) if size == 0 else i + size
+                if box_end < i + hdr or box_end > len(head):  # < hdr = malformed; == hdr is a valid empty box (skip it)
+                    box_end = len(head)
+                if typ == want:
+                    return i + hdr, box_end
+                i = box_end
+            return None
+        jp2h = find_box(b"jp2h", 0, len(head))
+        if not jp2h:
+            return None, None
+        ihdr = find_box(b"ihdr", jp2h[0], jp2h[1])
+        if not ihdr:
+            return None, None
+        body, _ = ihdr
+        if body + 8 > len(head):
+            return None, None
+        height, width = struct.unpack(">II", head[body:body+8])
+        return width, height
+
+    def _extract_jp2_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+        """v1.24: JPEG 2000 (.jp2) — dimensions (no EXIF in the common case)."""
+        head = self._image_metadata_head(path, sample)
+        width, height = self._jp2_dimensions(head)
+        meta: dict[str, Any] = {"width": width, "height": height}
+        self._apply_exif(meta, None, head)  # uniform image key surface (jp2 carries no EXIF in the common case)
+        return meta
+
+    @staticmethod
+    def _tiff_dimensions(buf: bytes) -> tuple[int | None, int | None]:
+        """TIFF dimensions from IFD0 ImageWidth(256)/ImageLength(257). These live in
+        IFD0 (not the EXIF sub-IFD), so _parse_exif_tiff does not surface them."""
+        if len(buf) < 8 or buf[:2] not in (b"II", b"MM"):
+            return None, None
+        bo = "<" if buf[:2] == b"II" else ">"
+        try:
+            off = struct.unpack(bo + "I", buf[4:8])[0]
+            if off < 8 or off + 2 > len(buf):
+                return None, None
+            n = struct.unpack(bo + "H", buf[off:off+2])[0]
+            w = h = None
+            for i in range(min(n, 512)):  # bound (never-crash)
+                e = off + 2 + i * 12
+                if e + 12 > len(buf):
+                    break
+                tag, typ, _cnt = struct.unpack(bo + "HHI", buf[e:e+8])
+                val = buf[e+8:e+12]
+                if tag in (256, 257):
+                    if typ == 3:
+                        v = struct.unpack(bo + "H", val[:2])[0]
+                    elif typ == 4:
+                        v = struct.unpack(bo + "I", val[:4])[0]
+                    else:
+                        continue
+                    if tag == 256:
+                        w = v
+                    else:
+                        h = v
+            return w, h
+        except Exception:
+            return None, None
+
+    def _extract_tiff_metadata(self, path: Path, sample: bytes) -> dict[str, Any] | None:
+        """v1.24: TIFF (.tiff/.tif) — IFD0 dimensions + EXIF (make/model/orientation/
+        datetime_original/gps_present/xmp) via the shared image-EXIF path. A TIFF
+        file head IS the EXIF/TIFF block, so it feeds _apply_exif directly."""
+        head = self._image_metadata_head(path, sample)
+        if head[:2] not in (b"II", b"MM"):
+            return None
+        width, height = self._tiff_dimensions(head)
+        meta: dict[str, Any] = {"width": width, "height": height}
+        self._apply_exif(meta, head, head)
+        return meta
+
     @staticmethod
     def _apply_exif(meta: dict[str, Any], tiff: bytes | None, head: bytes) -> None:
         """Merge EXIF fields + XMP-presence + geotagged disclosure into an image record.
@@ -4886,6 +5019,184 @@ class Scanner:
                 except Exception:
                     pass
             return meta
+        finally:
+            zf.close()
+
+    # ------------------------------------------------------------------
+    # v1.24 (Candidate B, phase 1) — office extraction: OOXML presentations
+    # (.pptx) + ODF text/sheet/presentation (.odt/.ods/.odp). Reuses the
+    # docx/xlsx ZIP+XML pattern (stdlib zipfile, _safe_zip_read, defused
+    # xml_fromstring), bounded to the 128 KB deviation budget. Honest null
+    # when a field is absent/unreadable within the window.
+    # ------------------------------------------------------------------
+
+    _ODF_NS = {
+        "meta": "urn:oasis:names:tc:opendocument:xmlns:meta:1.0",
+        "dc": "http://purl.org/dc/elements/1.1/",
+        "draw": "urn:oasis:names:tc:opendocument:xmlns:drawing:1.0",
+        "table": "urn:oasis:names:tc:opendocument:xmlns:table:1.0",
+    }
+
+    def _odf_open(self, path: Path, budget: int):
+        """Open an ODF (zip) container bounded to ``budget``; None on any error."""
+        import zipfile
+        from io import BytesIO
+        try:
+            with path.open("rb") as f:
+                raw = f.read(budget)
+        except Exception:
+            return None
+        try:
+            return zipfile.ZipFile(BytesIO(raw))
+        except Exception:
+            return None
+
+    def _odf_common_meta(self, zf: Any) -> dict[str, Any]:
+        """title / author / application / word_count from ODF ``meta.xml``
+        (Dublin Core + the ODF meta namespace). Every field honest-null when
+        absent within bounds."""
+        out: dict[str, Any] = {"title": None, "author": None, "application": None, "word_count": None}
+        raw = self._safe_zip_read(zf, "meta.xml")
+        if raw is None:
+            return out
+        try:
+            root = xml_fromstring(raw)  # raw bytes — parser detects encoding
+        except Exception:
+            return out
+        dc, me = self._ODF_NS["dc"], self._ODF_NS["meta"]
+        for el in root.iter(f"{{{dc}}}title"):
+            if el.text and el.text.strip():
+                out["title"] = el.text.strip()
+            break
+        for el in root.iter(f"{{{dc}}}creator"):
+            if el.text and el.text.strip():
+                out["author"] = el.text.strip()
+            break
+        if out["author"] is None:
+            for el in root.iter(f"{{{me}}}initial-creator"):
+                if el.text and el.text.strip():
+                    out["author"] = el.text.strip()
+                break
+        for el in root.iter(f"{{{me}}}generator"):
+            if el.text and el.text.strip():
+                out["application"] = el.text.strip()
+            break
+        for el in root.iter(f"{{{me}}}document-statistic"):
+            wc = el.get(f"{{{me}}}word-count")
+            if wc and wc.isdigit():
+                out["word_count"] = int(wc)
+            break
+        return out
+
+    def _extract_presentation_metadata(self, path: Path, extension: str, budget: int = 131072) -> dict[str, Any] | None:
+        """v1.24: presentation metadata. ``.pptx`` via OOXML docProps; ``.odp``
+        via ODF meta.xml + content.xml draw:page count. slide_count / title /
+        author / application — honest-null when absent within the budget."""
+        if extension == ".odp":
+            zf = self._odf_open(path, budget)
+            if zf is None:
+                return None
+            try:
+                m = self._odf_common_meta(zf)
+                slide_count = None
+                content = self._safe_zip_read(zf, "content.xml")
+                if content is not None:
+                    try:
+                        root = xml_fromstring(content)
+                        draw = self._ODF_NS["draw"]
+                        n = sum(1 for _ in root.iter(f"{{{draw}}}page"))
+                        slide_count = n  # honest count (0 = parsed, zero pages)
+                    except Exception:
+                        pass
+                return {"slide_count": slide_count, "title": m["title"],
+                        "author": m["author"], "application": m["application"]}
+            finally:
+                zf.close()
+        # .pptx (OOXML)
+        import zipfile
+        from io import BytesIO
+        try:
+            with path.open("rb") as f:
+                raw = f.read(budget)
+        except Exception:
+            return None
+        try:
+            zf = zipfile.ZipFile(BytesIO(raw))
+        except Exception:
+            return None
+        try:
+            out: dict[str, Any] = {"slide_count": None, "title": None, "author": None, "application": None}
+            core = self._safe_zip_read(zf, "docProps/core.xml")
+            if core is not None:
+                try:
+                    root = xml_fromstring(core)  # raw bytes (leg-2): parser reads the encoding decl; a str-decode trips stdlib ElementTree on no-defusedxml. Matches app.xml/ODF.
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}title"):
+                        if el.text and el.text.strip():
+                            out["title"] = el.text.strip()
+                        break
+                    for el in root.iter("{http://purl.org/dc/elements/1.1/}creator"):
+                        if el.text and el.text.strip():
+                            out["author"] = el.text.strip()
+                        break
+                except Exception:
+                    pass
+            app = self._safe_zip_read(zf, "docProps/app.xml")
+            if app is not None:
+                try:
+                    root = xml_fromstring(app)
+                    ns = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
+                    for el in root.iter(f"{{{ns}}}Slides"):
+                        if el.text and el.text.isdigit():
+                            out["slide_count"] = int(el.text)
+                        break
+                    for el in root.iter(f"{{{ns}}}Application"):
+                        if el.text and el.text.strip():
+                            out["application"] = el.text.strip()
+                        break
+                except Exception:
+                    pass
+            if out["slide_count"] is None:  # fallback: count slide parts
+                n = sum(1 for nm in zf.namelist() if re.match(r"ppt/slides/slide\d+\.xml$", nm.replace("\\", "/")))  # normalize non-conformant backslash zip paths
+                out["slide_count"] = n  # honest count of slide parts in the budget window
+            return out
+        finally:
+            zf.close()
+
+    def _extract_odt_metadata(self, path: Path, budget: int = 131072) -> dict[str, Any] | None:
+        """v1.24: ODF text (.odt) -> title/author/word_count/application (meta.xml)."""
+        zf = self._odf_open(path, budget)
+        if zf is None:
+            return None
+        try:
+            m = self._odf_common_meta(zf)
+            return {"title": m["title"], "author": m["author"],
+                    "word_count": m["word_count"], "application": m["application"]}
+        finally:
+            zf.close()
+
+    def _extract_ods_metadata(self, path: Path, budget: int = 131072) -> dict[str, Any] | None:
+        """v1.24: ODF spreadsheet (.ods) -> sheet_names (content.xml table:table)
+        + application. format='odf' (parallels xlsx 'ooxml' / xls 'biff')."""
+        zf = self._odf_open(path, budget)
+        if zf is None:
+            return None
+        try:
+            m = self._odf_common_meta(zf)
+            sheet_names: list[str] = []
+            content = self._safe_zip_read(zf, "content.xml")
+            if content is not None:
+                try:
+                    root = xml_fromstring(content)
+                    table = self._ODF_NS["table"]
+                    for el in root.iter(f"{{{table}}}table"):
+                        name = el.get(f"{{{table}}}name")
+                        if name:
+                            sheet_names.append(name)
+                        if len(sheet_names) >= 64:  # bound (never-crash discipline)
+                            break
+                except Exception:
+                    pass
+            return {"sheet_names": sheet_names, "format": "odf", "application": m["application"]}
         finally:
             zf.close()
 

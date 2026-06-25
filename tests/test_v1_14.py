@@ -121,6 +121,9 @@ class TestProvisionalRegistryMatchesContract:
             ("video", "codec"), ("video", "duration_s"), ("video", "width"), ("video", "height"),
             ("video", "creation_date"), ("video", "creation_date_qt"), ("video", "make"),
             ("video", "model"), ("video", "gps_present"), ("video", "gps_source"),
+            # v1.24 (Candidate B): new presentation namespace — provisional on arrival
+            ("presentation", "slide_count"), ("presentation", "title"),
+            ("presentation", "author"), ("presentation", "application"),
         })
         assert PROVISIONAL_VECTORS == frozenset()  # v1.23.0 promoted `preservation` (was the only one)
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({

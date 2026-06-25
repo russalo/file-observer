@@ -37,7 +37,7 @@ def test_version_surfaces():
     # floors — v1.23.3+ supersede this release (the bzip2 dual-magic patch bumps SCANNER/LOGIC)
     assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 23, 2), SCANNER_VERSION
     assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 12, 3), LOGIC_VERSION
-    assert SCHEMA_VERSION == "1.14", SCHEMA_VERSION    # unchanged
+    assert tuple(map(int, SCHEMA_VERSION.split("."))) >= (1, 14), SCHEMA_VERSION  # floor (superseded per-release pin; later minors raise SCHEMA)
     assert PDF_HEADER_MAX_OFFSET == 1024               # widened from 256 to match sample[:1024]
 
 
