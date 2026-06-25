@@ -314,3 +314,22 @@ def test_pptx_slide_count_windows_backslash_paths(tmp_path):
         zf.writestr("ppt\\slides\\slide2.xml", b"<p:sld/>")
     rec = _scan_one(tmp_path)
     assert rec.specialist_metadata["presentation"]["slide_count"] == 2
+
+
+def test_pptx_realistic_encoding_declared_core(tmp_path):
+    # leg-2 (Gemini pro) catch: real Office core.xml carries an `encoding=` decl;
+    # passing it as raw bytes (not a str-decode) keeps title/author extraction
+    # robust across defusedxml-present and -absent (stdlib ElementTree rejects a
+    # str with an encoding declaration). My earlier fixture omitted the decl.
+    core = (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            b'<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"'
+            b' xmlns:dc="http://purl.org/dc/elements/1.1/">'
+            b'<dc:title>Real Deck</dc:title><dc:creator>Eve</dc:creator></cp:coreProperties>')
+    app = (b'<?xml version="1.0" encoding="UTF-8"?>'
+           b'<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">'
+           b'<Application>Microsoft PowerPoint</Application><Slides>5</Slides></Properties>')
+    _write_zip(tmp_path / "real.pptx", {
+        "[Content_Types].xml": b"<Types/>", "docProps/core.xml": core, "docProps/app.xml": app})
+    p = _scan_one(tmp_path).specialist_metadata["presentation"]
+    assert p == {"slide_count": 5, "title": "Real Deck", "author": "Eve",
+                 "application": "Microsoft PowerPoint"}

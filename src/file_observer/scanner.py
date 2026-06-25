@@ -5129,7 +5129,7 @@ class Scanner:
             core = self._safe_zip_read(zf, "docProps/core.xml")
             if core is not None:
                 try:
-                    root = xml_fromstring(core.decode("utf-8", errors="replace"))
+                    root = xml_fromstring(core)  # raw bytes (leg-2): parser reads the encoding decl; a str-decode trips stdlib ElementTree on no-defusedxml. Matches app.xml/ODF.
                     for el in root.iter("{http://purl.org/dc/elements/1.1/}title"):
                         if el.text and el.text.strip():
                             out["title"] = el.text.strip()
