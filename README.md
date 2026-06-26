@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="file-observer" width="110">
+  <img src="https://raw.githubusercontent.com/russalo/file-observer/main/docs/assets/logo.png" alt="file-observer" width="110">
 </p>
 
 # File Observer
@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/file-observer)](https://pypi.org/project/file-observer/)
 ![Python](https://img.shields.io/pypi/pyversions/file-observer)
 [![tests](https://github.com/russalo/file-observer/actions/workflows/tests.yml/badge.svg)](https://github.com/russalo/file-observer/actions/workflows/tests.yml)
-[![License: AGPL-3.0 + commercial](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20commercial-blue)](LICENSE)
+[![License: AGPL-3.0 + commercial](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20commercial-blue)](https://github.com/russalo/file-observer/blob/main/LICENSE)
 
 **Know what's in your files before you open them.**
 
@@ -18,7 +18,7 @@ File Observer makes a single read-only pass over a directory and tells you exact
 *(If you already know Apache Tika: think a deterministic Tika built for pipelines.)*
 
 <p align="center">
-  <img src="docs/assets/pipeline-diagram.png" alt="Many messy files in → one deterministic, checksum-sealed JSON manifest out → many consumers downstream" width="760">
+  <img src="https://raw.githubusercontent.com/russalo/file-observer/main/docs/assets/pipeline-diagram.png" alt="Many messy files in → one deterministic, checksum-sealed JSON manifest out → many consumers downstream" width="760">
 </p>
 
 ```bash
@@ -44,7 +44,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.16",
-  "context": { "scanner_version": "1.25.1", "logic_version": "1.14.1", "...": "…" },
+  "context": { "scanner_version": "1.26.0", "logic_version": "1.14.1", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,7 +76,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.25.1` |
+| **Version** | `1.26.0` |
 | **Schema** | `1.16` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -180,10 +180,12 @@ fo ./project --previous-manifest ./last.json --signing-key-file ./key
 
 ```python
 from pathlib import Path
-from file_observer import Scanner, ScannerConfig, manifest_to_json
+from file_observer import scan, scan_to_json, manifest_to_json
 
-config = ScannerConfig(enable_specialists=True)
-manifest = Scanner(source_dir=Path("./documents"), config=config).scan()
+manifest = scan("./documents")                       # one call, sane defaults
+manifest = scan("./documents", specialists=True)     # opt-in format extraction
+json_str = scan_to_json("./documents")               # straight to a JSON string
+# (the explicit Scanner(...)/ScannerConfig(...) path stays available for full control)
 
 # Human-readable summary
 print(manifest.summary)
@@ -290,7 +292,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.25.0 RFC Specification](docs/v1.25.0_RFC_Specification.md) | Current release spec — audio & legacy presentation extraction (Candidate B, phase 2): `.mp3` (new `audio` namespace — ID3 tags + format/bitrate/duration) + legacy `.ppt` (OLE2 title/author/application/slide_count, extends `presentation`) (SCHEMA 1.16). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.26.0 RFC Specification](docs/v1.26.0_RFC_Specification.md) | Current release spec — one-call public API (`scan` / `scan_to_json`): `from file_observer import scan; m = scan("./folder")`. Python-surface ergonomics only; the manifest is byte-identical (LOGIC + SCHEMA unchanged). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.25.0 RFC Specification](docs/v1.25.0_RFC_Specification.md) | Audio & legacy presentation extraction (Candidate B, phase 2): `.mp3` (new `audio` namespace — ID3 tags + format/bitrate/duration) + legacy `.ppt` (OLE2 title/author/application/slide_count, extends `presentation`) (SCHEMA 1.16). |
 | [v1.24.0 RFC Specification](docs/v1.24.0_RFC_Specification.md) | Office & media extraction (Candidate B, phase 1): OOXML/ODF office (`.pptx`/`.odp`/`.odt`/`.ods`) + `.jp2`/`.tiff` dimension & EXIF extraction; new `presentation` namespace (SCHEMA 1.15). |
 | [v1.20.0 RFC Specification](docs/v1.20.0_RFC_Specification.md) | Prior — `video.creation_date_qt` (the Apple QuickTime creationdate key, capture moment + timezone). |
 | [v1.19.0 RFC Specification](docs/v1.19.0_RFC_Specification.md) | Prior — human-readable surfaces refresh (scan `summary` + `--schema --format summary` prose). |
