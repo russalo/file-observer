@@ -44,7 +44,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.16",
-  "context": { "scanner_version": "1.26.0", "logic_version": "1.14.1", "...": "…" },
+  "context": { "scanner_version": "1.27.0", "logic_version": "1.14.1", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,7 +76,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.26.0` |
+| **Version** | `1.27.0` |
 | **Schema** | `1.16` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -292,7 +292,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.26.0 RFC Specification](docs/v1.26.0_RFC_Specification.md) | Current release spec — one-call public API (`scan` / `scan_to_json`): `from file_observer import scan; m = scan("./folder")`. Python-surface ergonomics only; the manifest is byte-identical (LOGIC + SCHEMA unchanged). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.27.0 RFC Specification](docs/v1.27.0_RFC_Specification.md) | Current release spec — JSON Schema artifact: a committed, generated `docs/manifest.schema.json` (draft 2020-12) for any-language manifest validation/codegen, emitted by `--schema --schema-format json-schema`. Describes the manifest; LOGIC + SCHEMA unchanged. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.26.0 RFC Specification](docs/v1.26.0_RFC_Specification.md) | One-call public API (`scan` / `scan_to_json`): `from file_observer import scan; m = scan("./folder")`. Python-surface ergonomics only; the manifest is byte-identical (LOGIC + SCHEMA unchanged). |
 | [v1.25.0 RFC Specification](docs/v1.25.0_RFC_Specification.md) | Audio & legacy presentation extraction (Candidate B, phase 2): `.mp3` (new `audio` namespace — ID3 tags + format/bitrate/duration) + legacy `.ppt` (OLE2 title/author/application/slide_count, extends `presentation`) (SCHEMA 1.16). |
 | [v1.24.0 RFC Specification](docs/v1.24.0_RFC_Specification.md) | Office & media extraction (Candidate B, phase 1): OOXML/ODF office (`.pptx`/`.odp`/`.odt`/`.ods`) + `.jp2`/`.tiff` dimension & EXIF extraction; new `presentation` namespace (SCHEMA 1.15). |
 | [v1.20.0 RFC Specification](docs/v1.20.0_RFC_Specification.md) | Prior — `video.creation_date_qt` (the Apple QuickTime creationdate key, capture moment + timezone). |
