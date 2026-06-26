@@ -6796,6 +6796,14 @@ _JSON_SCHEMA_OPEN_DICT_FIELDS = frozenset({
     "specialist_metadata", "signal_provenance", "file_signature", "preservation", "config",
 })
 
+# v1.27 (leg-4/Codex): some list[dict] fields are actually pre-serialized dataclasses
+# (e.g. vectors_collected = [asdict(VectorRecord), …] via VectorRegistry.to_list). Their
+# Python type erases to `list[dict[str, Any]]`, so map the field name → the real item
+# dataclass to type the ENVELOPE precisely (vector_id/method_version/scope/identity_digest/…
+# typed) while the genuinely-varying part (VectorRecord.summary, dict[str, Any]) stays open.
+def _json_schema_typed_list_items() -> dict[str, Any]:
+    return {"vectors_collected": VectorRecord}
+
 
 def manifest_json_schema() -> dict[str, Any]:
     """v1.27: a standard JSON Schema (draft 2020-12) describing the manifest, GENERATED from
@@ -6837,6 +6845,10 @@ def manifest_json_schema() -> dict[str, Any]:
             _emit(tp)
             return {"$ref": f"#/$defs/{tp.__name__}"}
         if origin is list:
+            item_cls = _json_schema_typed_list_items().get(field_name)
+            if item_cls is not None:  # pre-serialized dataclass items (e.g. vectors_collected)
+                _emit(item_cls)
+                return {"type": "array", "items": {"$ref": f"#/$defs/{item_cls.__name__}"}}
             return {"type": "array", "items": _to_schema(targs[0], field_name) if targs else {}}
         if origin is dict:
             if field_name in _JSON_SCHEMA_OPEN_DICT_FIELDS:

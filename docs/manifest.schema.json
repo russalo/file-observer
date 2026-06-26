@@ -431,7 +431,7 @@
         },
         "vectors_collected": {
           "items": {
-            "type": "object"
+            "$ref": "#/$defs/VectorRecord"
           },
           "type": "array"
         }
@@ -639,6 +639,60 @@
         "document_keys",
         "technology_hints",
         "filename_date"
+      ],
+      "type": "object"
+    },
+    "VectorRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "applied_to_count": {
+          "type": "integer"
+        },
+        "dictionary_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dynamic_tuning_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "identity_digest": {
+          "type": "string"
+        },
+        "method_version": {
+          "type": "integer"
+        },
+        "rules_hash": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string"
+        },
+        "static_tuning_hash": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "object"
+        },
+        "vector_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "vector_id",
+        "method_version",
+        "scope",
+        "rules_hash",
+        "static_tuning_hash",
+        "dynamic_tuning_hash",
+        "dictionary_id",
+        "identity_digest",
+        "applied_to_count",
+        "summary"
       ],
       "type": "object"
     }
