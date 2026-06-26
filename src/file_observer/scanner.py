@@ -4624,11 +4624,26 @@ class Scanner:
         if len(data) < 10 or data[:3] != b"ID3":
             return None
         ver = data[3]
+        flags = data[5]
         size = self._synchsafe(data[6:10])
         if size is None:
             return None
         tag_total = 10 + size
         body = data[10:10 + size]  # clamped to what we actually have
+        # v1.25 (leg-4/Codex): when the extended-header flag (bit 6) is set, `body`
+        # starts with the extended header, NOT a frame — advance past it so the frame
+        # loop sees the first real frame (else title/artist/album/year come back null).
+        # v2.3 size EXCLUDES the 4-byte size field; v2.4 size is synchsafe + INCLUDES it.
+        # Bounded: the skip is clamped to `body`. (v2.2 has no extended header here.)
+        if (flags & 0x40) and len(body) >= 4:
+            if ver == 4:
+                ext = self._synchsafe(body[0:4])
+                if ext and 0 < ext <= len(body):
+                    body = body[ext:]
+            elif ver == 3:
+                ext = int.from_bytes(body[0:4], "big")
+                if 0 < 4 + ext <= len(body):
+                    body = body[4 + ext:]
         tags: dict[str, Any] = {}
         MAP_23 = {b"TIT2": "title", b"TPE1": "artist", b"TALB": "album",
                   b"TYER": "year", b"TDRC": "year"}

@@ -49,6 +49,22 @@ def _id3v2(title=None, artist=None, album=None, year=None) -> bytes:
     return b"ID3\x03\x00\x00" + ss + body
 
 
+def _id3v2_ext_header(title: str, ver: int = 3) -> bytes:
+    """An ID3v2.3/2.4 tag with the extended-header flag (bit 6) set, then a TIT2 frame.
+    Exercises the leg-4/Codex extended-header skip."""
+    payload = b"\x03" + title.encode("utf-8")
+    frame = b"TIT2" + struct.pack(">I", len(payload)) + b"\x00\x00" + payload
+    if ver == 4:
+        sz = 6  # v2.4: synchsafe size INCLUDING the 4-byte size field (6 = 4 + 2 flag bytes)
+        ext = bytes([(sz >> 21) & 0x7F, (sz >> 14) & 0x7F, (sz >> 7) & 0x7F, sz & 0x7F]) + b"\x00\x00"
+    else:
+        ext = struct.pack(">I", 6) + b"\x00\x00" + struct.pack(">I", 0)  # v2.3: size EXCLUDES itself (6) + flags + padding
+    body = ext + frame
+    size = len(body)
+    ss = bytes([(size >> 21) & 0x7F, (size >> 14) & 0x7F, (size >> 7) & 0x7F, size & 0x7F])
+    return bytes([ord("I"), ord("D"), ord("3"), ver, 0x00, 0x40]) + ss + body
+
+
 def _cbr_mp3(audio_bytes: int = 16000, **tags) -> bytes:
     """CBR: ID3 tag + a 128 kbps frame padded to `audio_bytes`. With 16000 audio
     bytes, duration = 16000*8/(128*1000) = 1.0 s exactly."""
@@ -114,6 +130,14 @@ def test_mp3_vbr_xing_duration(tmp_path):
     a = rec.specialist_metadata["audio"]
     assert a["format"] == "mp3"
     assert a["duration_s"] == round(1000 * 1152 / 44100, 2)  # 26.12 — Xing, not CBR
+
+
+@pytest.mark.parametrize("ver", [3, 4])
+def test_mp3_extended_header_skipped(tmp_path, ver):
+    # ID3v2.3/2.4 with an extended header — the frame loop must skip past it (leg-4/Codex).
+    data = _id3v2_ext_header("Extended Title", ver=ver) + _mpeg1_layer3_header() + b"\x00" * 4000
+    rec = _scan_one(tmp_path, f"ext{ver}.mp3", data)
+    assert rec.specialist_metadata["audio"]["title"] == "Extended Title"
 
 
 def test_mp3_no_tags_still_reads_frame(tmp_path):
