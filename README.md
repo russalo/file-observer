@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo.png" alt="file-observer" width="110">
+  <img src="https://raw.githubusercontent.com/russalo/file-observer/main/docs/assets/logo.png" alt="file-observer" width="110">
 </p>
 
 # File Observer
@@ -7,7 +7,7 @@
 [![PyPI](https://img.shields.io/pypi/v/file-observer)](https://pypi.org/project/file-observer/)
 ![Python](https://img.shields.io/pypi/pyversions/file-observer)
 [![tests](https://github.com/russalo/file-observer/actions/workflows/tests.yml/badge.svg)](https://github.com/russalo/file-observer/actions/workflows/tests.yml)
-[![License: AGPL-3.0 + commercial](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20commercial-blue)](LICENSE)
+[![License: AGPL-3.0 + commercial](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20commercial-blue)](https://github.com/russalo/file-observer/blob/main/LICENSE)
 
 **Know what's in your files before you open them.**
 
@@ -18,7 +18,7 @@ File Observer makes a single read-only pass over a directory and tells you exact
 *(If you already know Apache Tika: think a deterministic Tika built for pipelines.)*
 
 <p align="center">
-  <img src="docs/assets/pipeline-diagram.png" alt="Many messy files in → one deterministic, checksum-sealed JSON manifest out → many consumers downstream" width="760">
+  <img src="https://raw.githubusercontent.com/russalo/file-observer/main/docs/assets/pipeline-diagram.png" alt="Many messy files in → one deterministic, checksum-sealed JSON manifest out → many consumers downstream" width="760">
 </p>
 
 ```bash
