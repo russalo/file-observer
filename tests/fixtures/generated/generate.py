@@ -180,6 +180,17 @@ ppt = _minimal_ole2([
 (OUT / "generated.ppt").write_bytes(ppt)
 print(f"wrote generated.ppt (minimal OLE2 + Summary/DocumentSummary, {len(ppt)} bytes)")
 
+# ---- v1.25.1: a minimal OLE2/CFB .msg (Outlook message) ----------------------
+# Two MAPI substorage streams (PR_SUBJECT 0x0037 + PR_SENDER_NAME 0x0C1A, both the
+# Unicode `001F` variant = UTF-16LE) — the streams the `.msg` email specialist reads.
+# Exercises the v1.25.1 OLE2 full-file-deviation provenance path for the `email` namespace.
+msg = _minimal_ole2([
+    ("__substg1.0_0037001F", "File Observer Test Subject".encode("utf-16-le")),
+    ("__substg1.0_0C1A001F", "File Observer Test Sender".encode("utf-16-le")),
+])
+(OUT / "generated.msg").write_bytes(msg)
+print(f"wrote generated.msg (minimal OLE2 + MAPI substg streams, {len(msg)} bytes)")
+
 # Round-trip verification — the scanner's own olefile path must read both streams.
 try:
     import olefile as _ole  # noqa: E402

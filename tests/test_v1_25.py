@@ -194,6 +194,7 @@ def test_workers_byte_identical(tmp_path):
 # ---- version surfaces (exact pins — falsify-first, fails until the bump) -------
 
 def test_version_surfaces():
-    assert SCANNER_VERSION == "1.25.0"
-    assert LOGIC_VERSION == "1.14.0"
-    assert SCHEMA_VERSION == "1.16"
+    # floors, not exact — v1.25.1+ supersede this release (the patch bumps SCANNER/LOGIC).
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 25, 0), SCANNER_VERSION
+    assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 14, 0), LOGIC_VERSION
+    assert tuple(map(int, SCHEMA_VERSION.split("."))) >= (1, 16), SCHEMA_VERSION
