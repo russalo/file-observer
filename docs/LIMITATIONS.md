@@ -51,9 +51,9 @@ succeeded/failed counts for the *actual* scan):
 
 | Tier | Specialist (format → fields) | Why |
 |---|---|---|
-| **Mature** | `image_structure` (PNG/JPEG → width/height/bit_depth); `spreadsheet_structure` (XLSX → sheet_names/header_rows/application); `document_extraction` (DOCX → title/author/word_count/heading_count/application); `email_envelope` (EML → headers; MSG → headers/date via MAPI) | Deterministic header / OOXML-ZIP / stdlib reads, validated on real corpora (e.g. MSG ~99.9% on 3,220 real files). |
-| **Good (dep- or form-gated)** | `pdf_extraction` (PDF → page_count/producer) | Read by following the PDF's own index (v1.7) + decoding object streams (v1.8): **mature with `pypdf`**; the stdlib fallback recovers most object-stream PDFs but nulls ~12% (exotic predictors) and `/Info` (producer/title) — never a wrong value, just null. |
-| **Best-effort** | `spreadsheet_structure` (XLS → sheet_names via OLE2/BIFF8); `document_extraction` (DOC → title/author via OLE2 SummaryInformation; RTF → title/author via `{\info}` regex on the sample) | Legacy binary containers / a sample-bounded regex — lower and more variable coverage than their OOXML siblings. |
+| **Mature** | `image_structure` (PNG/JP2 → width/height/bit_depth, dimensions only; JPEG/HEIC/HEIF/AVIF/TIFF → + EXIF make/model/orientation/datetime/GPS-presence); `video_structure` (MP4/MOV/M4V → codec/duration/dimensions/creation_date + QuickTime make/model/GPS-presence, v1.17–1.20); `spreadsheet_structure` (XLSX/ODS → sheet_names/header_rows/application); `document_extraction` (DOCX/ODT → title/author/word_count/heading_count/application); `presentation_structure` (PPTX/ODP → slide_count/title/author/application, v1.24); `email_envelope` (EML → headers; MSG → headers/date via MAPI) | Deterministic header / ISOBMFF box / OOXML-ZIP / ODF / stdlib reads, validated on real corpora (e.g. MSG ~99.9% on 3,220 real files; video matched `exiftool` exactly on 61/61 real `.mov`). |
+| **Good (dep- or form-gated)** | `pdf_extraction` (PDF → page_count/producer); `audio_structure` (MP3 → format/bitrate/duration + ID3 tags, v1.25) | PDF: read by following the PDF's own index (v1.7) + decoding object streams (v1.8) — **mature with `pypdf`**; the stdlib fallback recovers most object-stream PDFs but nulls ~12% (exotic predictors) and `/Info` (producer/title) — never a wrong value, just null. MP3: ID3v2 tags + a bounded MPEG frame-header parse (Xing VBR or CBR estimate); a headerless `.mp3` (or one not content-typed `audio/mpeg`) stays honest-null under the tight guard. |
+| **Best-effort** | `spreadsheet_structure` (XLS → sheet_names via OLE2/BIFF8); `document_extraction` (DOC → title/author/application via OLE2 SummaryInformation; RTF → title/author via `{\info}` regex on the sample); `presentation_structure` (PPT → title/author/application/slide_count via OLE2 Summary/DocumentSummaryInformation, v1.25) | Legacy binary containers / a sample-bounded regex — lower and more variable coverage than their OOXML/ODF siblings. |
 | **Heuristic** | `chatlog_signals` (content-detected `is_chatlog` + turn/speaker structure) | A content heuristic with documented false-positive/negative classes (see "Chatlog detection" below), not a structural guarantee. |
 
 Tiers describe *reliability*, not *value* — a best-effort field is still a real
@@ -77,7 +77,7 @@ the DLL). One-shot scanning is otherwise fully cross-platform.
 Optional *extras* widen coverage further:
 
 - **PyYAML** — frontmatter parsing
-- **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`)
+- **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`, `.ppt`)
 - **defusedxml** — hardened XML parsing (stdlib fallback is used if absent, with
   a documented risk)
 - **pypdf** (`file-observer[pdf]`) — object-stream PDF `page_count`/`/Info`
@@ -193,10 +193,15 @@ residuals and adds a few of its own:
   producer/creator/application). The `digitization` and `production_years` blocks
   have their own, generally larger, populations (a PDF with no producer still
   classifies digitization). Don't divide one block by `applied_to_count`.
-- **Legacy OLE2 `.doc` / `.xls` carry no `application`** — only PDF (producer/
-  creator) and OOXML (`docProps/app.xml`) feed the vector (fork B scope). A
-  legacy-Office-heavy corpus will under-count toolchains; OLE2/EML producing-app
-  harvest is deferred to a later minor.
+- **The provenance vector harvests `application` from PDF + the `document` and
+  `spreadsheet` namespaces only.** PDF (producer/creator), OOXML `docProps/app.xml`,
+  and — since v1.10 — legacy OLE2 `.doc`/`.xls` (`SummaryInformation` PIDSI_APPNAME)
+  feed `toolchains`. The **`presentation`** namespace (`.pptx`/`.ppt`) and `.eml`
+  producing-app are **extracted but not yet harvested into the vector** —
+  presentation→provenance harvest is deferred (it would move the provenance
+  `rules_hash` for every manifest); `.eml` is unimplemented. (A real `.doc`/`.xls`/
+  `.ppt` still populates `specialist_metadata.{document,spreadsheet,presentation}.application`
+  when the property is set — that's the per-file field; it just doesn't yet feed the corpus vector.)
 - **The toolchain table is a closed, versioned dictionary.** Unknown producers
   pass through with a mechanical version-suffix strip (so versions group); they
   are never dropped. Editing the table changes the vector's `rules_hash` (and
