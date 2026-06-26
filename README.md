@@ -104,9 +104,17 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 | **Universal** | Every file | Identity, checksum, MIME, file signatures, polyglot detection, routing flags |
 | **Baseline** | Text files | Encoding, preview, tags, frontmatter, chatlog detection, reference tokens, filename patterns |
 | **Structural** | Text files | Title, headings, CSV headers, JSON/YAML/XML/TOML keys, technology hints |
-| **Specialist** | Supported formats (opt-in) | PDF pages, image dimensions, email envelopes, spreadsheet structure, document metadata |
+| **Specialist** | Supported formats (opt-in) | PDF pages, image dimensions + capture EXIF, video container/capture metadata, audio tags + properties, email envelopes, spreadsheet / document / presentation structure |
 
-Supported specialist formats: `.pdf`, `.png`, `.jpg`, `.msg`, `.eml`, `.xlsx`, `.xls`, `.docx`, `.doc`, `.rtf`, `.jsonl`
+Supported specialist formats:
+- **Documents** — `.pdf`, `.docx`, `.doc`, `.odt`, `.rtf`
+- **Spreadsheets** — `.xlsx`, `.xls`, `.ods`
+- **Presentations** — `.pptx`, `.ppt`, `.odp`
+- **Images** — `.png`, `.jpg`/`.jpeg`, `.heic`/`.heif`/`.avif`, `.tiff`/`.tif`, `.jp2` (dimensions + EXIF capture metadata)
+- **Video** — `.mp4`, `.mov`, `.m4v` (codec/duration/dimensions + QuickTime capture device & GPS-presence)
+- **Audio** — `.mp3` (ID3 tags + format/bitrate/duration)
+- **Email** — `.msg`, `.eml`
+- **Chatlog** — `.jsonl` (content-detected)
 
 ### 5 observation vectors with cryptographic identity
 
@@ -140,7 +148,7 @@ Each vector carries an identity digest (SHA-256). Same digest = same rules + sam
 pip install file-observer
 
 # Optional: specialist format support
-pip install "file-observer[msg]"       # .msg/.doc/.xls (OLE2 formats)
+pip install "file-observer[msg]"       # .msg/.doc/.xls/.ppt (OLE2 formats)
 pip install "file-observer[security]"  # Hardened XML parsing
 pip install "file-observer[dev]"       # Full dev environment
 ```
@@ -228,7 +236,7 @@ fo ./corpus --specialists
   +-- Universal tier     Every file: checksum, MIME, signatures, routing
   +-- Baseline tier      Text files: encoding, preview, tags, chatlog detection
   +-- Structural tier    Text files: title, headings, keys, technology hints
-  +-- Specialist tier    Format-specific: PDF, images, email, spreadsheets, documents
+  +-- Specialist tier    Format-specific: PDF, images, video, audio, email, spreadsheets, documents, presentations
   +-- Vector pass        chatlog, reference_tokens, filename_patterns (per-file)
   +-- Corpus vectors     author_aggregate (after all files processed)
   +-- Summary            Human-readable paragraph + per-directory breakdown
