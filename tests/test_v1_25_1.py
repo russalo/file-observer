@@ -34,6 +34,7 @@ def _provenance_for(rec, ns):
     ("generated.doc", "document"),
     ("generated.xls", "spreadsheet"),
     ("generated.ppt", "presentation"),
+    ("generated.msg", "email"),  # all four OLE2 specialists (leg-4/gemini coverage)
 ])
 def test_ole2_specialist_declares_full_file_deviation(tmp_path, fixture, ns):
     src = GEN / fixture
@@ -55,10 +56,16 @@ def test_ole2_specialist_declares_full_file_deviation(tmp_path, fixture, ns):
 
 
 @pytest.mark.skipif(olefile is None, reason="olefile not installed")
-def test_ole2_extracted_values_unchanged(tmp_path):
+@pytest.mark.parametrize("fixture,ns,expected", [
+    ("generated.ppt", "presentation", {"slide_count": 7, "title": "File Observer Test Deck",
+                                        "author": "File Observer Test", "application": "Microsoft PowerPoint"}),
+    ("generated.doc", "document", {"title": "File Observer Test Doc",
+                                   "author": "File Observer Test", "application": None}),
+    ("generated.xls", "spreadsheet", {"sheet_names": ["Summary", "Data"],
+                                      "format": "biff", "application": None}),
+])
+def test_ole2_extracted_values_unchanged(tmp_path, fixture, ns, expected):
     # provenance-accuracy only — the extracted values must be byte-identical to v1.25.0.
-    (tmp_path / "generated.ppt").write_bytes((GEN / "generated.ppt").read_bytes())
+    (tmp_path / fixture).write_bytes((GEN / fixture).read_bytes())
     m = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True)).scan()
-    p = m.files[0].specialist_metadata["presentation"]
-    assert p == {"slide_count": 7, "title": "File Observer Test Deck",
-                 "author": "File Observer Test", "application": "Microsoft PowerPoint"}
+    assert m.files[0].specialist_metadata[ns] == expected

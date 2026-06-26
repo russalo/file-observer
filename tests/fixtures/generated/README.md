@@ -18,6 +18,10 @@ the public format definitions:
   (Title/Author/AppName 0x12) + `\x05DocumentSummaryInformation` (SlideCount 0x07,
   VT_I4) — the streams the `.ppt` specialist reads. Round-trip verified through
   `olefile` at generation time.
+- **`generated.msg`** (v1.25.1) — a minimal OLE2/CFB with two MAPI substorage
+  streams (`__substg1.0_0037001F` PR_SUBJECT + `__substg1.0_0C1A001F`
+  PR_SENDER_NAME, both UTF-16LE) — the streams the `.msg` email specialist reads.
+  Used to cover the v1.25.1 OLE2 full-file-deviation provenance for the `email` namespace.
 - **EXIF (`exif_*.jpg` / `exif_phone_gps.heic`)** — self-authored CIPA DC-008 TIFF/IFD
   blocks (Make/Model/Orientation/DateTimeOriginal + GPS-IFD presence + PixelX/YDimension)
   wrapped in a JPEG APP1 segment and an ISO 14496-12 `meta`→`iinf`/`iloc`→`Exif`-item
