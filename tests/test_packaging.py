@@ -70,6 +70,30 @@ def test_readme_version_references_current():
         f"README Schema cell is stale (want {SCHEMA_VERSION})"
 
 
+def test_readme_lists_every_specialist_format():
+    """The README's 'Supported specialist formats' list is hand-maintained and NOT
+    version-stamped, so the version drift-guards above can't catch it — it silently
+    froze at ~v1.0 until the post-v1.25 audit (missing HEIC/TIFF/JP2 images, video,
+    audio, office/ODF, presentations). Guard it: every extension that routes to a
+    specialist (`SPECIALIST_TOOLS`) MUST appear, backtick-wrapped, in the list — so a
+    new specialist format that isn't documented fails CI instead of a reviewer/bot.
+    (Prose specialist lists are an unguarded drift surface; this pins the README one.)"""
+    from file_observer.scanner import SPECIALIST_TOOLS
+
+    root = Path(__file__).resolve().parent.parent
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    start = readme.index("Supported specialist formats:")
+    end = readme.index("###", start)   # the next subsection heading bounds the list
+    section = readme[start:end]
+    # Match backtick-wrapped so `.ppt` is NOT satisfied by `.pptx` (nor `.doc` by `.docx`,
+    # `.xls` by `.xlsx`, `.tif` by `.tiff`).
+    missing = sorted(ext for ext in SPECIALIST_TOOLS if f"`{ext}`" not in section)
+    assert not missing, (
+        f"README 'Supported specialist formats' list is missing {missing} — add them "
+        "when introducing a specialist (this list is not version-guarded)."
+    )
+
+
 def test_contract_docs_version_references_current():
     """The binding contract docs hand-maintain the current version and have drifted
     behind the build (PUBLIC_CONTRACT §3 history lagged 6 minors; surfaced by a
