@@ -110,7 +110,7 @@ Supported specialist formats:
 - **Documents** — `.pdf`, `.docx`, `.doc`, `.odt`, `.rtf`
 - **Spreadsheets** — `.xlsx`, `.xls`, `.ods`
 - **Presentations** — `.pptx`, `.ppt`, `.odp`
-- **Images** — `.png`, `.jpg`/`.jpeg`, `.heic`/`.heif`/`.avif`, `.tiff`/`.tif`, `.jp2` (dimensions + EXIF capture metadata)
+- **Images** — `.png`, `.jpg`/`.jpeg`, `.heic`/`.heif`/`.avif`, `.tiff`/`.tif`, `.jp2` (dimensions; + EXIF capture metadata on JPEG/HEIC/HEIF/AVIF/TIFF — `.png`/`.jp2` are dimensions only)
 - **Video** — `.mp4`, `.mov`, `.m4v` (codec/duration/dimensions + QuickTime capture device & GPS-presence)
 - **Audio** — `.mp3` (ID3 tags + format/bitrate/duration)
 - **Email** — `.msg`, `.eml`
