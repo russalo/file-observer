@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.26.0
+    Version:    1.27.0
     Schema:     1.16
     Python:     >= 3.12
-    Spec:       docs/v1.26.0_RFC_Specification.md (current)
+    Spec:       docs/v1.27.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,7 +78,7 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.26.0"
+SCANNER_VERSION = "1.27.0"
 LOGIC_VERSION = "1.14.1"   # v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.16"   # v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
@@ -6788,6 +6788,108 @@ def scan_to_json(path: str | Path, **kwargs: Any) -> str:
     return manifest_to_json(scan(path, **kwargs))
 
 
+# v1.27: namespace-/release-keyed dicts whose KEYS vary by specialist/version — kept OPEN
+# objects in the JSON Schema (validate the durable core strictly, don't over-constrain the
+# provisional surface; RFC §3 + what consumers bind). The structural records around them stay
+# closed (additionalProperties:false) — their field set is fixed per schema_version.
+_JSON_SCHEMA_OPEN_DICT_FIELDS = frozenset({
+    "specialist_metadata", "signal_provenance", "file_signature", "preservation", "config",
+})
+
+
+def manifest_json_schema() -> dict[str, Any]:
+    """v1.27: a standard JSON Schema (draft 2020-12) describing the manifest, GENERATED from
+    the manifest dataclasses (single source of truth — can't drift from the code). The stable
+    core + structural records are typed strictly (`additionalProperties: false`); the
+    namespace-keyed / provisional dicts are open objects. Consumers in any language validate +
+    codegen against it; pin the MAJOR of `schema_version` (the breaking-change point). Emitted
+    by ``--schema --format json-schema`` and committed as ``docs/manifest.schema.json``
+    (drift-guarded: committed == regenerated, AND a real manifest validates against it)."""
+    import dataclasses as _dc
+    import typing as _t
+    import types as _types
+
+    defs: dict[str, Any] = {}
+
+    def _nullable(s: dict) -> dict:
+        if "$ref" in s or "anyOf" in s:
+            return {"anyOf": [s, {"type": "null"}]}
+        tp = s.get("type")
+        if isinstance(tp, str):
+            out = dict(s); out["type"] = [tp, "null"]; return out
+        if isinstance(tp, list):
+            out = dict(s)
+            if "null" not in tp:
+                out["type"] = list(tp) + ["null"]
+            return out
+        return {"anyOf": [s, {"type": "null"}]}
+
+    def _to_schema(tp: Any, field_name: str = "") -> dict:
+        origin = _t.get_origin(tp)
+        targs = _t.get_args(tp)
+        if origin is _t.Union or origin is _types.UnionType:
+            non_none = [a for a in targs if a is not type(None)]
+            has_none = len(non_none) != len(targs)
+            inner = (_to_schema(non_none[0], field_name) if len(non_none) == 1
+                     else {"anyOf": [_to_schema(a, field_name) for a in non_none]})
+            return _nullable(inner) if has_none else inner
+        if _dc.is_dataclass(tp):
+            _emit(tp)
+            return {"$ref": f"#/$defs/{tp.__name__}"}
+        if origin is list:
+            return {"type": "array", "items": _to_schema(targs[0], field_name) if targs else {}}
+        if origin is dict:
+            if field_name in _JSON_SCHEMA_OPEN_DICT_FIELDS:
+                return {"type": "object"}
+            val = targs[1] if len(targs) == 2 else Any
+            if val is Any:
+                return {"type": "object"}
+            return {"type": "object", "additionalProperties": _to_schema(val)}
+        if tp is bool:
+            return {"type": "boolean"}
+        if tp is int:
+            return {"type": "integer"}
+        if tp is float:
+            return {"type": "number"}
+        if tp is str:
+            return {"type": "string"}
+        return {}  # Any / unknown -> permissive
+
+    def _emit(cls: Any) -> None:
+        name = cls.__name__
+        if name in defs:
+            return
+        defs[name] = {}  # placeholder to break recursion
+        hints = _t.get_type_hints(cls)
+        props: dict[str, Any] = {}
+        required: list[str] = []
+        for f in _dc.fields(cls):
+            props[f.name] = _to_schema(hints[f.name], f.name)
+            required.append(f.name)  # dataclasses serialize EVERY field (None -> null), so the
+            #                          key is always present -> required; nullability is in the type
+        defs[name] = {"type": "object", "properties": props,
+                      "required": required, "additionalProperties": False}
+
+    _emit(ScanManifest)
+    return {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$id": f"https://github.com/russalo/file-observer/manifest/{SCHEMA_VERSION}.schema.json",
+        "title": f"File Observer manifest (schema_version {SCHEMA_VERSION})",
+        "$comment": (f"Generated from the file-observer dataclasses by "
+                     f"`file-observer --schema --schema-format json-schema` (scanner {SCANNER_VERSION}, "
+                     f"schema {SCHEMA_VERSION}). Pin the MAJOR of schema_version (the breaking-change "
+                     f"point). Stable core typed strictly; namespace-keyed/provisional dicts are open."),
+        "$ref": "#/$defs/ScanManifest",
+        "$defs": defs,
+    }
+
+
+def manifest_json_schema_str() -> str:
+    """v1.27: the manifest JSON Schema as a deterministic, sorted, indented JSON string —
+    exactly what `--schema --format json-schema` prints and `docs/manifest.schema.json` holds."""
+    return json.dumps(manifest_json_schema(), indent=2, sort_keys=True, ensure_ascii=False)
+
+
 def manifest_to_json(manifest: ScanManifest) -> str:
     return json.dumps(manifest, default=_dc_encoder, indent=2, ensure_ascii=False)
 
@@ -7301,7 +7403,7 @@ def main() -> None:
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
     parser.add_argument("--schema", action="store_true", help="Print the complete output-surface description (every field, specialist, vector, safety_flag, error code, provenance trigger, format signature, preservation tier) and exit. Does NOT scan. Use --schema-format json|md (default json). (v1.13)")
-    parser.add_argument("--schema-format", choices=["json", "md", "summary"], default="json", help="Format for --schema output: json (default), md, or summary (human-readable prose — what the tool can observe, v1.19). Only meaningful with --schema.")
+    parser.add_argument("--schema-format", choices=["json", "md", "summary", "json-schema"], default="json", help="Format for --schema output: json (default, the introspection envelope), md, summary (human-readable prose, v1.19), or json-schema (a standard JSON Schema draft-2020-12 of the manifest for any-language validation/codegen, v1.27). Only meaningful with --schema.")
     args = parser.parse_args()
 
     # v1.13: --schema short-circuits the scan path entirely (like --help). It
@@ -7326,6 +7428,11 @@ def main() -> None:
         if conflicts:
             print(f"file-observer: --schema does not scan; remove {', '.join(conflicts)}", file=sys.stderr)
             sys.exit(2)
+        if args.schema_format == "json-schema":
+            # v1.27: a standard JSON Schema of the MANIFEST (not the introspection envelope) —
+            # generated from the dataclasses, for any-language validation/codegen.
+            sys.stdout.write(manifest_json_schema_str() + "\n")
+            return
         doc = build_schema_document()
         if args.schema_format == "md":
             sys.stdout.write(schema_to_markdown(doc) + "\n")

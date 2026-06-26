@@ -1,0 +1,650 @@
+{
+  "$comment": "Generated from the file-observer dataclasses by `file-observer --schema --schema-format json-schema` (scanner 1.27.0, schema 1.16). Pin the MAJOR of schema_version (the breaking-change point). Stable core typed strictly; namespace-keyed/provisional dicts are open.",
+  "$defs": {
+    "DeltaRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "added": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "modified": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "previous_manifest_checksum": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "previous_scan_id": {
+          "type": "string"
+        },
+        "removed": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rescan_candidates": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "unchanged": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "previous_scan_id",
+        "previous_manifest_checksum",
+        "added",
+        "modified",
+        "unchanged",
+        "removed",
+        "rescan_candidates"
+      ],
+      "type": "object"
+    },
+    "ErrorRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "detail": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "stage": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message",
+        "stage",
+        "detail"
+      ],
+      "type": "object"
+    },
+    "FileRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "asset_matches": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "checksum_sha256": {
+          "type": "string"
+        },
+        "content_preview": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "created_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "directory_depth": {
+          "type": "integer"
+        },
+        "encoding": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "errors": {
+          "items": {
+            "$ref": "#/$defs/ErrorRecord"
+          },
+          "type": "array"
+        },
+        "extension": {
+          "type": "string"
+        },
+        "file_signature": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "filename": {
+          "type": "string"
+        },
+        "filename_patterns": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "format_signatures": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "frontmatter": {
+          "$ref": "#/$defs/FrontmatterRecord"
+        },
+        "is_binary": {
+          "type": "boolean"
+        },
+        "is_chatlog": {
+          "type": "boolean"
+        },
+        "is_polyglot": {
+          "type": "boolean"
+        },
+        "mime_analysis": {
+          "$ref": "#/$defs/MimeAnalysisRecord"
+        },
+        "mime_type": {
+          "type": "string"
+        },
+        "modified_at": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "preservation": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "reference_tokens": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "requires_specialist_tool": {
+          "type": "boolean"
+        },
+        "requires_vision": {
+          "type": "boolean"
+        },
+        "safety_flags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "sidecar_exists": {
+          "type": "boolean"
+        },
+        "signal_provenance": {
+          "type": "object"
+        },
+        "size_bytes": {
+          "type": "integer"
+        },
+        "specialist_metadata": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "specialist_tool": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "stage_folder": {
+          "type": "string"
+        },
+        "structural": {
+          "$ref": "#/$defs/StructuralRecord"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "path",
+        "filename",
+        "extension",
+        "mime_type",
+        "size_bytes",
+        "created_at",
+        "modified_at",
+        "checksum_sha256",
+        "stage_folder",
+        "directory_depth",
+        "encoding",
+        "is_binary",
+        "requires_vision",
+        "requires_specialist_tool",
+        "specialist_tool",
+        "sidecar_exists",
+        "frontmatter",
+        "tags",
+        "asset_matches",
+        "content_preview",
+        "structural",
+        "mime_analysis",
+        "specialist_metadata",
+        "file_signature",
+        "format_signatures",
+        "is_polyglot",
+        "is_chatlog",
+        "reference_tokens",
+        "filename_patterns",
+        "preservation",
+        "safety_flags",
+        "signal_provenance",
+        "errors"
+      ],
+      "type": "object"
+    },
+    "FrontmatterRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "exists": {
+          "type": "boolean"
+        },
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "raw": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "exists",
+        "keys",
+        "raw"
+      ],
+      "type": "object"
+    },
+    "MimeAnalysisRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "detected_mime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extension_mime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "matches_extension": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "detected_mime",
+        "extension_mime",
+        "matches_extension"
+      ],
+      "type": "object"
+    },
+    "RoutingSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_ready": {
+          "type": "integer"
+        },
+        "binary_only": {
+          "type": "integer"
+        },
+        "requires_specialist_tool": {
+          "type": "integer"
+        },
+        "requires_vision": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "baseline_ready",
+        "binary_only",
+        "requires_vision",
+        "requires_specialist_tool"
+      ],
+      "type": "object"
+    },
+    "ScanContext": {
+      "additionalProperties": false,
+      "properties": {
+        "dependencies": {
+          "additionalProperties": {
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "logic_version": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "python_version": {
+          "type": "string"
+        },
+        "scanner_version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "logic_version",
+        "scanner_version",
+        "python_version",
+        "platform",
+        "dependencies"
+      ],
+      "type": "object"
+    },
+    "ScanManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "$ref": "#/$defs/ScanContext"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeltaRecord"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "files": {
+          "items": {
+            "$ref": "#/$defs/FileRecord"
+          },
+          "type": "array"
+        },
+        "manifest_checksum": {
+          "type": "string"
+        },
+        "manifest_signature": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "meta": {
+          "$ref": "#/$defs/ScanMeta"
+        },
+        "quality": {
+          "$ref": "#/$defs/ScanQuality"
+        },
+        "routing_summary": {
+          "$ref": "#/$defs/RoutingSummary"
+        },
+        "schema_version": {
+          "type": "string"
+        },
+        "stats": {
+          "$ref": "#/$defs/ScanStats"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "vectors_collected": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "context",
+        "meta",
+        "stats",
+        "quality",
+        "routing_summary",
+        "delta",
+        "manifest_checksum",
+        "manifest_signature",
+        "files",
+        "vectors_collected",
+        "summary"
+      ],
+      "type": "object"
+    },
+    "ScanMeta": {
+      "additionalProperties": false,
+      "properties": {
+        "config": {
+          "type": "object"
+        },
+        "generated_at": {
+          "type": "string"
+        },
+        "scan_id": {
+          "type": "string"
+        },
+        "source_dir": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "scan_id",
+        "generated_at",
+        "source_dir",
+        "config"
+      ],
+      "type": "object"
+    },
+    "ScanQuality": {
+      "additionalProperties": false,
+      "properties": {
+        "chatlog_files": {
+          "type": "integer"
+        },
+        "clean_files": {
+          "type": "integer"
+        },
+        "degraded_files": {
+          "type": "integer"
+        },
+        "duplicate_cluster_count": {
+          "type": "integer"
+        },
+        "duplicate_clusters": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "error_files": {
+          "type": "integer"
+        },
+        "mime_mismatches": {
+          "type": "integer"
+        },
+        "per_directory_summary": {
+          "items": {
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "polyglots_detected": {
+          "type": "integer"
+        },
+        "redundant_file_count": {
+          "type": "integer"
+        },
+        "safety_flags": {
+          "type": "integer"
+        },
+        "specialist_failures": {
+          "type": "integer"
+        },
+        "specialist_stats": {
+          "additionalProperties": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "type": "object"
+        },
+        "total_files": {
+          "type": "integer"
+        },
+        "unsupported_extensions": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_files",
+        "clean_files",
+        "degraded_files",
+        "error_files",
+        "mime_mismatches",
+        "polyglots_detected",
+        "specialist_failures",
+        "unsupported_extensions",
+        "safety_flags",
+        "chatlog_files",
+        "per_directory_summary",
+        "duplicate_clusters",
+        "duplicate_cluster_count",
+        "redundant_file_count",
+        "specialist_stats"
+      ],
+      "type": "object"
+    },
+    "ScanStats": {
+      "additionalProperties": false,
+      "properties": {
+        "binary_files": {
+          "type": "integer"
+        },
+        "requires_specialist_tool": {
+          "type": "integer"
+        },
+        "requires_vision": {
+          "type": "integer"
+        },
+        "supported_files": {
+          "type": "integer"
+        },
+        "text_files": {
+          "type": "integer"
+        },
+        "total_files": {
+          "type": "integer"
+        },
+        "unsupported_files": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "total_files",
+        "supported_files",
+        "unsupported_files",
+        "text_files",
+        "binary_files",
+        "requires_vision",
+        "requires_specialist_tool"
+      ],
+      "type": "object"
+    },
+    "StructuralRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "csv_headers": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "document_keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "filename_date": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "heading_structure": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "technology_hints": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "title",
+        "heading_structure",
+        "csv_headers",
+        "document_keys",
+        "technology_hints",
+        "filename_date"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://github.com/russalo/file-observer/manifest/1.16.schema.json",
+  "$ref": "#/$defs/ScanManifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "File Observer manifest (schema_version 1.16)"
+}

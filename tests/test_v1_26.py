@@ -97,6 +97,7 @@ def test_public_api_exports():
 
 
 def test_version_surfaces():
-    assert SCANNER_VERSION == "1.26.0"
-    assert LOGIC_VERSION == "1.14.1"   # unchanged — no routing change
-    assert SCHEMA_VERSION == "1.16"    # unchanged — manifest byte-identical
+    # floors, not exact — v1.27.0+ supersede this release (SCANNER bumps; the scan() API stays).
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 26, 0), SCANNER_VERSION
+    assert LOGIC_VERSION == "1.14.1"   # unchanged through v1.27 — no routing change
+    assert SCHEMA_VERSION == "1.16"    # unchanged through v1.27 — manifest byte-identical
