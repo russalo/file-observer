@@ -62,6 +62,9 @@ def test_scan_passthrough_kwarg_reaches_config(tmp_path):
     hidden_names = {f.filename for f in hidden.files}
     assert ".hidden.txt" in shown_names
     assert ".hidden.txt" not in hidden_names
+    # ergonomics-only across the passthrough surface too: byte-identical to the explicit path
+    explicit = Scanner(source_dir=Path(d), config=ScannerConfig(exclude_hidden=True)).scan()
+    assert hidden.manifest_checksum == explicit.manifest_checksum
 
 
 def test_scan_to_json_is_manifest_to_json_of_a_scan(tmp_path):
