@@ -14,6 +14,10 @@ the public format definitions:
 - **`generated.xls`** — a real BIFF8 workbook (via `xlwt`).
 - **`generated.doc`** — a minimal OLE2/CFB with only a `\x05SummaryInformation`
   property stream (Title/Author) — the part the `.doc` specialist reads.
+- **`generated.ppt`** (v1.25) — a minimal OLE2/CFB with `\x05SummaryInformation`
+  (Title/Author/AppName 0x12) + `\x05DocumentSummaryInformation` (SlideCount 0x07,
+  VT_I4) — the streams the `.ppt` specialist reads. Round-trip verified through
+  `olefile` at generation time.
 - **EXIF (`exif_*.jpg` / `exif_phone_gps.heic`)** — self-authored CIPA DC-008 TIFF/IFD
   blocks (Make/Model/Orientation/DateTimeOriginal + GPS-IFD presence + PixelX/YDimension)
   wrapped in a JPEG APP1 segment and an ISO 14496-12 `meta`→`iinf`/`iloc`→`Exif`-item

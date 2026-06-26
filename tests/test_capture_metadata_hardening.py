@@ -78,7 +78,35 @@ def _qt_keys_huge():
     return S._qt_keys(moovbuf, 0, len(moovbuf))
 
 
-@pytest.mark.parametrize("label,fn", [(l, f) for l, f in _PARSER_VECTORS if f is not None])
+# v1.25: the .mp3 ID3/frame parser is the lone net-new untrusted-binary surface; its
+# helpers are Scanner methods (the _extract_doc_metadata style), so they're driven off a
+# throwaway instance. Each must stay bounded (clamped reads, capped sync-search/frame loops,
+# rejected hostile sizes) and deterministic — the v1.8.1 discipline carried from commit one.
+_SC = Scanner(source_dir=Path(tempfile.mkdtemp()), config=ScannerConfig(enable_specialists=True))
+_MP3_PARSER_VECTORS = [
+    ("mp3_id3_lying_synchsafe_size",
+     lambda: _SC._mp3_id3v2(b"ID3\x03\x00\x00\x7f\x7f\x7f\x7f" + b"\x00" * 16)),  # claims ~256 MiB, tiny buffer
+    ("mp3_id3_frame_size_oob",
+     lambda: _SC._mp3_id3v2(b"ID3\x03\x00\x00\x00\x00\x00\x20" + b"TIT2\x7f\xff\xff\xff\x00\x00\x03X")),
+    ("mp3_id3_v24_synchsafe_frame",
+     lambda: _SC._mp3_id3v2(b"ID3\x04\x00\x00\x00\x00\x00\x10" + b"TIT2\x00\x00\x00\xff\x00\x00\x03Y")),
+    ("mp3_frame_search_all_ff",
+     lambda: _SC._mp3_first_frame(b"\xff" * 70000, 0)),       # sync-search stress, bounded scan
+    ("mp3_frame_search_past_buffer_start",
+     lambda: _SC._mp3_first_frame(b"\x00" * 10, 999999)),     # start past EOF → None, no IndexError
+    ("mp3_header_reserved_fields",
+     lambda: _SC._parse_mpeg_frame_header(b"\xff\xff\xff\xff")),  # reserved version+layer+bad bitrate
+    ("mp3_header_free_bitrate",
+     lambda: _SC._parse_mpeg_frame_header(b"\xff\xfb\x00\x00")),  # bitrate index 0 (free) → None
+    ("mp3_xing_huge_framecount",
+     lambda: _SC._mp3_xing_frame_count(
+         b"\xff\xfb\x90\x00" + b"\x00" * 32 + b"Xing" + struct.pack(">I", 1) + struct.pack(">I", 0xFFFFFFFF),
+         {"version": 1, "channel": 0, "offset": 0})),         # 4.3e9 frames → bounded reject
+]
+
+
+@pytest.mark.parametrize("label,fn",
+                         [(l, f) for l, f in _PARSER_VECTORS if f is not None] + _MP3_PARSER_VECTORS)
 def test_parser_vector_never_crashes_and_deterministic(label, fn):
     r1 = fn()           # must not raise
     r2 = fn()
@@ -106,6 +134,11 @@ def _hostile_files() -> dict[str, bytes]:
                      + struct.pack("<H", 65535) + b"\x00" * 60000 + b"\xff\xda"),
         # huge mdat, no moov → honest null, no crash
         "nomoov.mp4": _box(b"ftyp", b"isom") + _box(b"mdat", b"\xab" * 500000),
+        # v1.25 .mp3 (ID3 prefix → recognized audio/mpeg → the specialist actually runs):
+        # ID3 claims a ~256 MiB tag in a tiny file (clamped read), then garbage frame bytes.
+        "lying_id3.mp3": b"ID3\x03\x00\x00\x7f\x7f\x7f\x7f" + b"\xff" * 4096,
+        # ID3 then a long run of 0xFF (frame-sync search must stay bounded, not hang).
+        "sync_storm.mp3": b"ID3\x03\x00\x00\x00\x00\x00\x00" + b"\xff" * 200000,
     }
 
 

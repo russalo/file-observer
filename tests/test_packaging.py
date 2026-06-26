@@ -128,9 +128,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.24.0"
-    assert SCHEMA_VERSION == "1.15"  # v1.24.0: new `presentation` namespace
-    assert LOGIC_VERSION == "1.13.0"  # v1.24.0: office+image extraction routing (Candidate B ph.1)
+    assert SCANNER_VERSION == "1.25.0"
+    assert SCHEMA_VERSION == "1.16"  # v1.25.0: new `audio` namespace (Candidate B ph.2)
+    assert LOGIC_VERSION == "1.14.0"  # v1.25.0: audio + .ppt extraction routing (Candidate B ph.2)
 
 
 def test_legacy_scanner_import_warns():
