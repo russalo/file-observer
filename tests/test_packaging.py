@@ -83,7 +83,11 @@ def test_readme_lists_every_specialist_format():
     root = Path(__file__).resolve().parent.parent
     readme = (root / "README.md").read_text(encoding="utf-8")
     start = readme.index("Supported specialist formats:")
-    end = readme.index("###", start)   # the next subsection heading bounds the list
+    # Bound the list at the NEXT markdown heading of any level (leg-4/gemini) — a
+    # hardcoded "###" would silently over-capture if that heading became `##`/`####`,
+    # masking real drift by pulling in backtick-formats from later sections.
+    end_match = re.search(r"\n#{1,6} ", readme[start:])
+    end = start + end_match.start() if end_match else len(readme)
     section = readme[start:end]
     # Match backtick-wrapped so `.ppt` is NOT satisfied by `.pptx` (nor `.doc` by `.docx`,
     # `.xls` by `.xlsx`, `.tif` by `.tiff`).
