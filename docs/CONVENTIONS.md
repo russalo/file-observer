@@ -18,14 +18,14 @@ The scanner has five distinct things that carry versions. They are independent �
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.24.0`
+**Current:** `1.25.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic — code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
 **Where it lives:** `LOGIC_VERSION` constant in `src/file_observer/scanner.py`, `ScanContext.logic_version` in every manifest.
 **When it bumps:** Any time the same file would route differently than before.
 **Format:** `MAJOR.MINOR.PATCH`. May lag SCANNER_VERSION.
-**Current:** `1.13.0`  (1.12.4→1.13.0 at v1.24.0 — office+image extraction adds specialists for `.pptx`/`.odp`/`.odt`/`.ods`/`.jp2`/`.tiff`/`.tif` → `requires_specialist_tool` routing change; 1.12.3→1.12.4 at v1.23.3 — bzip2 dual-magic + `_OneOf` matcher, recognizes empty bzip2; 1.12.2→1.12.3 at v1.23.2 — corroborated PDF-header sniff: `%PDF-` window 256→1024 + structural corroboration; prior 1.12.1→1.12.2 at v1.23.1 — PDF-header FP fix)
+**Current:** `1.14.0`  (1.13.0→1.14.0 at v1.25.0 — audio (`.mp3`) + legacy presentation (`.ppt`) extraction → `requires_specialist_tool` routing change; 1.12.4→1.13.0 at v1.24.0 — office+image extraction adds specialists for `.pptx`/`.odp`/`.odt`/`.ods`/`.jp2`/`.tiff`/`.tif` → `requires_specialist_tool` routing change; 1.12.3→1.12.4 at v1.23.3 — bzip2 dual-magic + `_OneOf` matcher, recognizes empty bzip2; 1.12.2→1.12.3 at v1.23.2 — corroborated PDF-header sniff: `%PDF-` window 256→1024 + structural corroboration; prior 1.12.1→1.12.2 at v1.23.1 — PDF-header FP fix)
 **Internal rule:** When in doubt, bump it. Stale LOGIC_VERSION causes silent reproducibility bugs across environments.
 
 ### 1.3 SCHEMA_VERSION
@@ -36,7 +36,7 @@ The scanner has five distinct things that carry versions. They are independent �
 - MAJOR (x.0 → x+1.0): breaking changes (removal, rename, type change)
 - No bump for patch releases
 **Format:** `MAJOR.MINOR` (no patch)
-**Current:** `1.15`  (1.14→1.15 at v1.24.0 — new `presentation` namespace (slide_count/title/author/application); 1.13→1.14 at v1.23.0 — promotion: `preservation` provisional→stable, designation-only; 1.12→1.13 at v1.20.0 — the `video.creation_date_qt` field; 1.9→1.10/1.11/1.12 across v1.16–1.18 capture-metadata)
+**Current:** `1.16`  (1.15→1.16 at v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for `.mp3`; `.ppt` reuses the existing `presentation` fields; 1.14→1.15 at v1.24.0 — new `presentation` namespace (slide_count/title/author/application); 1.13→1.14 at v1.23.0 — promotion: `preservation` provisional→stable, designation-only; 1.12→1.13 at v1.20.0 — the `video.creation_date_qt` field; 1.9→1.10/1.11/1.12 across v1.16–1.18 capture-metadata)
 **Note:** This IS a public contract field. As of v1.0, downstream consumers depend on it. See `PUBLIC_CONTRACT.md` for the consumer-facing rules.
 
 ### 1.4 VECTOR_VERSION (per vector, since v0.9)
@@ -190,10 +190,10 @@ logic + evidence of value**, not age.
 |---|---|---|---|
 | CAD (DGN/DWG) | heavy new parser on untrusted binary | prevalence via `format_sig_dist` + `recognition_candidates.B_by_family[cad]` (19 `.dwg`, 2026-06-17 scout) | enough real-corpus CAD to justify a red-teamed reader |
 | word-twisting provenance | data-gated on the tagged RPG corpus | the corpus tagging itself (external) | tagged corpus exists + hypothesis validates |
-| **[MEASURE-FIRST 2026-06-23 → DEFERRED: recognition already solid, no gap, no consumer]** office/media extraction (Candidate B): `.pptx`/`.ppt`/`.odt`/`.ods`/`.odp`, `.mp3`/`.jp2`/`.tiff` | new specialist parsers on untrusted binary (the v1.8.1 never-crash/bounded bar doesn't relax) | `recognition_candidates.B_by_family` in `corpus_sweep` — office/media/cad incidence (2026-06-17 scout) | a consumer/value for a given family + a red-teamed reader (FO already does OOXML word/excel + OLE doc/xls — these complete the family) |
 | **[SHIPPED v1.23.2]** corroborated-header MIME sniff (the v1.23.1 Codex-P2 follow-up) | the offset-only window can't separate a real header at offset 257–1024 from a deep literal (e.g. the `.py` `%PDF-1.4` at 864 sits inside the 1024 PDF tolerance); the robust fix — widen to the 1024 spec tolerance AND require a corroborating structural token (`endobj`/`xref`/`trailer`) — exceeds a window-tweak patch | the puresniff clean-room replica (which surfaced the v1.23.1 FP) is the venue to design the robust signature; sweep harvest = count of no-libmagic files with `%PDF-` at offset 257–1024 (currently ~0 in 19.5k corpus) | a real corpus file regresses (renamed/junk-prefixed PDF, no-libmagic) OR puresniff lands the corroborated signature → adopt cross-replica |
 
 **Graduated out of the candidate tier (recorded so the ladder shows its history):**
+- **office/media extraction (Candidate B)** → SHIPPED across two phases, both as provisional namespaces: **v1.24** (phase 1: `.pptx`/`.odp`/`.odt`/`.ods` office + `.jp2`/`.tiff` images) and **v1.25** (phase 2: `.mp3` → new `audio` namespace + legacy `.ppt` → `presentation` via OLE2). The measure-first (2026-06-23) found recognition already solid + no consumer, so the family was scoped to the formats that complete an existing parser family at the v1.8.1 bar. CAD (DGN/DWG) stays an ACTIVE candidate (separate row — heavy new parser, prevalence-gated). See PUBLIC_CONTRACT §2.4 + §3.
 - **image EXIF** → built into the manifest as **provisional fields in v1.16** (designation corrected to provisional in v1.21.1). See PUBLIC_CONTRACT §2.4.
 - **binary content-recognition (Candidate A)** → **SHIPPED as v1.22.0**. It was a routing/LOGIC candidate (not a manifest field), so it graduated by *shipping* (the recognition-only `unsupported_extension`-for-binary change), not by becoming a provisional field. The `recognition_candidates.A_*` sweep harvest stays in `corpus_sweep` (now ~0 — it measures the fix having landed).
 

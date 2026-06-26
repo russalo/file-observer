@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.24.0
-    Schema:     1.15
+    Version:    1.25.0
+    Schema:     1.16
     Python:     >= 3.12
-    Spec:       docs/v1.24.0_RFC_Specification.md (current)
+    Spec:       docs/v1.25.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,9 +78,9 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.24.0"
-LOGIC_VERSION = "1.13.0"   # v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.15"   # v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.25.0"
+LOGIC_VERSION = "1.14.0"   # v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.16"   # v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -160,6 +160,10 @@ SUPPORTED_EXTENSIONS = {
     ".doc", ".xls", ".jsonl",
     ".heic", ".heif", ".avif",   # v1.16: image EXIF specialist (recognized since v1.15.1)
     ".mp4", ".mov", ".m4v",      # v1.17: video container specialist (ISOBMFF)
+    # NOTE: the v1.24/v1.25 extraction formats (.pptx/.odp/.jp2/.tiff/.mp3/.ppt …) are
+    # intentionally NOT listed here — they are content-recognized (v1.22 content-aware
+    # `unsupported_extension`), so a real file is never flagged, and this set stays the
+    # original recognition floor. Membership only matters for an UNrecognized file.
 }
 
 HASHTAG_RE = re.compile(r"(?<!\w)#([A-Za-z0-9_\-/]+)")
@@ -292,6 +296,9 @@ SPECIALIST_TOOLS: dict[str, str] = {
     ".jp2": "image_structure",
     ".tiff": "image_structure",
     ".tif": "image_structure",
+    # v1.25 (Candidate B, phase 2): audio + legacy presentation
+    ".mp3": "audio_structure",
+    ".ppt": "presentation_structure",
 }
 
 # Error code constants
@@ -743,6 +750,9 @@ SPECIALIST_NAMESPACE: dict[str, str] = {
     ".jp2": "image",
     ".tiff": "image",
     ".tif": "image",
+    # v1.25 (Candidate B, phase 2)
+    ".mp3": "audio",
+    ".ppt": "presentation",
 }
 
 # v1.13: SPECIALIST_FIELDS — the metadata fields each specialist namespace can
@@ -763,7 +773,8 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
     ],
     "video": ["codec", "duration_s", "width", "height", "creation_date", "creation_date_qt",
               "make", "model", "gps_present", "gps_source"],
-    "presentation": ["slide_count", "title", "author", "application"],  # v1.24 (Candidate B)
+    "presentation": ["slide_count", "title", "author", "application"],  # v1.24 (Candidate B); .ppt joins via OLE2 (v1.25)
+    "audio": ["format", "bitrate", "duration_s", "title", "artist", "album", "year"],  # v1.25 (Candidate B ph.2)
     "document": ["title", "author", "word_count", "heading_count", "application"],
     "spreadsheet": ["sheet_names", "header_rows", "format", "application"],
     "email": ["subject", "from", "to", "date", "message_id", "has_attachments",
@@ -818,6 +829,14 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("presentation", "title"),
     ("presentation", "author"),
     ("presentation", "application"),
+    # v1.25 (Candidate B ph.2): the new `audio` namespace — provisional on arrival
+    ("audio", "format"),
+    ("audio", "bitrate"),
+    ("audio", "duration_s"),
+    ("audio", "title"),
+    ("audio", "artist"),
+    ("audio", "album"),
+    ("audio", "year"),
 })
 PROVISIONAL_VECTORS: frozenset[str] = frozenset()  # v1.23.0 promoted `preservation` → stable (was the only one)
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
@@ -966,7 +985,10 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     "email": {"message/rfc822", "application/vnd.ms-outlook", "application/x-ole-storage", "application/CDFV2"},
     "presentation": {"application/zip", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                      "application/vnd.oasis.opendocument.presentation", "application/vnd.ms-office",
+                     # v1.25: legacy OLE2 .ppt — libmagic types it vnd.ms-powerpoint or generic OLE2
+                     "application/vnd.ms-powerpoint", "application/x-ole-storage", "application/CDFV2",
                      "application/octet-stream"},  # v1.24 (Candidate B)
+    "audio": {"audio/mpeg"},  # v1.25 (Candidate B ph.2): TIGHT (decision §9.3) — headerless mp3 stays honest-null
     "spreadsheet": {"application/zip", "application/vnd.oasis.opendocument.spreadsheet", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                      "application/vnd.ms-excel", "application/x-ole-storage", "application/CDFV2",
                      "application/vnd.ms-office",  # v1.15.2: libmagic's generic OLE2-office MIME
@@ -3490,6 +3512,9 @@ class Scanner:
                     elif extension in {".mp4", ".mov", ".m4v"}:
                         is_deviation = True
                         dev_reason, dev_budget = "moov_box_beyond_sample", self.MOOV_MAX_BYTES
+                    elif extension == ".mp3":  # v1.25: bounded head for ID3 + first frame
+                        is_deviation = True
+                        dev_reason, dev_budget = "id3_frame_beyond_sample", self.AUDIO_METADATA_MAX_BYTES
                     else:
                         is_deviation = False
                         dev_reason = dev_budget = None
@@ -3661,6 +3686,10 @@ class Scanner:
             return self._extract_odt_metadata(path, budget)
         if extension == ".ods":  # v1.24
             return self._extract_ods_metadata(path, budget)
+        if extension == ".ppt":  # v1.25 (Candidate B ph.2): legacy OLE2 PowerPoint
+            return self._extract_ppt_metadata(path)
+        if extension == ".mp3":  # v1.25 (Candidate B ph.2): audio
+            return self._extract_mp3_metadata(path)
         return None
 
     @staticmethod
@@ -4544,6 +4573,240 @@ class Scanner:
             except ValueError:
                 return None
         return None
+
+    # ---- v1.25: audio (.mp3) — ID3v2 tags + bounded MPEG frame-header parse -----
+    # The lone net-new untrusted-binary parser in Candidate B; bounded/never-crash
+    # /deterministic from commit one (the v1.8.1 discipline). Reads a bounded head.
+    AUDIO_METADATA_MAX_BYTES = 1 << 20  # 1 MiB — ID3v2 tags + the first audio frame live here
+
+    # MPEG audio bitrate tables (kbps), keyed by (version_group, layer); version_group
+    # 1 = MPEG-1, 2 = MPEG-2 / 2.5 (they share the table). Index 0 = free, 15 = bad.
+    _MPEG_BITRATES: dict[tuple[int, int], list[int | None]] = {
+        (1, 1): [None, 32, 64, 96, 128, 160, 192, 224, 256, 288, 320, 352, 384, 416, 448, None],  # MPEG1 L1
+        (1, 2): [None, 32, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, None],     # MPEG1 L2
+        (1, 3): [None, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, None],      # MPEG1 L3
+        (2, 1): [None, 32, 48, 56, 64, 80, 96, 112, 128, 144, 160, 176, 192, 224, 256, None],     # MPEG2 L1
+        (2, 2): [None, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, None],          # MPEG2 L2&L3
+        (2, 3): [None, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, None],
+    }
+    # Sample rates (Hz), keyed by version (1 = MPEG1, 2 = MPEG2, 25 = MPEG2.5). Index 3 = reserved.
+    _MPEG_SAMPLE_RATES: dict[int, list[int | None]] = {
+        1: [44100, 48000, 32000, None],
+        2: [22050, 24000, 16000, None],
+        25: [11025, 12000, 8000, None],
+    }
+
+    @staticmethod
+    def _synchsafe(b: bytes) -> int | None:
+        """A 28-bit synchsafe integer (4 bytes, each with the high bit clear)."""
+        if len(b) != 4 or any(x & 0x80 for x in b):
+            return None
+        return (b[0] << 21) | (b[1] << 14) | (b[2] << 7) | b[3]
+
+    @staticmethod
+    def _id3_text(payload: bytes) -> str | None:
+        """Decode an ID3v2 text-frame payload (leading byte = text encoding)."""
+        if len(payload) < 2:
+            return None
+        enc, body = payload[0], payload[1:]
+        codec = {0: "latin-1", 1: "utf-16", 2: "utf-16-be", 3: "utf-8"}.get(enc, "latin-1")
+        try:
+            s = body.decode(codec, errors="replace")
+        except Exception:
+            return None
+        s = s.replace("\x00", "").strip()
+        return s or None
+
+    def _mp3_id3v2(self, data: bytes) -> tuple[dict[str, Any], int] | None:
+        """Parse an ID3v2.2/2.3/2.4 tag at offset 0. Returns (tags, tag_total_bytes).
+        Bounded: frame sizes are clamped to the buffer; a frame count cap stops a
+        hostile tag from spinning."""
+        if len(data) < 10 or data[:3] != b"ID3":
+            return None
+        ver = data[3]
+        flags = data[5]
+        size = self._synchsafe(data[6:10])
+        if size is None:
+            return None
+        tag_total = 10 + size
+        body = data[10:10 + size]  # clamped to what we actually have
+        # v1.25 (leg-4/Codex): when the extended-header flag (bit 6) is set, `body`
+        # starts with the extended header, NOT a frame — advance past it so the frame
+        # loop sees the first real frame (else title/artist/album/year come back null).
+        # v2.3 size EXCLUDES the 4-byte size field; v2.4 size is synchsafe + INCLUDES it.
+        # Bounded: the skip is clamped to `body`. (v2.2 has no extended header here.)
+        if (flags & 0x40) and len(body) >= 4:
+            if ver == 4:
+                ext = self._synchsafe(body[0:4])
+                if ext and 0 < ext <= len(body):
+                    body = body[ext:]
+            elif ver == 3:
+                ext = int.from_bytes(body[0:4], "big")
+                if 0 < 4 + ext <= len(body):
+                    body = body[4 + ext:]
+        tags: dict[str, Any] = {}
+        MAP_23 = {b"TIT2": "title", b"TPE1": "artist", b"TALB": "album",
+                  b"TYER": "year", b"TDRC": "year"}
+        MAP_22 = {b"TT2": "title", b"TP1": "artist", b"TAL": "album", b"TYE": "year"}
+        i, count, MAX_FRAMES = 0, 0, 256
+        if ver == 2:  # ID3v2.2 — 3-char IDs, 3-byte plain sizes
+            while i + 6 <= len(body) and count < MAX_FRAMES:
+                fid = body[i:i + 3]
+                if not (b"A" <= fid[0:1] <= b"Z" or b"0" <= fid[0:1] <= b"9"):
+                    break
+                fsize = int.from_bytes(body[i + 3:i + 6], "big")
+                if fsize <= 0 or i + 6 + fsize > len(body):
+                    break
+                key = MAP_22.get(fid)
+                if key and key not in tags:
+                    tags[key] = self._id3_text(body[i + 6:i + 6 + fsize])
+                i += 6 + fsize
+                count += 1
+        else:  # ID3v2.3 (plain) / v2.4 (synchsafe) — 4-char IDs, 4-byte sizes + 2 flag bytes
+            while i + 10 <= len(body) and count < MAX_FRAMES:
+                fid = body[i:i + 4]
+                if not (b"A" <= fid[0:1] <= b"Z" or b"0" <= fid[0:1] <= b"9"):
+                    break
+                fsize = self._synchsafe(body[i + 4:i + 8]) if ver == 4 \
+                    else int.from_bytes(body[i + 4:i + 8], "big")
+                if not fsize or fsize <= 0 or i + 10 + fsize > len(body):
+                    break
+                key = MAP_23.get(fid)
+                if key and key not in tags:
+                    tags[key] = self._id3_text(body[i + 10:i + 10 + fsize])
+                i += 10 + fsize
+                count += 1
+        if tags.get("year"):  # keep only a 4-digit year (TDRC carries a full timestamp)
+            m = re.search(r"\d{4}", tags["year"])
+            tags["year"] = m.group(0) if m else None
+        return tags, tag_total
+
+    def _mp3_first_frame(self, data: bytes, start: int) -> dict[str, Any] | None:
+        """First valid MPEG audio frame header at/after ``start``. Bounded scan."""
+        end = min(len(data), start + 65536) - 4
+        i = max(0, start)
+        while i <= end:
+            if data[i] == 0xFF and (data[i + 1] & 0xE0) == 0xE0:
+                hdr = self._parse_mpeg_frame_header(data[i:i + 4])
+                if hdr:
+                    hdr["offset"] = i
+                    return hdr
+            i += 1
+        return None
+
+    def _parse_mpeg_frame_header(self, b: bytes) -> dict[str, Any] | None:
+        if len(b) < 4 or b[0] != 0xFF or (b[1] & 0xE0) != 0xE0:
+            return None
+        ver_bits, layer_bits = (b[1] >> 3) & 0x03, (b[1] >> 1) & 0x03
+        if ver_bits == 1 or layer_bits == 0:  # reserved version / layer
+            return None
+        version = {3: 1, 2: 2, 0: 25}[ver_bits]      # MPEG1 / MPEG2 / MPEG2.5
+        layer = {3: 1, 2: 2, 1: 3}[layer_bits]        # Layer I / II / III
+        br_index, sr_index = (b[2] >> 4) & 0x0F, (b[2] >> 2) & 0x03
+        if br_index in (0, 15) or sr_index == 3:      # free/bad bitrate, reserved rate
+            return None
+        bitrate = self._MPEG_BITRATES.get((1 if version == 1 else 2, layer), [None] * 16)[br_index]
+        sample_rate = self._MPEG_SAMPLE_RATES.get(version, [None] * 4)[sr_index]
+        if not bitrate or not sample_rate:
+            return None
+        return {"format": {1: "mp1", 2: "mp2", 3: "mp3"}[layer], "bitrate": bitrate,
+                "sample_rate": sample_rate, "layer": layer, "version": version,
+                "channel": (b[3] >> 6) & 0x03}
+
+    def _mp3_xing_frame_count(self, data: bytes, frame: dict[str, Any]) -> int | None:
+        """Total frame count from a Xing/Info VBR header (fixed offset after the
+        frame header, depending on version + channel mode). None when absent."""
+        if frame["version"] == 1:
+            xoff = 21 if frame["channel"] == 3 else 36
+        else:
+            xoff = 13 if frame["channel"] == 3 else 21
+        pos = frame["offset"] + xoff
+        if pos + 12 > len(data) or data[pos:pos + 4] not in (b"Xing", b"Info"):
+            return None
+        flags = int.from_bytes(data[pos + 4:pos + 8], "big")
+        if not (flags & 0x1):  # frames flag not set
+            return None
+        frames = int.from_bytes(data[pos + 8:pos + 12], "big")
+        return frames if 0 < frames <= 10 ** 9 else None  # bound
+
+    def _mp3_duration(self, data: bytes, frame: dict[str, Any], size: int, tag_end: int) -> float | None:
+        spf = {1: 384, 2: 1152, 3: 1152 if frame["version"] == 1 else 576}[frame["layer"]]
+        frames = self._mp3_xing_frame_count(data, frame)
+        if frames:  # VBR — exact from the frame count
+            return round(frames * spf / frame["sample_rate"], 2)
+        if frame["bitrate"] > 0:  # CBR estimate from the audio byte length
+            audio_bytes = max(0, size - max(0, tag_end))
+            dur = audio_bytes * 8 / (frame["bitrate"] * 1000)
+            return round(dur, 2) if dur > 0 else None
+        return None
+
+    def _extract_mp3_metadata(self, path: Path) -> dict[str, Any] | None:
+        """v1.25: .mp3 -> format/bitrate/duration_s + ID3 title/artist/album/year.
+        Bounded head read; honest-null when a field can't be observed."""
+        try:
+            with path.open("rb") as f:
+                head = f.read(self.AUDIO_METADATA_MAX_BYTES)
+            size = path.stat().st_size
+        except OSError:
+            return None
+        meta: dict[str, Any] = {"format": None, "bitrate": None, "duration_s": None,
+                                "title": None, "artist": None, "album": None, "year": None}
+        tag_end = 0
+        id3 = self._mp3_id3v2(head)
+        if id3:
+            tags, tag_end = id3
+            for k in ("title", "artist", "album", "year"):
+                if tags.get(k):
+                    meta[k] = tags[k]
+        frame = self._mp3_first_frame(head, tag_end)
+        if frame:
+            meta["format"] = frame["format"]
+            meta["bitrate"] = frame["bitrate"]
+            meta["duration_s"] = self._mp3_duration(head, frame, size, tag_end)
+        return meta
+
+    def _extract_ppt_metadata(self, path: Path) -> dict[str, Any] | None:
+        """v1.25: legacy PowerPoint (.ppt) -> title/author/application/slide_count via
+        OLE2 SummaryInformation + DocumentSummaryInformation. Mirrors
+        _extract_doc_metadata (the v0.7/v1.10 olefile machinery) — no new parser."""
+        if not olefile:
+            return None
+        try:
+            if not olefile.isOleFile(str(path)):
+                return None
+            ole = olefile.OleFileIO(str(path))
+            try:
+                meta: dict[str, Any] = {"slide_count": None, "title": None,
+                                        "author": None, "application": None}
+                if ole.exists("\x05SummaryInformation"):
+                    try:
+                        props = ole.getproperties("\x05SummaryInformation")
+                        meta["title"] = props.get(2)       # PIDSI_TITLE (0x02)
+                        meta["author"] = props.get(4)      # PIDSI_AUTHOR (0x04)
+                        meta["application"] = props.get(18)  # PIDSI_APPNAME (0x12)
+                    except Exception:
+                        pass
+                if ole.exists("\x05DocumentSummaryInformation"):
+                    try:
+                        dprops = ole.getproperties("\x05DocumentSummaryInformation")
+                        sc = dprops.get(7)                 # PIDDSI_SLIDECOUNT (0x07, VT_I4)
+                        if isinstance(sc, int) and not isinstance(sc, bool) and 0 <= sc < 10 ** 6:
+                            meta["slide_count"] = sc
+                    except Exception:
+                        pass
+                for key in ("title", "author", "application"):
+                    v = meta[key]
+                    if isinstance(v, bytes):
+                        meta[key] = v.decode("cp1252", errors="replace").rstrip("\x00") or None
+                    elif isinstance(v, str):
+                        meta[key] = v.rstrip("\x00") or None
+                    else:
+                        meta[key] = None  # non-str (datetime/int/…) → None (json-safe, v1.10)
+                return meta
+            finally:
+                ole.close()
+        except Exception:
+            return None
 
     def _extract_png_metadata(self, sample: bytes) -> dict[str, Any] | None:
         # PNG signature: 8 bytes + IHDR chunk (4 len + 4 type + 13 data = 29 bytes minimum)

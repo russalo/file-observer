@@ -188,10 +188,10 @@ def test_determinism(tmp_path):
 
 
 def test_version_surfaces(tmp_path):
-    # falsify-first: fails until the version bump lands.
-    assert SCANNER_VERSION == "1.24.0", SCANNER_VERSION
-    assert LOGIC_VERSION == "1.13.0", LOGIC_VERSION   # requires_specialist_tool routing change
-    assert SCHEMA_VERSION == "1.15", SCHEMA_VERSION    # new `presentation` namespace
+    # floors, not exact — v1.25.0+ supersede this release (the next minor bumps SCANNER/LOGIC/SCHEMA).
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 24, 0), SCANNER_VERSION
+    assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 13, 0), LOGIC_VERSION
+    assert tuple(map(int, SCHEMA_VERSION.split("."))) >= (1, 15), SCHEMA_VERSION
 
 
 # ---- v1.24 image slice: .jp2 / .tiff -------------------------------------

@@ -52,15 +52,9 @@ print("wrote generated.xls (BIFF8, 2 sheets, owner set)")
 
 # ---- .doc: a minimal OLE2/CFB with ONLY a SummaryInformation stream ----------
 # CFB v3, 512-byte sectors. One regular stream (padded >= mini-cutoff so no mini-FAT).
-def _summaryinformation_propset(title: str, author: str) -> bytes:
-    FMTID = bytes.fromhex("e0859ff2f94f6810ab9108002b27b3d9")  # SummaryInformation FMTID
-    def lpstr(s: str) -> bytes:
-        b = s.encode("cp1252") + b"\x00"
-        return struct.pack("<I", 30) + struct.pack("<I", len(b)) + b  # VT_LPSTR
-    def i2(v: int) -> bytes:
-        return struct.pack("<I", 2) + struct.pack("<h", v) + b"\x00\x00"  # VT_I2
-    props = [(1, i2(1252)), (2, lpstr(title)), (4, lpstr(author))]  # CodePage, Title, Author
-    # section: [dword bytesize][dword numprops][ (propid, offset) * n ][ values ]
+def _propset(fmtid: bytes, props: list) -> bytes:
+    """An MS-OLEPS single-section property set. ``props`` is a list of
+    (propid, encoded-value) pairs (use the lpstr/i2/i4 helpers below)."""
     n = len(props)
     table_size = 8 + n * 8
     offsets, blob, off = [], b"", table_size
@@ -72,44 +66,84 @@ def _summaryinformation_propset(title: str, author: str) -> bytes:
     section += blob
     # property-set header: [WORD bom][WORD ver][DWORD os][CLSID][DWORD numsections][FMTID][DWORD offset]
     header = struct.pack("<HHI", 0xFFFE, 0, 0x00020005) + b"\x00" * 16 + struct.pack("<I", 1)
-    header += FMTID + struct.pack("<I", len(header) + 16 + 4)  # offset to section
+    header += fmtid + struct.pack("<I", len(header) + 16 + 4)  # offset to section
     return header + section
 
 
-def _minimal_ole2(stream_name: str, data: bytes) -> bytes:
+def _lpstr(s: str) -> bytes:
+    b = s.encode("cp1252") + b"\x00"
+    return struct.pack("<I", 30) + struct.pack("<I", len(b)) + b  # VT_LPSTR
+
+
+def _i2(v: int) -> bytes:
+    return struct.pack("<I", 2) + struct.pack("<h", v) + b"\x00\x00"  # VT_I2
+
+
+def _i4(v: int) -> bytes:
+    return struct.pack("<I", 3) + struct.pack("<i", v)  # VT_I4
+
+
+def _summaryinformation_propset(title: str, author: str, app: str | None = None) -> bytes:
+    FMTID = bytes.fromhex("e0859ff2f94f6810ab9108002b27b3d9")  # SummaryInformation FMTID
+    props = [(1, _i2(1252)), (2, _lpstr(title)), (4, _lpstr(author))]  # CodePage, Title, Author
+    if app is not None:
+        props.append((18, _lpstr(app)))  # PIDSI_APPNAME (0x12) — creating app
+    return _propset(FMTID, props)
+
+
+def _docsummaryinformation_propset(slide_count: int) -> bytes:
+    FMTID = bytes.fromhex("02d5cdd59c2e1b1093970800 2b2cf9ae".replace(" ", ""))  # DocumentSummaryInformation FMTID
+    props = [(1, _i2(1252)), (7, _i4(slide_count))]  # CodePage, PIDDSI_SLIDECOUNT (0x07, VT_I4)
+    return _propset(FMTID, props)
+
+
+def _minimal_ole2(streams: list) -> bytes:
+    """Minimal CFB v3 (512-byte sectors) holding ``streams`` = list of
+    (name, data). Each stream is padded to >= 4096 so it is a MAJOR (non-mini)
+    stream — the simplest possible layout (no mini-FAT). Entries are linked as a
+    right-leaning chain under Root.child (olefile's in-order walk visits all)."""
     SECTOR = 512
     ENDOFCHAIN, FREESECT, FATSECT = 0xFFFFFFFE, 0xFFFFFFFF, 0xFFFFFFFD
-    # pad stream to >= 4096 so it's a major (non-mini) stream → simplest layout
-    if len(data) < 4096:
-        data = data + b"\x00" * (4096 - len(data))
-    n_stream_sectors = (len(data) + SECTOR - 1) // SECTOR
-    # layout: sector 0 = FAT; sector 1 = directory; sectors 2.. = stream
-    first_stream = 2
-    total_sectors = 2 + n_stream_sectors
+    padded = [(name, data + b"\x00" * (4096 - len(data)) if len(data) < 4096 else data)
+              for name, data in streams]
+    # layout: sector 0 = FAT; sector 1 = directory; sectors 2.. = streams (contiguous)
     fat = [FREESECT] * 128
     fat[0] = FATSECT          # the FAT sector
-    fat[1] = ENDOFCHAIN       # directory (1 sector)
-    for i in range(n_stream_sectors):
-        s = first_stream + i
-        fat[s] = ENDOFCHAIN if i == n_stream_sectors - 1 else s + 1
+    fat[1] = ENDOFCHAIN       # directory (1 sector — entries fit in 512B; see assert below)
+    layout, nxt = [], 2
+    for name, data in padded:
+        nsec = (len(data) + SECTOR - 1) // SECTOR
+        start = nxt
+        for i in range(nsec):
+            s = start + i
+            fat[s] = ENDOFCHAIN if i == nsec - 1 else s + 1
+        layout.append((name, start, len(data)))
+        nxt += nsec
     fat_bytes = b"".join(struct.pack("<I", e) for e in fat)
-    # directory: Root Entry (storage) + SummaryInformation (stream) + 2 empty
-    def dirent(name: str, etype: int, start: int, size: int, child: int = FREESECT) -> bytes:
+
+    def dirent(name: str, etype: int, start: int, size: int,
+               left: int = -1, right: int = -1, child: int = -1) -> bytes:
         nb = name.encode("utf-16-le") + b"\x00\x00"
         nb = nb[:64].ljust(64, b"\x00")
         e = nb + struct.pack("<H", min(len(name) * 2 + 2, 64))
         e += struct.pack("<B", etype) + struct.pack("<B", 1)            # type, color=black
-        e += struct.pack("<iii", -1, -1, child if child != FREESECT else -1)  # left,right,child
+        e += struct.pack("<iii", left, right, child)                    # left,right,child sids
         e += b"\x00" * 16 + struct.pack("<I", 0)                        # CLSID, state
         e += b"\x00" * 8 + b"\x00" * 8                                  # ctime, mtime
-        e += struct.pack("<I", start if start != FREESECT else 0)       # starting sector (4)
+        e += struct.pack("<I", start if start >= 0 else 0)             # starting sector (4)
         e += struct.pack("<Q", size)                                    # stream size (8) — must be 8 bytes
         assert len(e) == 128, len(e)
         return e
-    root = dirent("Root Entry", 5, ENDOFCHAIN, 0, child=1)
-    summ = dirent("\x05SummaryInformation", 2, first_stream, len(data))
-    empty = dirent("", 0, FREESECT, 0)
-    directory = (root + summ + empty + empty).ljust(SECTOR, b"\x00")
+
+    n = len(layout)
+    entries = [dirent("Root Entry", 5, ENDOFCHAIN, 0, child=1)]      # child -> dir index 1
+    for i, (name, start, size) in enumerate(layout):
+        right = (i + 2) if i < n - 1 else -1   # chain to the next stream's dir index
+        entries.append(dirent(name, 2, start, size, right=right))
+    while (len(entries) * 128) % SECTOR != 0:   # pad to a whole sector with empty entries
+        entries.append(dirent("", 0, -1, 0))
+    directory = b"".join(entries)
+    assert len(directory) == SECTOR, "fixture keeps the directory to one sector (<=4 entries)"
     # header
     h = bytes.fromhex("d0cf11e0a1b11ae1") + b"\x00" * 16
     h += struct.pack("<HHHH", 0x003E, 0x0003, 0xFFFE, 0x0009)           # minor, major(v3), bom, sectorshift=512
@@ -124,13 +158,44 @@ def _minimal_ole2(stream_name: str, data: bytes) -> bytes:
     difat = [0] + [FREESECT] * 108                                     # FAT is at sector 0
     h += b"".join(struct.pack("<I", e) for e in difat)
     assert len(h) == SECTOR, len(h)
-    return h + fat_bytes + directory + data
+    return h + fat_bytes + directory + b"".join(d for _, d in padded)
 
 
-doc = _minimal_ole2("\x05SummaryInformation",
-                    _summaryinformation_propset("File Observer Test Doc", "File Observer Test"))
+doc = _minimal_ole2([("\x05SummaryInformation",
+                      _summaryinformation_propset("File Observer Test Doc", "File Observer Test"))])
 (OUT / "generated.doc").write_bytes(doc)
 print(f"wrote generated.doc (minimal OLE2 + SummaryInformation, {len(doc)} bytes)")
+
+
+# ---- v1.25: a minimal OLE2/CFB .ppt (legacy PowerPoint) ----------------------
+# SummaryInformation (title/author/application 0x12) + DocumentSummaryInformation
+# (PIDDSI_SLIDECOUNT 0x07). The scanner reads exactly those property ids — no real
+# PowerPoint stream is needed to exercise the v1.25 _extract_ppt_metadata path.
+ppt = _minimal_ole2([
+    ("\x05SummaryInformation",
+     _summaryinformation_propset("File Observer Test Deck", "File Observer Test",
+                                 app="Microsoft PowerPoint")),
+    ("\x05DocumentSummaryInformation", _docsummaryinformation_propset(7)),
+])
+(OUT / "generated.ppt").write_bytes(ppt)
+print(f"wrote generated.ppt (minimal OLE2 + Summary/DocumentSummary, {len(ppt)} bytes)")
+
+# Round-trip verification — the scanner's own olefile path must read both streams.
+try:
+    import olefile as _ole  # noqa: E402
+    o = _ole.OleFileIO(str(OUT / "generated.ppt"))
+    _s = o.getproperties("\x05SummaryInformation")
+    _d = o.getproperties("\x05DocumentSummaryInformation")
+    o.close()
+    def _s2t(v):  # olefile returns VT_LPSTR raw (bytes) — the scanner decodes cp1252
+        return v.decode("cp1252").rstrip("\x00") if isinstance(v, bytes) else v
+    assert _s2t(_s.get(2)) == "File Observer Test Deck", _s.get(2)
+    assert _s2t(_s.get(4)) == "File Observer Test", _s.get(4)
+    assert _s2t(_s.get(18)) == "Microsoft PowerPoint", _s.get(18)
+    assert _d.get(7) == 7, _d.get(7)
+    print("  round-trip OK: olefile reads title/author/application + slide_count=7")
+except ImportError:
+    print("  (olefile not installed — skipped round-trip verification)")
 
 
 # ---- v1.16: EXIF-bearing JPEG + HEIC (CIPA DC-008 TIFF/IFD; ISO 14496-12 meta/iloc) --
