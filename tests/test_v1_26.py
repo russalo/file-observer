@@ -46,6 +46,16 @@ def test_scan_specialists_alias_maps(tmp_path):
     assert via_scan.manifest_checksum == via_explicit.manifest_checksum
 
 
+def test_scan_accepts_canonical_enable_specialists(tmp_path):
+    # reaching for the real ScannerConfig field name must just work, not collide (leg-4/gemini)
+    d = _corpus(tmp_path)
+    via_canonical = scan(d, enable_specialists=True)
+    via_alias = scan(d, specialists=True)
+    via_explicit = Scanner(source_dir=Path(d),
+                           config=ScannerConfig(enable_specialists=True)).scan()
+    assert via_canonical.manifest_checksum == via_alias.manifest_checksum == via_explicit.manifest_checksum
+
+
 def test_scan_workers_alias_maps(tmp_path):
     d = _corpus(tmp_path)
     # byte-identical across workers is the v1.9 contract; scan(workers=) just forwards it

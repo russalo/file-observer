@@ -6767,11 +6767,18 @@ def scan(path: str | Path, *, specialists: bool = False, workers: int = 1,
     workers=workers, **config_kwargs)).scan()`` — the explicit form stays for full
     control. ``specialists`` / ``workers`` are friendly aliases for the two most common
     options (``enable_specialists`` is the verbose internal name); any other
-    ``ScannerConfig`` field can be passed through ``**config_kwargs`` (a bad/duplicate key
-    raises ``ScannerConfig``'s own ``TypeError``). Returns the ``ScanManifest`` dataclass;
-    pair with ``manifest_to_json`` / ``manifest_to_jsonl`` / ``manifest_to_markdown`` (or
-    ``scan_to_json``) to serialize. The produced manifest is byte-identical to the explicit
-    path (no LOGIC/SCHEMA change — this is ergonomics only)."""
+    ``ScannerConfig`` field can be passed through ``**config_kwargs`` (an unknown key
+    raises ``ScannerConfig``'s own ``TypeError``). The canonical field name
+    ``enable_specialists=`` is ALSO accepted and, if given, overrides the ``specialists``
+    alias — so reaching for the real ``ScannerConfig`` name just works rather than
+    colliding. Returns the ``ScanManifest`` dataclass; pair with ``manifest_to_json`` /
+    ``manifest_to_jsonl`` / ``manifest_to_markdown`` (or ``scan_to_json``) to serialize.
+    The produced manifest is byte-identical to the explicit path (no LOGIC/SCHEMA change
+    — this is ergonomics only)."""
+    # Accept the canonical `enable_specialists=` too (leg-4/gemini): pop it so it can't
+    # collide with the `specialists` alias; the explicit field name wins when both given.
+    if "enable_specialists" in config_kwargs:
+        specialists = config_kwargs.pop("enable_specialists")
     cfg = ScannerConfig(enable_specialists=specialists, workers=workers, **config_kwargs)
     return Scanner(source_dir=Path(path), config=cfg).scan()
 
