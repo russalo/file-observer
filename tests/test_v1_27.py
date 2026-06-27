@@ -135,5 +135,5 @@ def test_cli_emits_json_schema():
 
 def test_version_surfaces():
     assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 27, 0), SCANNER_VERSION  # floor (superseded)
-    assert LOGIC_VERSION == "1.14.1"   # unchanged
+    assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 14, 1)  # floor — was 1.14.1 at v1.27; 1.15.0 at v1.29.0
     assert SCHEMA_VERSION == "1.16"    # unchanged
