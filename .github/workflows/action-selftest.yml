@@ -40,7 +40,9 @@ jobs:
           PY="$(command -v python3 || command -v python)"
           "$PY" - "$M" <<'PY'
           import json, sys
-          m = json.load(open(sys.argv[1]))
+          # open UTF-8 explicitly — Windows defaults to cp1252, which chokes on the
+          # UTF-8 manifest (the manifest is correctly UTF-8 per the v1.28 --stdout fix).
+          m = json.load(open(sys.argv[1], encoding="utf-8"))
           assert m["manifest_checksum"], "no manifest_checksum"
           assert m["files"], "no files scanned"
           # the write-to-temp-then-move means the manifest must NOT include its own output file
