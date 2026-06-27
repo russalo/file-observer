@@ -70,6 +70,28 @@ def test_readme_version_references_current():
         f"README Schema cell is stale (want {SCHEMA_VERSION})"
 
 
+def test_all_extra_covers_every_runtime_extra():
+    """v1.28.1: `[all]` is the one-line full-coverage install — the union of every RUNTIME
+    extra. It self-references the others so it can't drift, but a NEW runtime extra added
+    without wiring it into `[all]` would silently leave `[all]` incomplete. Guard it: every
+    optional-dependency group except the meta-extras (`all`, `dev`) must be referenced by
+    `[all]` (and, transitively, by `[dev]`, which references `[all]`)."""
+    root = Path(__file__).resolve().parent.parent
+    with open(root / "pyproject.toml", "rb") as f:
+        extras = tomllib.load(f)["project"]["optional-dependencies"]
+    runtime_extras = set(extras) - {"all", "dev"}
+    # Parse the EXACT extra names referenced in the self-reference(s) `file-observer[a,b,c]`
+    # — not a substring check (leg-4/gemini: a future name could be a substring of another).
+    referenced = set()
+    for spec in extras["all"]:
+        for m in re.finditer(r"\[([^\]]+)\]", spec):
+            referenced.update(ex.strip() for ex in m.group(1).split(","))
+    missing = sorted(runtime_extras - referenced)
+    assert not missing, f"[all] is missing runtime extras {missing} (add them to the all = [...] spec)"
+    # dev = all runtime extras + test tooling — confirm it reaches `[all]`
+    assert any("[all]" in d for d in extras["dev"]), "[dev] should reference [all] (DRY)"
+
+
 def test_readme_lists_every_specialist_format():
     """The README's 'Supported specialist formats' list is hand-maintained and NOT
     version-stamped, so the version drift-guards above can't catch it — it silently
@@ -156,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.28.0"
-    assert SCHEMA_VERSION == "1.16"  # unchanged at v1.28.0 (--stdout is output routing, not the manifest)
-    assert LOGIC_VERSION == "1.14.1"  # unchanged at v1.28.0
+    assert SCANNER_VERSION == "1.28.1"
+    assert SCHEMA_VERSION == "1.16"  # unchanged at v1.28.1 (the [all] extra is packaging, not the manifest)
+    assert LOGIC_VERSION == "1.14.1"  # unchanged at v1.28.1
 
 
 def test_legacy_scanner_import_warns():

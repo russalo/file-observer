@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.28.0"
+version = "1.28.1"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -47,7 +47,11 @@ msg = ["olefile"]
 security = ["defusedxml"]
 pdf = ["pypdf", "cryptography"]   # v1.8: object-stream page_count/Info (tier 1; stdlib fallback if absent). v1.12: cryptography required by pypdf for AES-256/V5 owner-locked PDFs (e.g. Caltrans 2025 specs)
 watch = ["watchfiles"]   # v1.11: --watch FS-event backend (measured vs watchdog; watchfiles won 1:1 delivery + 43ms latency)
-dev = ["pytest", "pytest-timeout", "PyYAML", "olefile", "defusedxml", "pypdf", "cryptography", "watchfiles", "jsonschema"]   # v1.27: jsonschema = DEV-only (manifest-schema validation guard); runtime stays zero-dep
+# v1.28.1: one-line full coverage — the union of every RUNTIME extra (NOT dev). Self-references
+# the others so it can't drift (a new extra is picked up automatically). The drift-guard test
+# `test_all_extra_covers_every_runtime_extra` fails CI if a runtime extra is ever omitted here.
+all = ["file-observer[yaml,msg,security,pdf,watch]"]
+dev = ["file-observer[all]", "pytest", "pytest-timeout", "jsonschema"]   # v1.28.1: dev = all runtime extras + test tooling (jsonschema = DEV-only manifest-schema validation guard; runtime stays zero-dep)
 
 [project.urls]
 Homepage = "https://github.com/russalo/file-observer"

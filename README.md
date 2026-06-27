@@ -44,7 +44,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.16",
-  "context": { "scanner_version": "1.28.0", "logic_version": "1.14.1", "...": "…" },
+  "context": { "scanner_version": "1.28.1", "logic_version": "1.14.1", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,7 +76,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.28.0` |
+| **Version** | `1.28.1` |
 | **Schema** | `1.16` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -148,6 +148,7 @@ Each vector carries an identity digest (SHA-256). Same digest = same rules + sam
 pip install file-observer
 
 # Optional: specialist format support
+pip install "file-observer[all]"       # every optional specialist (one line — recommended)
 pip install "file-observer[msg]"       # .msg/.doc/.xls/.ppt (OLE2 formats)
 pip install "file-observer[security]"  # Hardened XML parsing
 pip install "file-observer[dev]"       # Full dev environment
