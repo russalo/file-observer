@@ -80,8 +80,13 @@ def test_all_extra_covers_every_runtime_extra():
     with open(root / "pyproject.toml", "rb") as f:
         extras = tomllib.load(f)["project"]["optional-dependencies"]
     runtime_extras = set(extras) - {"all", "dev"}
-    all_spec = " ".join(extras["all"])
-    missing = sorted(ex for ex in runtime_extras if ex not in all_spec)
+    # Parse the EXACT extra names referenced in the self-reference(s) `file-observer[a,b,c]`
+    # — not a substring check (leg-4/gemini: a future name could be a substring of another).
+    referenced = set()
+    for spec in extras["all"]:
+        for m in re.finditer(r"\[([^\]]+)\]", spec):
+            referenced.update(ex.strip() for ex in m.group(1).split(","))
+    missing = sorted(runtime_extras - referenced)
     assert not missing, f"[all] is missing runtime extras {missing} (add them to the all = [...] spec)"
     # dev = all runtime extras + test tooling — confirm it reaches `[all]`
     assert any("[all]" in d for d in extras["dev"]), "[dev] should reference [all] (DRY)"
