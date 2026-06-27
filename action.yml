@@ -1,0 +1,56 @@
+name: "File Observer scan"
+description: "Scan a directory and emit a deterministic file-observer JSON manifest of what's inside."
+author: "Russell Pfister"
+branding:
+  icon: "search"
+  color: "blue"
+
+inputs:
+  path:
+    description: "Directory to scan."
+    required: false
+    default: "."
+  args:
+    description: "Extra file-observer CLI args (word-split; e.g. `--specialists --exclude-hidden`)."
+    required: false
+    default: "--specialists"
+  output:
+    description: "Path to write the manifest JSON."
+    required: false
+    default: "file-observer-manifest.json"
+  version:
+    description: "file-observer version to install from PyPI (blank = latest)."
+    required: false
+    default: ""
+
+outputs:
+  manifest-path:
+    description: "Path to the written manifest JSON."
+    value: ${{ steps.scan.outputs.manifest-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: scan
+      shell: bash
+      # Inputs are passed via env (not spliced into the script) to avoid composite-action
+      # injection. file-observer is installed into an isolated venv under RUNNER_TEMP, so it
+      # never touches the caller's Python environment. `--stdout` writes the manifest to the
+      # chosen file (the v1.28 pipe-friendly mode). [all] pulls every optional specialist.
+      env:
+        FO_PATH: ${{ inputs.path }}
+        FO_ARGS: ${{ inputs.args }}
+        FO_OUTPUT: ${{ inputs.output }}
+        FO_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        VENV="${RUNNER_TEMP:-/tmp}/file-observer-venv"
+        python3 -m venv "$VENV"
+        "$VENV/bin/pip" install --quiet --upgrade pip
+        SPEC="file-observer[all]"
+        if [ -n "$FO_VERSION" ]; then SPEC="file-observer[all]==$FO_VERSION"; fi
+        "$VENV/bin/pip" install --quiet "$SPEC"
+        # shellcheck disable=SC2086  # FO_ARGS is intentionally word-split into multiple flags
+        "$VENV/bin/file-observer" "$FO_PATH" $FO_ARGS --stdout > "$FO_OUTPUT"
+        echo "manifest-path=$FO_OUTPUT" >> "$GITHUB_OUTPUT"
+        echo "::notice title=File Observer::manifest written to $FO_OUTPUT"

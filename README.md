@@ -172,6 +172,23 @@ docker run --rm -v "/path/to/scan:/data:ro" ghcr.io/russalo/file-observer /data 
 
 The image bundles `libmagic` + all optional specialists. (Builds from the [`Dockerfile`](Dockerfile); published to GHCR on each release.) Mount your data **read-only** and keep the output file outside the scanned tree, so a manifest you redirect into the same folder isn't picked up by a later scan.
 
+**GitHub Action** — scan a repo in CI and capture the manifest as an artifact:
+
+```yaml
+- uses: russalo/file-observer@v1.28.1     # pin a release tag
+  id: scan
+  with:
+    path: .                                # directory to scan (default ".")
+    args: --specialists                    # extra CLI args (default "--specialists")
+    output: file-observer-manifest.json    # where to write the manifest
+- uses: actions/upload-artifact@v4
+  with:
+    name: file-observer-manifest
+    path: ${{ steps.scan.outputs.manifest-path }}
+```
+
+The action installs `file-observer[all]` into an isolated venv (it doesn't touch your workflow's Python) and writes the manifest via `--stdout`. Output: `manifest-path`. Diff it against a baseline, gate a job on `quality`/`safety_flags` with `jq`, or just archive it for audit.
+
 **Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for common binary formats (archives, images, data, media), then extension-based inference. Install it for the widest coverage:
 ```bash
 sudo apt install libmagic1    # Debian/Ubuntu

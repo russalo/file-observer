@@ -1,0 +1,42 @@
+name: Action self-test
+
+# An Action can't be unit-tested — a CI run of it IS the test. This dogfoods the
+# composite action (`uses: ./`) against this repo and asserts it produced a valid manifest.
+on:
+  pull_request:
+    paths:
+      - action.yml
+      - .github/workflows/action-selftest.yml
+  push:
+    branches: [main]
+    paths:
+      - action.yml
+  workflow_dispatch:
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run the File Observer action against this repo
+        id: fo
+        uses: ./
+        with:
+          path: docs                       # a real directory in this repo
+          args: ""                         # no specialists — fast; the path is text/markdown
+          output: fo-selftest-manifest.json
+
+      - name: Verify the manifest
+        run: |
+          set -euo pipefail
+          M="${{ steps.fo.outputs.manifest-path }}"
+          test -f "$M" || { echo "manifest not written to $M"; exit 1; }
+          python3 - "$M" <<'PY'
+          import json, sys
+          m = json.load(open(sys.argv[1]))
+          assert m["manifest_checksum"], "no manifest_checksum"
+          assert m["files"], "no files scanned"
+          print(f"OK — action produced a valid manifest: {len(m['files'])} files, "
+                f"scanner {m['context']['scanner_version']}")
+          PY
