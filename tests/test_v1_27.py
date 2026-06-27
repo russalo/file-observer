@@ -134,6 +134,6 @@ def test_cli_emits_json_schema():
 # ---- version surfaces ---------------------------------------------------------
 
 def test_version_surfaces():
-    assert SCANNER_VERSION == "1.27.0"
-    assert LOGIC_VERSION == "1.14.1"   # unchanged — schema describes, doesn't change, the manifest
+    assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 27, 0), SCANNER_VERSION  # floor (superseded)
+    assert LOGIC_VERSION == "1.14.1"   # unchanged
     assert SCHEMA_VERSION == "1.16"    # unchanged
