@@ -1,0 +1,70 @@
+name: "File Observer scan"
+description: "Scan a directory and emit a deterministic file-observer JSON manifest of what's inside."
+author: "Russell Pfister"
+branding:
+  icon: "search"
+  color: "blue"
+
+inputs:
+  path:
+    description: "Directory to scan."
+    required: false
+    default: "."
+  args:
+    description: "Extra file-observer CLI args (word-split; e.g. `--specialists --exclude-hidden`)."
+    required: false
+    default: "--specialists"
+  output:
+    description: "Path to write the manifest JSON."
+    required: false
+    default: "file-observer-manifest.json"
+  version:
+    description: "file-observer version to install from PyPI (blank = latest)."
+    required: false
+    default: ""
+
+outputs:
+  manifest-path:
+    description: "Path to the written manifest JSON."
+    value: ${{ steps.scan.outputs.manifest-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: scan
+      shell: bash
+      # Inputs are passed via env (not spliced into the script) to avoid composite-action
+      # injection. file-observer is installed into an isolated venv under RUNNER_TEMP, so it
+      # never touches the caller's Python environment. `--stdout` writes the manifest to the
+      # chosen file (the v1.28 pipe-friendly mode). [all] pulls every optional specialist.
+      env:
+        FO_PATH: ${{ inputs.path }}
+        FO_ARGS: ${{ inputs.args }}
+        FO_OUTPUT: ${{ inputs.output }}
+        FO_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        # Cross-platform venv layout (leg-4/gemini): Windows runners have `python` (not
+        # `python3`) and put scripts in `Scripts/` (not `bin/`).
+        if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          PY="python"; BIN="Scripts"
+        else
+          PY="python3"; command -v python3 >/dev/null 2>&1 || PY="python"; BIN="bin"
+        fi
+        VENV="${RUNNER_TEMP:-/tmp}/file-observer-venv"
+        "$PY" -m venv "$VENV"
+        SPEC="file-observer[all]"
+        if [ -n "$FO_VERSION" ]; then SPEC="file-observer[all]==$FO_VERSION"; fi
+        # Invoke pip via `python -m pip` (NOT the pip executable) — on Windows the venv's
+        # pip.exe can't modify its own running process, so `pip install` self-upgrades fail;
+        # `python -m pip` is the canonical cross-platform form (windows self-test caught this).
+        "$VENV/$BIN/python" -m pip install --quiet "$SPEC"
+        # Write to a temp file OUTSIDE the scan tree, then move it into place (leg-4/Codex):
+        # redirecting into the scanned dir would make the scan include its own (0-byte) output.
+        TMP_OUT="${RUNNER_TEMP:-/tmp}/file-observer-manifest.json"
+        # shellcheck disable=SC2086  # FO_ARGS is intentionally word-split into multiple flags
+        "$VENV/$BIN/file-observer" "$FO_PATH" $FO_ARGS --stdout > "$TMP_OUT"
+        mkdir -p "$(dirname "$FO_OUTPUT")"   # in case output is in a not-yet-existing subdir (leg-4/gemini)
+        mv "$TMP_OUT" "$FO_OUTPUT"
+        echo "manifest-path=$FO_OUTPUT" >> "$GITHUB_OUTPUT"
+        echo "::notice title=File Observer::manifest written to $FO_OUTPUT"
