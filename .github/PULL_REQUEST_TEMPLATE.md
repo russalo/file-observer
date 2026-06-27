@@ -22,7 +22,7 @@ What does this PR do? One to three bullet points.
 - [ ] Correct version(s) bumped — `SCANNER` / `LOGIC` / `SCHEMA` (see CONVENTIONS §1)
 - [ ] `docs/SCHEMA.md` regenerated if an output surface was added (`--schema --schema-format md`)
 - [ ] Documentation updated if behavior changed
-- [ ] CLA: First-time contributors must comment on this PR: "I have read and agree to the Contributor License Agreement" (see [CLA.md](CLA.md))
+- [ ] CLA: First-time contributors must comment on this PR: "I have read and agree to the Contributor License Agreement" (see [CLA.md](../CLA.md))
 
 ## Schema impact
 

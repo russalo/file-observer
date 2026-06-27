@@ -37,10 +37,11 @@ Items we've committed to in principle. They have an intended target version. The
 
 | Item | Target version | Form | Status |
 |---|---|---|---|
-| **EXIF (CIPA DC-008)** | v1.16 | Observe-only camera metadata for images — `make`/`model`/`datetime_original`/`orientation` from TIFF/IFD0 + Exif sub-IFD, and **GPS-presence** from the GPS IFD (→ a `geotagged` safety-flag, presence not coordinates). Freely published (cipa.jp); tag structure stable across Exif 2.x–3.1. | **IMPLEMENTED v1.16.0 (2026-06-15)** — JPEG (APP1) + HEIC. Hand-parsed TIFF/EXIF IFD (stdlib/struct, no Pillow). |
-| **HEIF Exif item (ISO/IEC 23008-12)** | v1.16 | The HEIC-specific mechanism: EXIF is stored as an **item** referenced via `meta` → `iinf`/`infe` (item_type `Exif`) + `iloc` (byte range), NOT a JPEG-style APP1 marker. The iPhone-HEIC path. Free ref: nokiatech.github.io/heif/technical.html. | **IMPLEMENTED v1.16.0 (2026-06-15)** — version-aware `iloc` parse; HEIC dims from EXIF pixel dims (the `ispe` tile-trap avoided). |
-| **XMP (ISO 16684-1 / Adobe)** | v1.16 (presence) | Extensible metadata written alongside EXIF by iPhones + any editor. Detect via the Adobe namespace marker — JPEG APP1 `http://ns.adobe.com/xap/1.0/`, PNG `iTXt`, HEIF XMP item. | **PRESENCE IMPLEMENTED v1.16.0 (2026-06-15)** — `xmp_present` via the Adobe namespace marker. Full XMP depth (creator/edit history) is the §9 ungated upgrade. |
-| **ISOBMFF video metadata (ISO 14496-12 + Apple QuickTime keys + ISO 6709)** | v1.16 (gated) | Observe-only container metadata for video — codec/duration/resolution + `mvhd` creation_time + Apple `com.apple.quicktime.*` keys (make/model/creationdate) + **GPS-presence** via `com.apple.quicktime.location.ISO6709` (iPhone) / `udta` `©xyz` (Android), both ISO 6709. Apple publishes the QTFF keys (developer docs). | **GATED within v1.16** — a `video_structure` specialist, deferred until real `.mov` validation data lands (the parked iPhone-`.mov` path). Extends the existing hand-rolled ISOBMFF walk. |
+| **Android video GPS (ISO 6709 in `udta`/`©xyz`)** | TBD (gated) | The Android counterpart to the iPhone QuickTime `location.ISO6709` GPS-presence already shipped — coordinates live in `moov`→`udta`→`©xyz`. | **GATED** — needs a real Android `.mp4`/`.mov` sample to validate (the last open capture-metadata follow-up). |
+| **Full XMP depth (ISO 16684-1)** | TBD | Beyond presence: parse the XMP packet for creator / edit-history / rights. | **PRESENCE-ONLY today** (`xmp_present`, v1.16); a full parse is the ungated upgrade. |
+| **CAD container metadata (DGN / DWG)** | TBD (candidate) | Observe-only structural metadata for CAD drawings. | **CANDIDATE-tier** (CONVENTIONS §3.1) — heavy new untrusted-binary parser, prevalence-gated; not committed. |
+
+_(The image/video capture-metadata standards that used to sit here — EXIF, HEIF Exif item, XMP presence, ISOBMFF + Apple QuickTime keys — all SHIPPED in v1.16–v1.20 and moved to §1.3 below.)_
 
 ### 1.3 Adopted — implemented and current
 
@@ -49,6 +50,13 @@ Items the scanner actively supports. The form here is "what we ship that this st
 | Item | Since version | Form | Notes |
 |---|---|---|---|
 | **Dublin Core** | 0.9 | DOCX specialist extracts `dc:title` → `document.title`, `dc:creator` → `document.author`. Alignment documented in PUBLIC_CONTRACT.md §1.4. | First item promoted through the standards tracking workflow. |
+| **EXIF (CIPA DC-008)** | 1.16 | Image `make`/`model`/`orientation`/`datetime_original` + GPS-presence (→ `geotagged`) from TIFF/IFD0 + Exif sub-IFD + the GPS IFD; JPEG (APP1) + HEIC. Hand-parsed (stdlib/`struct`, no Pillow). | Moved from §1.2 — implemented v1.16.0. |
+| **HEIF Exif item (ISO/IEC 23008-12)** | 1.16 | HEIC EXIF via `meta`→`iinf`/`iloc` Exif-item (version-aware `iloc`); HEIC dims from EXIF pixel dims (the `ispe` tile-trap avoided). | The iPhone-HEIC path. |
+| **XMP presence (ISO 16684-1 / Adobe)** | 1.16 | `xmp_present` via the Adobe namespace marker (JPEG APP1 / HEIF XMP item). Presence only — full depth is a §1.2 upgrade. | |
+| **ISOBMFF + Apple QuickTime keys + ISO 6709 (video)** | 1.17–1.20 | `video_structure` for `.mp4`/`.mov`/`.m4v`: codec/duration/dims/`creation_date` (mvhd) + `make`/`model` + GPS-presence (`location.ISO6709`) + `creation_date_qt` (the QuickTime creationdate key, TZ-bearing). Hand-rolled ISOBMFF walk, stdlib/`struct`. | Apple path adopted; Android `udta`/`©xyz` GPS still §1.2-gated. Oracle-validated `exiftool`-exact. |
+| **ID3v2 + MPEG-1/2 Audio (ISO/IEC 11172-3 / 13818-3)** | 1.25 | `audio` namespace for `.mp3`: ID3v2.2/2.3/2.4 tags + a bounded MPEG frame-header parse (`format`/`bitrate`/`duration_s`, Xing/CBR). Stdlib. | The lone net-new untrusted-binary parser of Candidate B; v1.8.1-hardened. |
+| **MS-CFB + MS-OLEPS (OLE2 property sets)** | 0.7 / 1.25 | OLE2 compound-file reading via `olefile` for `.doc`/`.xls`/`.msg`/`.ppt`: `SummaryInformation` (title/author/app) + `DocumentSummaryInformation` (slide_count). | OLE2 specialists declare a full-file-deviation provenance (v1.25.1). |
+| **JSON Schema (draft 2020-12)** | 1.27 | FO **emits** a standard JSON Schema of the manifest — `docs/manifest.schema.json`, via `--schema --schema-format json-schema` — for any-language validation/codegen. | The first standard FO *produces* (vs consumes); generated from the dataclasses, drift-guarded. |
 
 ### 1.4 Obligations — things we don't get to ignore
 

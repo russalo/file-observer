@@ -43,20 +43,35 @@ pip install file-observer
 Optional extras for richer extraction:
 
 ```bash
+pip install "file-observer[all]"      # every optional specialist (one line — recommended)
 pip install "file-observer[pdf]"      # object-stream + encrypted PDF metadata (pypdf + cryptography)
-pip install "file-observer[msg]"      # OLE2 .msg/.doc/.xls (olefile)
+pip install "file-observer[msg]"      # OLE2 .msg/.doc/.xls/.ppt (olefile)
 pip install "file-observer[watch]"    # --watch FS-event mode (watchfiles)
-pip install "file-observer[pdf,msg,watch]"  # everything
 ```
 
-The CLI is `file-observer` (or the shorthand `fo`).
+Or run it with **no install** (zero-setup, from PyPI), or in a container with no Python at all:
+
+```bash
+uvx file-observer ./folder --stdout         # uv: zero-install + cached (also `pipx run file-observer`)
+docker run --rm -v "/path:/data:ro" ghcr.io/russalo/file-observer > manifest.json
+```
+
+The CLI is `file-observer` (or the shorthand `fo`). From Python: `from file_observer import scan; m = scan("./folder")`. In CI: `uses: russalo/file-observer@<tag>`.
 
 ## 3. Your first scan
 
 → [Example 01](../examples/01-first-scan/)
 
 ```bash
-file-observer path/to/folder -o out
+file-observer path/to/folder -o out          # writes out/manifest_….json + a report
+file-observer path/to/folder --stdout | jq   # or pipe the manifest to stdout (no file written)
+```
+
+…or in Python, one call:
+
+```python
+from file_observer import scan
+m = scan("path/to/folder")                    # returns the manifest (m.summary, m.files, …)
 ```
 
 You get `out/manifest_v{VERSION}_{timestamp}.json` (the structured record) and a
