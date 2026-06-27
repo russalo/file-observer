@@ -7431,6 +7431,10 @@ def main() -> None:
             conflicts.append(f"a source directory ({args.source!r})")
         if args.output is not None:
             conflicts.append("--output")
+        if args.stdout:
+            # v1.28 (leg-4/Codex): --schema already prints to stdout; reject --stdout
+            # rather than silently ignore it (parity with --output/--watch/--format).
+            conflicts.append("--stdout")
         if args.watch:
             conflicts.append("--watch")
         if args.format != "json":
@@ -7518,9 +7522,14 @@ def main() -> None:
         ext = "json"
 
     # v1.28: --stdout — emit the manifest to stdout and write NOTHING to disk (no file, no
-    # report, no "written to" message, which would corrupt the piped manifest).
+    # report, no "written to" message, which would corrupt the piped manifest). Write UTF-8
+    # BYTES to the underlying buffer (leg-4/gemini) so a non-UTF-8 stdout encoding (Windows
+    # cp1252, legacy locales) can't UnicodeEncodeError on non-ASCII metadata — and so stdout
+    # is byte-identical to the `encoding="utf-8"` file the file path would write.
     if args.stdout:
-        sys.stdout.write(output if output.endswith("\n") else output + "\n")
+        text = output if output.endswith("\n") else output + "\n"
+        sys.stdout.buffer.write(text.encode("utf-8"))
+        sys.stdout.buffer.flush()
         return
 
     manifest_dir = Path(args.output) if args.output else Path(__file__).resolve().parent / "manifests"

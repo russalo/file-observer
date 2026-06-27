@@ -61,6 +61,24 @@ def test_stdout_conflicts_with_watch(tmp_path):
     assert "stdout" in out.stderr.lower() and "watch" in out.stderr.lower()
 
 
+def test_stdout_rejected_with_schema(tmp_path):
+    # --schema already prints to stdout; --schema --stdout must be rejected, not ignored (leg-4/Codex)
+    out = _run(["--schema", "--stdout"], cwd=tmp_path)
+    assert out.returncode == 2
+    assert "--stdout" in out.stderr
+
+
+def test_stdout_utf8_non_ascii_metadata(tmp_path):
+    # non-ASCII filename must not UnicodeEncodeError on a non-UTF-8 stdout (leg-4/gemini):
+    # we write UTF-8 bytes to the buffer, so the bytes parse as UTF-8 regardless of locale.
+    src = tmp_path / "src"; src.mkdir()
+    (src / "café_résumé.txt").write_text("héllo wörld\n", encoding="utf-8")
+    out = _run([str(src), "--stdout"], cwd=tmp_path)
+    assert out.returncode == 0, out.stderr
+    manifest = json.loads(out.stdout)  # subprocess text= decodes UTF-8; parses cleanly
+    assert any("café_résumé.txt" == f["filename"] for f in manifest["files"])
+
+
 def test_version_surfaces():
     assert SCANNER_VERSION == "1.28.0"
     assert LOGIC_VERSION == "1.14.1"   # unchanged — output routing only
