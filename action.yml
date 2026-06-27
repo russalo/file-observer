@@ -53,10 +53,12 @@ runs:
         fi
         VENV="${RUNNER_TEMP:-/tmp}/file-observer-venv"
         "$PY" -m venv "$VENV"
-        "$VENV/$BIN/pip" install --quiet --upgrade pip
         SPEC="file-observer[all]"
         if [ -n "$FO_VERSION" ]; then SPEC="file-observer[all]==$FO_VERSION"; fi
-        "$VENV/$BIN/pip" install --quiet "$SPEC"
+        # Invoke pip via `python -m pip` (NOT the pip executable) — on Windows the venv's
+        # pip.exe can't modify its own running process, so `pip install` self-upgrades fail;
+        # `python -m pip` is the canonical cross-platform form (windows self-test caught this).
+        "$VENV/$BIN/python" -m pip install --quiet "$SPEC"
         # Write to a temp file OUTSIDE the scan tree, then move it into place (leg-4/Codex):
         # redirecting into the scanned dir would make the scan include its own (0-byte) output.
         TMP_OUT="${RUNNER_TEMP:-/tmp}/file-observer-manifest.json"
