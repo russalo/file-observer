@@ -1,0 +1,66 @@
+name: Publish Docker image
+
+# Builds the container from Dockerfile and pushes it to GHCR
+# (ghcr.io/russalo/file-observer). Runs on each published release (pinning the image
+# to that version) and on manual dispatch (for a one-off / first build).
+#
+# Auth uses the built-in GITHUB_TOKEN (packages: write) — no external secret needed.
+# NOTE: the first push creates a GHCR package; make it PUBLIC once in the repo's
+# package settings so `docker pull ghcr.io/russalo/file-observer` works unauthenticated.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "file-observer version to build (e.g. 1.28.0); blank = latest on PyPI"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Resolve version + tags
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            V="${GITHUB_REF_NAME#v}"            # release tag vX.Y.Z -> X.Y.Z
+          else
+            V="${{ github.event.inputs.version }}"
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          IMG="ghcr.io/russalo/file-observer"
+          if [ -n "$V" ]; then
+            echo "tags=$IMG:$V,$IMG:latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=$IMG:latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: true
+          build-args: |
+            FO_VERSION=${{ steps.meta.outputs.version }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/russalo/file-observer
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.licenses=AGPL-3.0-or-later

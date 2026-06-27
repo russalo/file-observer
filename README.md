@@ -153,6 +153,23 @@ pip install "file-observer[security]"  # Hardened XML parsing
 pip install "file-observer[dev]"       # Full dev environment
 ```
 
+**No install at all** — run it straight from PyPI with [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/):
+
+```bash
+uvx file-observer ./project --stdout | jq '.quality'     # uv: zero-install, cached
+pipx run file-observer ./project --stdout                # pipx: same idea
+```
+
+**Docker** — no Python needed; scan a mounted directory, manifest to stdout:
+
+```bash
+docker run --rm -v "$PWD:/data:ro" ghcr.io/russalo/file-observer > manifest.json
+# pass your own args (default is `--stdout .`):
+docker run --rm -v "$PWD:/data:ro" ghcr.io/russalo/file-observer /data --specialists --stdout
+```
+
+The image bundles `libmagic` + all optional specialists. (Builds from the [`Dockerfile`](Dockerfile); published to GHCR on each release.)
+
 **Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for common binary formats (archives, images, data, media), then extension-based inference. Install it for the widest coverage:
 ```bash
 sudo apt install libmagic1    # Debian/Ubuntu
