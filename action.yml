@@ -44,13 +44,25 @@ runs:
         FO_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
+        # Cross-platform venv layout (leg-4/gemini): Windows runners have `python` (not
+        # `python3`) and put scripts in `Scripts/` (not `bin/`).
+        if [ "${RUNNER_OS:-}" = "Windows" ]; then
+          PY="python"; BIN="Scripts"
+        else
+          PY="python3"; command -v python3 >/dev/null 2>&1 || PY="python"; BIN="bin"
+        fi
         VENV="${RUNNER_TEMP:-/tmp}/file-observer-venv"
-        python3 -m venv "$VENV"
-        "$VENV/bin/pip" install --quiet --upgrade pip
+        "$PY" -m venv "$VENV"
+        "$VENV/$BIN/pip" install --quiet --upgrade pip
         SPEC="file-observer[all]"
         if [ -n "$FO_VERSION" ]; then SPEC="file-observer[all]==$FO_VERSION"; fi
-        "$VENV/bin/pip" install --quiet "$SPEC"
+        "$VENV/$BIN/pip" install --quiet "$SPEC"
+        # Write to a temp file OUTSIDE the scan tree, then move it into place (leg-4/Codex):
+        # redirecting into the scanned dir would make the scan include its own (0-byte) output.
+        TMP_OUT="${RUNNER_TEMP:-/tmp}/file-observer-manifest.json"
         # shellcheck disable=SC2086  # FO_ARGS is intentionally word-split into multiple flags
-        "$VENV/bin/file-observer" "$FO_PATH" $FO_ARGS --stdout > "$FO_OUTPUT"
+        "$VENV/$BIN/file-observer" "$FO_PATH" $FO_ARGS --stdout > "$TMP_OUT"
+        mkdir -p "$(dirname "$FO_OUTPUT")"   # in case output is in a not-yet-existing subdir (leg-4/gemini)
+        mv "$TMP_OUT" "$FO_OUTPUT"
         echo "manifest-path=$FO_OUTPUT" >> "$GITHUB_OUTPUT"
         echo "::notice title=File Observer::manifest written to $FO_OUTPUT"

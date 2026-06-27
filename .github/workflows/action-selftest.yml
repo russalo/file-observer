@@ -15,7 +15,11 @@ on:
 
 jobs:
   selftest:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]   # the cross-platform venv layout (python/Scripts) is real (v1.15 lesson)
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
 
@@ -23,20 +27,25 @@ jobs:
         id: fo
         uses: ./
         with:
-          path: docs                       # a real directory in this repo
-          args: ""                         # no specialists — fast; the path is text/markdown
+          path: .                          # scan the repo root (so the output lands in the scan tree)
+          args: --specialists
           output: fo-selftest-manifest.json
 
-      - name: Verify the manifest
+      - name: Verify the manifest (valid + no self-inclusion)
+        shell: bash
         run: |
           set -euo pipefail
           M="${{ steps.fo.outputs.manifest-path }}"
           test -f "$M" || { echo "manifest not written to $M"; exit 1; }
-          python3 - "$M" <<'PY'
+          PY="$(command -v python3 || command -v python)"
+          "$PY" - "$M" <<'PY'
           import json, sys
           m = json.load(open(sys.argv[1]))
           assert m["manifest_checksum"], "no manifest_checksum"
           assert m["files"], "no files scanned"
-          print(f"OK — action produced a valid manifest: {len(m['files'])} files, "
+          # the write-to-temp-then-move means the manifest must NOT include its own output file
+          names = {f["filename"] for f in m["files"]}
+          assert "fo-selftest-manifest.json" not in names, "manifest included its own output (self-inclusion)"
+          print(f"OK — valid manifest, no self-inclusion: {len(m['files'])} files, "
                 f"scanner {m['context']['scanner_version']}")
           PY
