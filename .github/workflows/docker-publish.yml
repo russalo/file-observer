@@ -54,11 +54,9 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: .                       # builds from the checked-out source (no PyPI race)
           file: Dockerfile
           push: true
-          build-args: |
-            FO_VERSION=${{ steps.meta.outputs.version }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             org.opencontainers.image.source=https://github.com/russalo/file-observer

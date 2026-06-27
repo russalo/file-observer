@@ -163,12 +163,13 @@ pipx run file-observer ./project --stdout                # pipx: same idea
 **Docker** — no Python needed; scan a mounted directory, manifest to stdout:
 
 ```bash
-docker run --rm -v "$PWD:/data:ro" ghcr.io/russalo/file-observer > manifest.json
+# mount the directory to scan read-only at /data; capture the manifest OUTSIDE it
+docker run --rm -v "/path/to/scan:/data:ro" ghcr.io/russalo/file-observer > manifest.json
 # pass your own args (default is `--stdout .`):
-docker run --rm -v "$PWD:/data:ro" ghcr.io/russalo/file-observer /data --specialists --stdout
+docker run --rm -v "/path/to/scan:/data:ro" ghcr.io/russalo/file-observer /data --specialists --stdout
 ```
 
-The image bundles `libmagic` + all optional specialists. (Builds from the [`Dockerfile`](Dockerfile); published to GHCR on each release.)
+The image bundles `libmagic` + all optional specialists. (Builds from the [`Dockerfile`](Dockerfile); published to GHCR on each release.) Mount your data **read-only** and keep the output file outside the scanned tree, so a manifest you redirect into the same folder isn't picked up by a later scan.
 
 **Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for common binary formats (archives, images, data, media), then extension-based inference. Install it for the widest coverage:
 ```bash
