@@ -6083,6 +6083,11 @@ class Scanner:
                     if not isinstance(b, dict):
                         continue
                     bt = b.get("type")
+                    if not isinstance(bt, str):
+                        bt = None  # malformed JSON: a non-string `type` (list/dict)
+                        # is not a block type — and would raise on `in frozenset`
+                        # (unhashable). Coerce → matches neither set (never-crash,
+                        # the v1.8.1 bounded-observation discipline; leg-4/gemini).
                     if isinstance(b.get("text"), str) and bt not in CHATLOG_GENERIC_BLOCK_TYPES:
                         prose_parts.append(b["text"])          # arm (b): text-bearing
                         recognized = True

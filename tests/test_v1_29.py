@@ -243,3 +243,16 @@ def test_prose_recovered_from_sibling_content_key(scanner):
     )
     pairs = scanner._extract_json_conversation(rec)
     assert pairs[1] == ("assistant", "I will search now.")
+
+
+def test_malformed_block_type_does_not_crash(scanner):
+    """leg-4 (gemini bot): a content block whose `type` is unhashable (list/dict
+    in malformed JSON) must not raise on the set-membership check — the never-crash
+    / bounded-observation discipline. A non-string type matches neither set."""
+    bad = _jsonl(
+        {"role": "user", "content": [{"type": ["x"], "text": "hi"}]},
+        {"role": "assistant", "content": [{"type": {}, "name": "y"}]},
+        {"role": "user", "text": "ok"},
+    )
+    # Must return a bool, not raise.
+    assert scanner._detect_chatlog_pattern(bad) in (True, False)
