@@ -203,3 +203,43 @@ def test_generic_block_types_do_not_false_fire(scanner, name):
     """image/document blocks are GENERIC (galleries, doc-stores, telemetry) — they
     are not recognized triggers, so these must stay is_chatlog=False."""
     assert scanner._detect_chatlog_pattern(NON_DIALOGUE_BLOCKS[name]) is False
+
+
+# --- leg-2 (Gemini cross-model) findings ---
+
+def test_pure_tool_log_does_not_false_fire(scanner):
+    """leg-2 F3A: a pure tool-execution / RPA / workflow log — role-keyed records
+    whose turns are ALL tool_use/tool_result blocks (zero prose) — is NOT a chatlog,
+    even with >=3 records and >=2 distinct roles. A real conversation has language."""
+    rpa = _jsonl(
+        {"author": "scheduler", "value": [{"type": "tool_use", "name": "spawn_vm"}]},
+        {"author": "worker", "value": [{"type": "tool_result", "status": "ok"}]},
+        {"author": "scheduler", "value": [{"type": "tool_use", "name": "deploy"}]},
+    )
+    assert scanner._detect_chatlog_pattern(rpa) is False
+
+
+def test_image_caption_is_not_a_turn(scanner):
+    """leg-2 F3B: an image/document block carrying a `text` caption (OCR/vision
+    telemetry) is not a conversational turn — the caption must not trigger the
+    text-bearing arm."""
+    ocr = _jsonl(
+        {"from": "cam_1", "content": [{"type": "image", "text": "OCR: dog"}]},
+        {"from": "cam_2", "content": [{"type": "image", "text": "OCR: cat"}]},
+        {"from": "cam_1", "content": [{"type": "document", "text": "scanned"}]},
+    )
+    assert scanner._detect_chatlog_pattern(ocr) is False
+
+
+def test_prose_recovered_from_sibling_content_key(scanner):
+    """leg-2 F1: a turn whose `content` is an empty agentic block but whose sibling
+    `message` is a prose string must NOT lose the prose — recognition does not
+    short-circuit on the empty agentic block; later content keys are still scanned."""
+    rec = _jsonl(
+        {"role": "user", "text": "start"},
+        {"role": "assistant", "content": [{"type": "tool_use", "name": "search"}],
+         "message": "I will search now."},
+        {"role": "user", "text": "end"},
+    )
+    pairs = scanner._extract_json_conversation(rec)
+    assert pairs[1] == ("assistant", "I will search now.")

@@ -36,8 +36,8 @@
 | Leg | Status |
 |---|---|
 | In-house multi-agent swarm | ✅ **2 HIGH findings, both fixed** — (1) untyped-text-block regression (True→False): text-bearing arm restored; (2) image/document FP surface (galleries/doc-stores/telemetry): generic types dropped, set narrowed to distinctive `{thinking,tool_use,tool_result}`. Both grounded against the parent commit before fixing; falsify-first corpus extended. Findings logged in `scratch/review/v1.29_findings.md`. |
-| Gemini cross-model | _(pending — `gem-review.sh` red-team of the FP surface)_ |
-| Empirical corpus sweep | ✅ 28-log recover/regress validation (3 recovered, 0 regressed) + workers=1-vs-4 byte-identical on a real agentic log |
+| Gemini cross-model | ✅ **PRO (Gemini 3.1 Pro via Antigravity `agy`) red-team — 5 findings, grounded:** **3 actioned** — F3A (pure tool-execution log false-fires, all-empty prose) → detection now requires ≥1 prose turn; F1 (sibling `message` prose lost behind an empty `content` agentic block) → recognition no longer short-circuits; F3B (image/document caption fires the text-bearing arm) → generic-block captions excluded. **3 refuted by repro** — F2A (claimed crash on string blocks: the `isinstance(b, dict)` guard is present), F2B (nested `{message:{text}}`: pre-existing, non-standard), F4 (frozenset nondeterminism: output iterates the ordered block list, not the set; rules_hash uses `sorted()`). flash (`gemini` CLI) timed out; PRO covered the leg. Logged in `scratch/review/v1.29_findings.md`. |
+| Empirical corpus sweep | ✅ 28-log recover/regress validation (3 recovered, 0 regressed; 26/28 unchanged through both review rounds) + workers=1-vs-4 byte-identical on a real agentic log |
 | PR bots (Codex / Gemini / Copilot) | _(fire on PR open)_ |
 
-_(Gemini + PR-bot legs complete at PR; findings logged in `scratch/review/`.)_
+_(PR-bot leg completes at PR; findings logged in `scratch/review/`.)_

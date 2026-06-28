@@ -1054,6 +1054,14 @@ CHATLOG_METHOD_VERSION = 10  # v1.29.0: agentic turn recognition — a turn with
 CHATLOG_AGENTIC_BLOCK_TYPES = frozenset({
     "thinking", "tool_use", "tool_result",
 })
+# v1.29.0 (leg-2 review): GENERIC content-block types whose `text` field is a
+# caption/label, NOT a conversational turn. A block of one of these is excluded
+# from the text-bearing recognition arm so an image/OCR-caption or a document
+# label does not register as dialogue (real Anthropic image/document blocks carry
+# no top-level `text` anyway). Closed set → feeds the rules_hash.
+CHATLOG_GENERIC_BLOCK_TYPES = frozenset({
+    "image", "document",
+})
 CHATLOG_RULES_DEFINITION = (
     "detect:prose_composite(stop_list_filtered,floor[distinct>=2,total>=3,recurring>=1],"
     "faq_complete_set{question,answer,q,a,faq}->reject,"
@@ -1062,7 +1070,7 @@ CHATLOG_RULES_DEFINITION = (
     "version_tag_header(>=2)->reject),"
     "h3_header_re(5+)|section_divider_re(3+)[require nonstoplist_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
-    "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2);"
+    "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2 AND prose_turns>=1);"
     "extract:turn_count,speaker_labels(freq>=3,nonspeaker_ci),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,content_shape{utterance_ratio,density},"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
@@ -1081,10 +1089,12 @@ CHATLOG_RULES_DEFINITION = (
     "fixme,format,from,important,license,lines,message,newsgroups,note,options,organization,"
     "parameters,password,path,question,references,result,returns,sender,subject,summary,"
     "synopsis,tip,to,todo,usage,version,warning"
-    # v1.29.0: distinctive agentic block vocabulary, derived from the live set so
-    # an edit to CHATLOG_AGENTIC_BLOCK_TYPES moves the rules_hash → identity_digest
-    # (the determinism contract; the provenance-table / fp_lexicon precedent).
+    # v1.29.0: distinctive agentic + generic (caption-only) block vocabularies,
+    # derived from the live sets so an edit to either moves the rules_hash →
+    # identity_digest (the determinism contract; the provenance-table / fp_lexicon
+    # precedent).
     ";agentic_block_types:" + ",".join(sorted(CHATLOG_AGENTIC_BLOCK_TYPES))
+    + ";generic_block_types:" + ",".join(sorted(CHATLOG_GENERIC_BLOCK_TYPES))
 )
 # NOTE: these literals MUST equal the live CHATLOG_* threshold constants defined
 # below (they feed static_tuning_hash, the constants gate detection). A guard
@@ -5942,8 +5952,16 @@ class Scanner:
         Claude rich-content blocks — all of which carry <2 distinct roles and
         previously false-positived.
         """
-        speakers = [sp for sp, _ in self._extract_json_conversation(text)]
-        if len(speakers) >= 3 and len(set(speakers)) >= 2:
+        pairs = self._extract_json_conversation(text)
+        speakers = [sp for sp, _ in pairs]
+        # v1.29.0 (leg-2 F3A): a real conversation contains LANGUAGE — require at
+        # least one turn with actual prose. A pure tool-execution / RPA / workflow
+        # log (every turn a tool_use/tool_result block → empty prose) is NOT a
+        # chatlog even with >=3 role-keyed records and >=2 distinct roles. Real
+        # agentic sessions always open with a human prose prompt, so this never
+        # drops a genuine conversation (corpus-verified: 26/28 unchanged).
+        if (len(speakers) >= 3 and len(set(speakers)) >= 2
+                and any(txt for _, txt in pairs)):
             return True
         # Regex fallback ONLY when the parser extracted nothing — a truncated/
         # large single-JSON it couldn't read (e.g. a multi-MB ShareGPT file).
@@ -5997,19 +6015,25 @@ class Scanner:
         v1.29.0: a turn is RECOGNIZED (returns a pair, so it counts in detection
         and turn_count) when it has a conversational role AND content that is a
         non-empty string OR a list of content blocks recognized by EITHER arm:
-          (b) text-bearing — any block with a string `text` value (any/no type).
-              The pre-v1.29 behaviour; yields prose. (backward-compat)
+          (b) text-bearing — any block with a string `text` value, EXCEPT a
+              GENERIC block (image/document — its `text` is a caption, not a turn;
+              leg-2 F3B). The pre-v1.29 prose path; backward-compat.
           (c) distinctive agentic — a block of CHATLOG_AGENTIC_BLOCK_TYPES
               (thinking/tool_use/tool_result). Recovers tool-heavy Claude Code
               turns the prior text-centric gate missed. thinking yields prose;
               tool_use/tool_result yield none → (speaker, "").
         Because arm (b) preserves the old behaviour and arm (c) only ADDS, the
         gate is a strict superset of v1.28 — `is_chatlog` never flips True→False.
+        A turn recognized via an agentic block but yielding no prose does NOT
+        short-circuit — later content keys are still scanned, so a sibling prose
+        string isn't lost behind an empty `content` list (leg-2 F1).
         Returned PROSE is authored language only (string content + text + thinking
         blocks); a tool-only turn contributes the turn, not chars/vocabulary (§4).
-        The GENERIC block types image/document are deliberately NOT recognition
-        triggers — they false-fire on galleries / doc-stores / telemetry for zero
-        agentic-recovery value (leg-1 review; RFC §3.2 + §8.1 reversed).
+        The GENERIC block types image/document are NOT recognition triggers (neither
+        their type nor their caption text) — they false-fire on galleries /
+        doc-stores / OCR telemetry for zero agentic-recovery value (leg-1 + leg-2
+        review; RFC §3.2 + §8.1 reversed). A pure tool-execution log (all turns
+        empty-prose) is rejected at the detection layer (leg-2 F3A, §3.2).
         """
         speaker = None
         for k in CHATLOG_ROLE_FIELD_KEYS:
@@ -6026,6 +6050,11 @@ class Scanner:
             break
         if speaker is None:
             return None
+        # v1.29.0: scan content keys for a recognized turn. A turn recognized via
+        # an agentic block but with NO prose does NOT short-circuit — keep scanning
+        # later content keys for prose first, so a sibling `message` string isn't
+        # lost behind an empty `content` list (leg-2 F1).
+        recognized = False
         for k in CHATLOG_CONTENT_FIELD_KEYS:
             if k not in obj:
                 continue
@@ -6041,31 +6070,32 @@ class Scanner:
                     blocks = c
             elif isinstance(v, list):
                 blocks = v
-            # v1.29.0: recognize a turn from its content blocks via TWO arms:
-            #   (b) text-bearing — any block with a string `text` value (any/no
-            #       type). Backward-compat: the pre-v1.29 behaviour; yields prose.
+            # Recognize a turn from its content blocks via TWO arms:
+            #   (b) text-bearing — any block with a string `text` value, EXCEPT a
+            #       GENERIC block (image/document — its `text` is a caption, not a
+            #       conversational turn; leg-2 F3B). Backward-compat prose path.
             #   (c) distinctive agentic — a block of CHATLOG_AGENTIC_BLOCK_TYPES
             #       (thinking/tool_use/tool_result). Recovers tool-heavy turns;
             #       thinking yields prose, tool_use/tool_result yield none.
-            # A tool-only turn returns (speaker, "") — counted, no prose (the §4
-            # turn-vs-prose split). GENERIC block types (image/document) are NOT
-            # recognized triggers (leg-1 review FP fix).
             if blocks is not None:
                 prose_parts: list[str] = []
-                recognized = False
                 for b in blocks:
                     if not isinstance(b, dict):
                         continue
-                    if isinstance(b.get("text"), str):          # arm (b): text-bearing
-                        prose_parts.append(b["text"])
+                    bt = b.get("type")
+                    if isinstance(b.get("text"), str) and bt not in CHATLOG_GENERIC_BLOCK_TYPES:
+                        prose_parts.append(b["text"])          # arm (b): text-bearing
                         recognized = True
-                    elif b.get("type") in CHATLOG_AGENTIC_BLOCK_TYPES:  # arm (c)
+                    elif bt in CHATLOG_AGENTIC_BLOCK_TYPES:    # arm (c): distinctive
                         recognized = True
-                        if b.get("type") == "thinking" and isinstance(b.get("thinking"), str):
+                        if bt == "thinking" and isinstance(b.get("thinking"), str):
                             prose_parts.append(b["thinking"])
-                if recognized:
-                    return (speaker, "\n".join(prose_parts))
-        return None
+                joined = "\n".join(p for p in prose_parts if p)
+                if joined:
+                    return (speaker, joined)   # prose found — return it
+                # recognized-but-empty: remember, keep scanning later keys for prose
+        # Recognized via agentic block(s) with no prose anywhere → counted, empty.
+        return (speaker, "") if recognized else None
 
     @staticmethod
     def _parse_embedded_dialogue(s: str) -> list[tuple[str, str]]:
