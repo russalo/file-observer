@@ -39,9 +39,11 @@ def _turns(seq):
 
 class TestVersionSurfaces:
     def test_chatlog_method_version(self):
-        # v1.4's stable invariant — the content-shape gate is method_version 9.
-        # (Global SCANNER/LOGIC/SCHEMA move each release; pinned in test_packaging.)
-        assert CHATLOG_METHOD_VERSION == 9
+        # method_version moves when the chatlog producing-logic changes: 9 = v1.4
+        # content-shape gate; 10 = v1.29.0 agentic turn recognition (tool turns
+        # count in detection + signals). (Global SCANNER/LOGIC/SCHEMA move each
+        # release; pinned in test_packaging.)
+        assert CHATLOG_METHOD_VERSION == 10
         # content_shape present from schema 1.3 on (tuple compare — string ">=" breaks at 1.10)
         assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 3)
 

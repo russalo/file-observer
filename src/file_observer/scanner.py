@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.28.1
+    Version:    1.29.0
     Schema:     1.16
     Python:     >= 3.12
-    Spec:       docs/v1.28.0_RFC_Specification.md (current)
+    Spec:       docs/v1.29.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -78,8 +78,8 @@ except ImportError:
     _defusedxml_available = False
 
 
-SCANNER_VERSION = "1.28.1"
-LOGIC_VERSION = "1.14.1"   # v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCANNER_VERSION = "1.29.0"
+LOGIC_VERSION = "1.15.0"   # v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.16"   # v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -1039,7 +1039,29 @@ CHATLOG_TOOL = "chatlog_signals"
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 9  # v1.4.0: content-shape gate over the count rule — utterance_ratio (function-word/punct/length arms) + FP-lexicon dominance + version-tag structure-vote + FAQ complete-set; density surfaced but not gated
+CHATLOG_METHOD_VERSION = 10  # v1.29.0: agentic turn recognition — a turn with a conversational role + a text-bearing block OR a DISTINCTIVE agentic block (thinking/tool_use/tool_result) counts in BOTH detection and turn-counting signals (prose signals stay text+thinking only). Recovers tool-heavy Claude Code sessions the text-centric gate false-negatived. Prior 9 = v1.4.0: content-shape gate over the count rule — utterance_ratio (function-word/punct/length arms) + FP-lexicon dominance + version-tag structure-vote + FAQ complete-set; density surfaced but not gated
+# v1.29.0: DISTINCTIVE agentic content-block types. A turn carrying >=1 block of
+# these types is a real conversational turn even when it yields no prose (tool_use/
+# tool_result) — counted in detection + turn_count. Deliberately the Anthropic-
+# distinctive types ONLY: thinking/tool_use/tool_result essentially never appear in
+# non-dialogue JSON. The GENERIC types text/image/document are NOT here (leg-1
+# review: image/document false-fired on galleries / doc-stores / telemetry for zero
+# agentic-recovery value; RFC §8.1 reversed). `text` blocks are recognized by their
+# string value (the text-bearing arm, backward-compat) — not this set. PROSE
+# (char/vocabulary) = `text` + `thinking` blocks only; tool I/O contributes the turn,
+# not the language. Closed set → feeds the rules_hash (appended to
+# CHATLOG_RULES_DEFINITION below, derived from the live set → an edit moves the digest).
+CHATLOG_AGENTIC_BLOCK_TYPES = frozenset({
+    "thinking", "tool_use", "tool_result",
+})
+# v1.29.0 (leg-2 review): GENERIC content-block types whose `text` field is a
+# caption/label, NOT a conversational turn. A block of one of these is excluded
+# from the text-bearing recognition arm so an image/OCR-caption or a document
+# label does not register as dialogue (real Anthropic image/document blocks carry
+# no top-level `text` anyway). Closed set → feeds the rules_hash.
+CHATLOG_GENERIC_BLOCK_TYPES = frozenset({
+    "image", "document",
+})
 CHATLOG_RULES_DEFINITION = (
     "detect:prose_composite(stop_list_filtered,floor[distinct>=2,total>=3,recurring>=1],"
     "faq_complete_set{question,answer,q,a,faq}->reject,"
@@ -1048,7 +1070,7 @@ CHATLOG_RULES_DEFINITION = (
     "version_tag_header(>=2)->reject),"
     "h3_header_re(5+)|section_divider_re(3+)[require nonstoplist_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
-    "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2);"
+    "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2 AND prose_turns>=1);"
     "extract:turn_count,speaker_labels(freq>=3,nonspeaker_ci),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,content_shape{utterance_ratio,density},"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
@@ -1067,6 +1089,12 @@ CHATLOG_RULES_DEFINITION = (
     "fixme,format,from,important,license,lines,message,newsgroups,note,options,organization,"
     "parameters,password,path,question,references,result,returns,sender,subject,summary,"
     "synopsis,tip,to,todo,usage,version,warning"
+    # v1.29.0: distinctive agentic + generic (caption-only) block vocabularies,
+    # derived from the live sets so an edit to either moves the rules_hash →
+    # identity_digest (the determinism contract; the provenance-table / fp_lexicon
+    # precedent).
+    ";agentic_block_types:" + ",".join(sorted(CHATLOG_AGENTIC_BLOCK_TYPES))
+    + ";generic_block_types:" + ",".join(sorted(CHATLOG_GENERIC_BLOCK_TYPES))
 )
 # NOTE: these literals MUST equal the live CHATLOG_* threshold constants defined
 # below (they feed static_tuning_hash, the constants gate detection). A guard
@@ -5924,8 +5952,16 @@ class Scanner:
         Claude rich-content blocks — all of which carry <2 distinct roles and
         previously false-positived.
         """
-        speakers = [sp for sp, _ in self._extract_json_conversation(text)]
-        if len(speakers) >= 3 and len(set(speakers)) >= 2:
+        pairs = self._extract_json_conversation(text)
+        speakers = [sp for sp, _ in pairs]
+        # v1.29.0 (leg-2 F3A): a real conversation contains LANGUAGE — require at
+        # least one turn with actual prose. A pure tool-execution / RPA / workflow
+        # log (every turn a tool_use/tool_result block → empty prose) is NOT a
+        # chatlog even with >=3 role-keyed records and >=2 distinct roles. Real
+        # agentic sessions always open with a human prose prompt, so this never
+        # drops a genuine conversation (corpus-verified: 26/28 unchanged).
+        if (len(speakers) >= 3 and len(set(speakers)) >= 2
+                and any(txt for _, txt in pairs)):
             return True
         # Regex fallback ONLY when the parser extracted nothing — a truncated/
         # large single-JSON it couldn't read (e.g. a multi-MB ShareGPT file).
@@ -5969,12 +6005,35 @@ class Scanner:
 
     @staticmethod
     def _message_role_content(obj: dict) -> tuple[str, str] | None:
-        """(speaker, content_text) for a message-like dict, else None.
+        """(speaker, prose_text) for a message-like dict, else None.
 
         v1.2.1: `type` counts as the speaker only when its value is a
         conversational role (Claude's type:user/assistant); a non-conversational
         `type` (a wrapper like "message", a log level "info", a content block
         "text") is skipped so the next role key (role/from/speaker/author) wins.
+
+        v1.29.0: a turn is RECOGNIZED (returns a pair, so it counts in detection
+        and turn_count) when it has a conversational role AND content that is a
+        non-empty string OR a list of content blocks recognized by EITHER arm:
+          (b) text-bearing — any block with a string `text` value, EXCEPT a
+              GENERIC block (image/document — its `text` is a caption, not a turn;
+              leg-2 F3B). The pre-v1.29 prose path; backward-compat.
+          (c) distinctive agentic — a block of CHATLOG_AGENTIC_BLOCK_TYPES
+              (thinking/tool_use/tool_result). Recovers tool-heavy Claude Code
+              turns the prior text-centric gate missed. thinking yields prose;
+              tool_use/tool_result yield none → (speaker, "").
+        Because arm (b) preserves the old behaviour and arm (c) only ADDS, the
+        gate is a strict superset of v1.28 — `is_chatlog` never flips True→False.
+        A turn recognized via an agentic block but yielding no prose does NOT
+        short-circuit — later content keys are still scanned, so a sibling prose
+        string isn't lost behind an empty `content` list (leg-2 F1).
+        Returned PROSE is authored language only (string content + text + thinking
+        blocks); a tool-only turn contributes the turn, not chars/vocabulary (§4).
+        The GENERIC block types image/document are NOT recognition triggers (neither
+        their type nor their caption text) — they false-fire on galleries /
+        doc-stores / OCR telemetry for zero agentic-recovery value (leg-1 + leg-2
+        review; RFC §3.2 + §8.1 reversed). A pure tool-execution log (all turns
+        empty-prose) is rejected at the detection layer (leg-2 F3A, §3.2).
         """
         speaker = None
         for k in CHATLOG_ROLE_FIELD_KEYS:
@@ -5991,25 +6050,57 @@ class Scanner:
             break
         if speaker is None:
             return None
+        # v1.29.0: scan content keys for a recognized turn. A turn recognized via
+        # an agentic block but with NO prose does NOT short-circuit — keep scanning
+        # later content keys for prose first, so a sibling `message` string isn't
+        # lost behind an empty `content` list (leg-2 F1).
+        recognized = False
         for k in CHATLOG_CONTENT_FIELD_KEYS:
             if k not in obj:
                 continue
             v = obj[k]
             if isinstance(v, str) and v.strip():
                 return (speaker, v)
+            blocks = None
             if isinstance(v, dict):
                 c = v.get("content")
                 if isinstance(c, str) and c.strip():
                     return (speaker, c)
                 if isinstance(c, list):
-                    parts = [it["text"] for it in c if isinstance(it, dict) and isinstance(it.get("text"), str)]
-                    if parts:
-                        return (speaker, "\n".join(parts))
-            if isinstance(v, list):
-                parts = [it["text"] for it in v if isinstance(it, dict) and isinstance(it.get("text"), str)]
-                if parts:
-                    return (speaker, "\n".join(parts))
-        return None
+                    blocks = c
+            elif isinstance(v, list):
+                blocks = v
+            # Recognize a turn from its content blocks via TWO arms:
+            #   (b) text-bearing — any block with a string `text` value, EXCEPT a
+            #       GENERIC block (image/document — its `text` is a caption, not a
+            #       conversational turn; leg-2 F3B). Backward-compat prose path.
+            #   (c) distinctive agentic — a block of CHATLOG_AGENTIC_BLOCK_TYPES
+            #       (thinking/tool_use/tool_result). Recovers tool-heavy turns;
+            #       thinking yields prose, tool_use/tool_result yield none.
+            if blocks is not None:
+                prose_parts: list[str] = []
+                for b in blocks:
+                    if not isinstance(b, dict):
+                        continue
+                    bt = b.get("type")
+                    if not isinstance(bt, str):
+                        bt = None  # malformed JSON: a non-string `type` (list/dict)
+                        # is not a block type — and would raise on `in frozenset`
+                        # (unhashable). Coerce → matches neither set (never-crash,
+                        # the v1.8.1 bounded-observation discipline; leg-4/gemini).
+                    if isinstance(b.get("text"), str) and bt not in CHATLOG_GENERIC_BLOCK_TYPES:
+                        prose_parts.append(b["text"])          # arm (b): text-bearing
+                        recognized = True
+                    elif bt in CHATLOG_AGENTIC_BLOCK_TYPES:    # arm (c): distinctive
+                        recognized = True
+                        if bt == "thinking" and isinstance(b.get("thinking"), str):
+                            prose_parts.append(b["thinking"])
+                joined = "\n".join(p for p in prose_parts if p)
+                if joined:
+                    return (speaker, joined)   # prose found — return it
+                # recognized-but-empty: remember, keep scanning later keys for prose
+        # Recognized via agentic block(s) with no prose anywhere → counted, empty.
+        return (speaker, "") if recognized else None
 
     @staticmethod
     def _parse_embedded_dialogue(s: str) -> list[tuple[str, str]]:
