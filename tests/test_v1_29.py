@@ -13,7 +13,7 @@ import pytest
 from file_observer.scanner import (
     Scanner,
     ScannerConfig,
-    CHATLOG_CONTENT_BLOCK_TYPES,
+    CHATLOG_AGENTIC_BLOCK_TYPES,
     CHATLOG_RULES_DEFINITION,
     compute_rules_hash,
 )
@@ -147,7 +147,7 @@ def test_prose_signals_exclude_tool_io(scanner):
 def test_block_type_set_feeds_rules_hash():
     """The live set is enumerated in CHATLOG_RULES_DEFINITION, so editing it moves
     the rules_hash → the chatlog vector identity_digest (the determinism contract)."""
-    enumerated = ",".join(sorted(CHATLOG_CONTENT_BLOCK_TYPES))
+    enumerated = ",".join(sorted(CHATLOG_AGENTIC_BLOCK_TYPES))
     assert enumerated in CHATLOG_RULES_DEFINITION
     # A changed set produces a different rules_hash.
     h_now = compute_rules_hash(CHATLOG_RULES_DEFINITION)
@@ -155,7 +155,51 @@ def test_block_type_set_feeds_rules_hash():
     assert compute_rules_hash(mutated) != h_now
 
 
-def test_block_types_are_the_expected_closed_set():
-    assert CHATLOG_CONTENT_BLOCK_TYPES == frozenset(
-        {"text", "thinking", "tool_use", "tool_result", "image", "document"}
+def test_block_types_are_the_distinctive_set():
+    """DISTINCTIVE agentic types only — generic text/image/document are NOT triggers
+    (leg-1 review: image/document false-fired on galleries/doc-stores/telemetry)."""
+    assert CHATLOG_AGENTIC_BLOCK_TYPES == frozenset(
+        {"thinking", "tool_use", "tool_result"}
     )
+
+
+# --- leg-1 review regressions (the falsify-first gap it found) ---
+
+def test_untyped_text_blocks_still_detected(scanner):
+    """Finding 1 (backward-compat): a turn whose content is a list of UNtyped
+    text blocks (no `type`, just a `text` key) must still detect — the pre-v1.29
+    behaviour. The text-bearing arm recognizes it regardless of block type."""
+    untyped = _jsonl(
+        {"role": "user", "content": [{"text": "hello there friend"}]},
+        {"role": "assistant", "content": [{"text": "hi, how can i help"}]},
+        {"role": "user", "content": [{"text": "tell me a story please"}]},
+    )
+    assert scanner._detect_chatlog_pattern(untyped) is True
+
+
+# Structured JSON that USES recognized-looking block types but is NOT dialogue —
+# the FP surface the original adversarial corpus missed (leg-1 Finding 2).
+NON_DIALOGUE_BLOCKS = {
+    "image_gallery": _jsonl(
+        {"role": "thumbnail", "content": [{"type": "image", "url": "a.png"}]},
+        {"role": "full", "content": [{"type": "image", "url": "b.png"}]},
+        {"role": "icon", "content": [{"type": "image", "url": "c.png"}]},
+    ),
+    "doc_store": _jsonl(
+        {"author": "alice", "body": [{"type": "document", "src": "x"}]},
+        {"author": "bob", "body": [{"type": "document", "src": "y"}]},
+        {"author": "carol", "body": [{"type": "document", "src": "z"}]},
+    ),
+    "typed_telemetry_doc_blocks": _jsonl(
+        {"type": "system", "content": [{"type": "document", "id": 1}]},
+        {"type": "tool", "content": [{"type": "document", "id": 2}]},
+        {"type": "function", "content": [{"type": "document", "id": 3}]},
+    ),
+}
+
+
+@pytest.mark.parametrize("name", list(NON_DIALOGUE_BLOCKS))
+def test_generic_block_types_do_not_false_fire(scanner, name):
+    """image/document blocks are GENERIC (galleries, doc-stores, telemetry) — they
+    are not recognized triggers, so these must stay is_chatlog=False."""
+    assert scanner._detect_chatlog_pattern(NON_DIALOGUE_BLOCKS[name]) is False

@@ -9,11 +9,11 @@
 
 | RFC § | Requirement | Evidence |
 |---|---|---|
-| §3.1 | Turn recognized when conversational role + content is a string OR carries a recognized block type | `_message_role_content` rewritten; `tests/test_v1_29.py::test_agentic_session_detected`, `test_agentic_fixture_shape` |
-| §3.1 | Block set `{text, thinking, tool_use, tool_result, image, document}` (incl. `document`, review §8.1) | `CHATLOG_CONTENT_BLOCK_TYPES`; `test_block_types_are_the_expected_closed_set` |
-| §3.2 | Block-vocabulary gate, NOT "any content" — FP-clean vs structured JSON | `test_toolturn_gate_rejects_structured_json` (telemetry/RBAC/func-call/metrics → False); falsify-first probe `scratch/falsify_toolturn_gate.py` |
-| §3.2 | Strict superset of the prior gate → 0 regressions | Corpus validation: current 23/28 → 26/28 fire; **0 regressions** across 28 logs; the 2 remaining misses are tiny stubs |
-| §3.3 | Block-type set feeds `rules_hash` (determinism) | Appended to `CHATLOG_RULES_DEFINITION` derived from the live set; `test_block_type_set_feeds_rules_hash` |
+| §3.1 | Turn recognized when conversational role + a text-bearing block OR a distinctive agentic block | `_message_role_content` rewritten (two arms); `tests/test_v1_29.py::test_agentic_session_detected`, `test_agentic_fixture_shape`, `test_untyped_text_blocks_still_detected` |
+| §3.1 | Distinctive set `{thinking, tool_use, tool_result}` (image/document dropped — leg-1 §8.1 reversal) | `CHATLOG_AGENTIC_BLOCK_TYPES`; `test_block_types_are_the_distinctive_set` |
+| §3.2 | Distinctive-vocabulary gate, NOT "any content" — FP-clean vs structured JSON incl. galleries/doc-stores | `test_toolturn_gate_rejects_structured_json` + `test_generic_block_types_do_not_false_fire`; falsify-first probe `scratch/falsify_toolturn_gate.py` |
+| §3.2 | Strict superset of the prior gate → 0 regressions, no True→False | Corpus validation: 23/28 → 26/28 fire; **0 regressions** across 28 logs; untyped-text backward-compat restored; 2 remaining misses are tiny stubs |
+| §3.3 | Block-type set feeds `rules_hash` (determinism) | Appended to `CHATLOG_RULES_DEFINITION` derived from the live `CHATLOG_AGENTIC_BLOCK_TYPES`; `test_block_type_set_feeds_rules_hash` |
 | §4 | Extraction extends: turn-counting signals count tool turns | `test_extraction_counts_tool_turns` (turn_count==5, speaker counts incl. tool turns) |
 | §4 | Prose signals stay authored-language only (text+thinking; tool I/O excluded) | `test_prose_signals_exclude_tool_io` (tool_use/tool_result → empty prose; thinking → prose) |
 | §5 | `is_chatlog` strictly additive (no True→False) | Validation: 0 regressions; superset gate |
@@ -35,9 +35,9 @@
 
 | Leg | Status |
 |---|---|
-| In-house multi-agent swarm | _(pending — run on the diff before PR)_ |
+| In-house multi-agent swarm | ✅ **2 HIGH findings, both fixed** — (1) untyped-text-block regression (True→False): text-bearing arm restored; (2) image/document FP surface (galleries/doc-stores/telemetry): generic types dropped, set narrowed to distinctive `{thinking,tool_use,tool_result}`. Both grounded against the parent commit before fixing; falsify-first corpus extended. Findings logged in `scratch/review/v1.29_findings.md`. |
 | Gemini cross-model | _(pending — `gem-review.sh` red-team of the FP surface)_ |
-| Empirical corpus sweep | ✅ 28-log recover/regress validation + workers byte-identical |
+| Empirical corpus sweep | ✅ 28-log recover/regress validation (3 recovered, 0 regressed) + workers=1-vs-4 byte-identical on a real agentic log |
 | PR bots (Codex / Gemini / Copilot) | _(fire on PR open)_ |
 
-_(This section is completed as the review legs run; findings logged in `scratch/review/`.)_
+_(Gemini + PR-bot legs complete at PR; findings logged in `scratch/review/`.)_
