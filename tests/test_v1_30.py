@@ -62,6 +62,16 @@ def test_missing_previous_manifest_warns_not_errors(tmp_path):
     assert "previous-manifest" in out.stderr
 
 
+def test_directory_previous_manifest_warns(tmp_path):
+    """leg-4/gemini: a directory (or special file) as --previous-manifest yields no usable
+    delta → warn (is_file(), not exists()), still rc=0."""
+    src = tmp_path / "src"; src.mkdir(); _corpus(src)
+    adir = tmp_path / "notafile"; adir.mkdir()
+    out = _run([str(src), "-o", str(tmp_path / "o"), "--previous-manifest", str(adir)], cwd=tmp_path)
+    assert out.returncode == 0, out.stderr
+    assert "warning" in out.stderr.lower() and "not a file" in out.stderr.lower()
+
+
 def test_empty_real_directory_still_succeeds(tmp_path):
     """The PRESERVED case: a legitimately-empty real dir scans rc=0 with an empty manifest.
     Only nonexistent/non-dir is an error — 0 files is a valid observation."""

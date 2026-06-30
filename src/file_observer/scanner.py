@@ -7579,10 +7579,12 @@ def main() -> None:
     if args.preview_max < 0:
         print("file-observer: --preview-max must be >= 0", file=sys.stderr)
         sys.exit(2)
-    if args.previous_manifest is not None and not Path(args.previous_manifest).exists():
-        # OPTIONAL input — a missing prior is a warning (no delta baseline), not an error.
-        print(f"file-observer: warning: --previous-manifest not found, proceeding without a "
-              f"delta: {args.previous_manifest}", file=sys.stderr)
+    if args.previous_manifest is not None and not Path(args.previous_manifest).is_file():
+        # OPTIONAL input — a missing OR non-file (e.g. a directory) prior is a warning (no
+        # delta baseline), not an error. is_file() (not exists()) so a directory/special file
+        # warns too, since it yields no usable delta — leg-4/gemini.
+        print(f"file-observer: warning: --previous-manifest not found or not a file, "
+              f"proceeding without a delta: {args.previous_manifest}", file=sys.stderr)
 
     # Build config from profile + explicit args + overrides
     profile_values = SCAN_PROFILES.get(args.profile, {}) if args.profile else {}
