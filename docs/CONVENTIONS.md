@@ -18,7 +18,7 @@ The scanner has five distinct things that carry versions. They are independent �
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.29.0`
+**Current:** `1.30.0`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic — code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
@@ -190,6 +190,7 @@ logic + evidence of value**, not age.
 |---|---|---|---|
 | CAD (DGN/DWG) | heavy new parser on untrusted binary | prevalence via `format_sig_dist` + `recognition_candidates.B_by_family[cad]` (19 `.dwg`, 2026-06-17 scout) | enough real-corpus CAD to justify a red-teamed reader |
 | word-twisting provenance | data-gated on the tagged RPG corpus | the corpus tagging itself (external) | tagged corpus exists + hypothesis validates |
+| chatlog relay-block extraction (`observed.chatlog.relays:[{from_agent,to_agent,subject,origin_project}]`) | heuristic detection of a self-authored, drifting convention (NOT a spec); chatlog family is alpha-locked + Sentinel-mirrored → coordination-gated; no consumer built yet (recall's relay feature is a held bearing) | `scratch/measure_relay_blocks.py` on the federation chatlog corpus (2026-06-28 sizing: **560 blocks across 17/29 logs**, 63% anchor precision, 65% naive extraction, **20 shape signatures** top-format-only-31% → `scratch/relay_candidate_sizing_2026-06-28.md`) | recall builds the relay consumer + Sentinel coordinated (chatlog-detection LOGIC change → RFC + 4-leg) — and ideally the relay format is **canonicalized first** (the variance is self-inflicted: standardizing the shape lifts extraction 65%→~100%) |
 | **[SHIPPED v1.23.2]** corroborated-header MIME sniff (the v1.23.1 Codex-P2 follow-up) | the offset-only window can't separate a real header at offset 257–1024 from a deep literal (e.g. the `.py` `%PDF-1.4` at 864 sits inside the 1024 PDF tolerance); the robust fix — widen to the 1024 spec tolerance AND require a corroborating structural token (`endobj`/`xref`/`trailer`) — exceeds a window-tweak patch | the puresniff clean-room replica (which surfaced the v1.23.1 FP) is the venue to design the robust signature; sweep harvest = count of no-libmagic files with `%PDF-` at offset 257–1024 (currently ~0 in 19.5k corpus) | a real corpus file regresses (renamed/junk-prefixed PDF, no-libmagic) OR puresniff lands the corroborated signature → adopt cross-replica |
 
 **Graduated out of the candidate tier (recorded so the ladder shows its history):**

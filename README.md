@@ -44,7 +44,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.16",
-  "context": { "scanner_version": "1.29.0", "logic_version": "1.15.0", "...": "…" },
+  "context": { "scanner_version": "1.30.0", "logic_version": "1.15.1", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,7 +76,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.29.0` |
+| **Version** | `1.30.0` |
 | **Schema** | `1.16` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -331,7 +331,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.29.0 RFC Specification](docs/v1.29.0_RFC_Specification.md) | Current release spec — chatlog detection recognizes **agentic (tool-turn) sessions**: a turn with a conversational role + a text-bearing block (backward-compat) or a distinctive agentic block (thinking / tool_use / tool_result) counts in detection and turn-counting signals. Recovers tool-heavy Claude Code logs the text-centric gate missed. `is_chatlog` strictly additive; chatlog signal values move for agentic logs (LOGIC 1.14.1→1.15.0; SCHEMA unchanged). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.30.0 RFC Specification](docs/v1.30.0_RFC_Specification.md) | Current release spec — **CLI robustness**: fail loud (`rc=2`) on invalid input (nonexistent / non-directory source, `--workers < 1`, `--preview-max < 0`; a missing `--previous-manifest` warns) instead of a silent `rc=0` empty manifest, and the default output moves out of the installed package dir to `./file-observer-manifests/` in the cwd (and discovery now **skips that dir** so a re-scan never observes its own output). Valid scans are byte-identical except a tree that contains fo's own `file-observer-manifests/` dir, now skipped (LOGIC 1.15.0→1.15.1; SCHEMA unchanged). Surfaced by bestiary via the GitHub-issues feedback model (#109/#110). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.29.0 RFC Specification](docs/v1.29.0_RFC_Specification.md) | Prior — chatlog detection recognizes **agentic (tool-turn) sessions**: a turn with a conversational role + a text-bearing block (backward-compat) or a distinctive agentic block (thinking / tool_use / tool_result) counts in detection and turn-counting signals. Recovers tool-heavy Claude Code logs the text-centric gate missed. `is_chatlog` strictly additive; chatlog signal values move for agentic logs (LOGIC 1.14.1→1.15.0; SCHEMA unchanged). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.28.0 RFC Specification](docs/v1.28.0_RFC_Specification.md) | `--stdout`: write the manifest to stdout (no file), pipe-friendly for Docker/pipelines (`file-observer . --stdout \| jq`). Output routing only; manifest byte-identical (LOGIC + SCHEMA unchanged). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.27.0 RFC Specification](docs/v1.27.0_RFC_Specification.md) | JSON Schema artifact — JSON Schema artifact: a committed, generated `docs/manifest.schema.json` (draft 2020-12) for any-language manifest validation/codegen, emitted by `--schema --schema-format json-schema`. Describes the manifest; LOGIC + SCHEMA unchanged. v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.26.0 RFC Specification](docs/v1.26.0_RFC_Specification.md) | One-call public API (`scan` / `scan_to_json`): `from file_observer import scan; m = scan("./folder")`. Python-surface ergonomics only; the manifest is byte-identical (LOGIC + SCHEMA unchanged). |

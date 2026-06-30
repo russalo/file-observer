@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.29.0"
-    assert SCHEMA_VERSION == "1.16"  # unchanged at v1.29.0 (detection/signal change, no new manifest field)
-    assert LOGIC_VERSION == "1.15.0"  # v1.29.0 — agentic chatlog turn recognition
+    assert SCANNER_VERSION == "1.30.0"
+    assert SCHEMA_VERSION == "1.16"  # unchanged at v1.30.0 (no manifest field/shape change)
+    assert LOGIC_VERSION == "1.15.1"  # v1.30.0 — discovery skips the tool's own default output dir (#110 leg-1 self-inclusion fix)
 
 
 def test_legacy_scanner_import_warns():
