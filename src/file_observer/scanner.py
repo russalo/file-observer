@@ -5,7 +5,7 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.30.0
+    Version:    1.30.1
     Schema:     1.16
     Python:     >= 3.12
     Spec:       docs/v1.30.0_RFC_Specification.md (current)
@@ -82,8 +82,8 @@ except ImportError:
 # output location (cwd/<this>) AND skipped during discovery (iter_files) so a re-scan of the
 # cwd never observes its own prior manifest/report — the leg-1 self-inclusion catch.
 DEFAULT_OUTPUT_DIRNAME = "file-observer-manifests"
-SCANNER_VERSION = "1.30.0"
-LOGIC_VERSION = "1.15.1"   # v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation; `manifest_checksum` moves ONLY for a tree that contains that dir — corpora don't, so the sweep stays NO-DRIFT). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCANNER_VERSION = "1.30.1"
+LOGIC_VERSION = "1.15.2"   # v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.16"   # v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
@@ -1437,6 +1437,11 @@ class ScannerConfig:
     watch_debounce_ms: int = 200    # v1.11: debounce window for batching FS events.
     watch_include_files: bool = False  # v1.11: include files[] in each stream emit.
                                     # All three: runtime-only — NOT in meta.config.
+    skip_output_dir: Path | None = None  # v1.30.1: the RESOLVED file-output dir to exclude
+                                    # from discovery (self-inclusion), set by the CLI to its
+                                    # own output dir. Anchored (not a bare name) so an unrelated
+                                    # same-named user dir is NOT dropped. Runtime-only — NOT in
+                                    # meta.config; None (the API default) → no skip.
 
     def effective_for(self, extension: str) -> dict[str, Any]:
         """Resolve effective config values for a given extension."""
@@ -2129,7 +2134,7 @@ class Scanner:
             scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
             source_dir=str(self.source_dir),
-            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress", "watch", "watch_debounce_ms", "watch_include_files")},
+            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress", "watch", "watch_debounce_ms", "watch_include_files", "skip_output_dir")},
         )
         stats = self._compute_stats(records)
         quality = self._compute_quality(records)
@@ -3052,6 +3057,20 @@ class Scanner:
 
     def iter_files(self, root: Path) -> Iterable[Path]:
         root_resolved = root.resolve()
+        # v1.30.1: prevent self-inclusion by skipping fo's OWN output dir — ANCHORED to its
+        # resolved path relative to the source (NOT the v1.30.0 bare-name match, which silently
+        # dropped ANY unrelated dir of that name — leg-2/OpenAI red-team). Only fires when the
+        # output dir is a proper subdir of the scanned source (the CLI writing into the tree);
+        # normcase so a case-insensitive fs (Windows) still matches; None (the API default,
+        # which writes nothing) → no skip. Computed once.
+        skip_rel_parts: tuple[str, ...] | None = None
+        if self.config.skip_output_dir is not None:
+            try:
+                out_res = self.config.skip_output_dir.resolve()
+                if out_res != root_resolved and out_res.is_relative_to(root_resolved):
+                    skip_rel_parts = tuple(os.path.normcase(p) for p in out_res.relative_to(root_resolved).parts)
+            except (OSError, ValueError):
+                skip_rel_parts = None
         # Sort by the posix string, NOT the Path object: WindowsPath sorts
         # case-INSENSITIVELY (via _str_normcase), so `sorted(rglob)` gives a different
         # file order on Windows than on Linux — a cross-platform determinism break
@@ -3071,12 +3090,13 @@ class Scanner:
                     except OSError:
                         continue   # broken/looping symlink → skip, never raise
                 rel = path.relative_to(root)
-                # v1.30 (#110, leg-1): skip the tool's OWN default output directory at any
-                # level — a bare `fo .` writes its manifest/report into `cwd/file-observer-
-                # manifests/`, so without this a re-scan of the cwd (or an ancestor) would
-                # observe its own prior output (and churn the delta). The dir name is reserved.
-                if DEFAULT_OUTPUT_DIRNAME in rel.parts:
-                    continue
+                # v1.30.1: skip ONLY fo's actual output dir (prefix-match on its anchored rel
+                # path, normcase), so a re-scan of the cwd doesn't observe its own prior output
+                # — without dropping an unrelated user dir that merely shares the name.
+                if skip_rel_parts is not None:
+                    rp = tuple(os.path.normcase(p) for p in rel.parts)
+                    if rp[:len(skip_rel_parts)] == skip_rel_parts:
+                        continue
                 if self.config.exclude_hidden and any(
                     part.startswith(".") for part in rel.parts
                 ):
@@ -7638,6 +7658,12 @@ def main() -> None:
             sys.exit(2)
         sys.exit(run_watch(source_dir=Path(args.source), config=config))
 
+    # v1.30.1: pre-compute the file-output dir so discovery can skip fo's OWN output
+    # (self-inclusion), ANCHORED to the actual dir. Only for the one-shot FILE path — `--stdout`
+    # writes no file (leave None → no skip); `--watch`/`--schema` already exited above.
+    if not args.stdout:
+        config.skip_output_dir = Path(args.output) if args.output else Path.cwd() / DEFAULT_OUTPUT_DIRNAME
+
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()
 
@@ -7664,17 +7690,22 @@ def main() -> None:
     # pip-managed location, collides across callers). A `DEFAULT_OUTPUT_DIRNAME` subdir in the
     # cwd keeps the manifest + report tidy and discoverable. `-o` overrides (unchanged);
     # `--stdout` is the no-file path. Self-inclusion (a re-scan of the cwd seeing this output)
-    # is prevented by `iter_files` skipping `DEFAULT_OUTPUT_DIRNAME` — the leg-1 catch.
-    manifest_dir = Path(args.output) if args.output else Path.cwd() / DEFAULT_OUTPUT_DIRNAME
-    manifest_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-    manifest_path = manifest_dir / f"manifest_v{SCANNER_VERSION}_{timestamp}.{ext}"
-    manifest_path.write_text(output, encoding="utf-8")
+    # is prevented by `iter_files` skipping the RESOLVED output dir (v1.30.1, anchored).
+    manifest_dir = config.skip_output_dir  # the dir computed above (== args.output or cwd default)
+    # v1.30.1 (#110, leg-2/OpenAI): the output write is user-controlled now (cwd), so a
+    # read-only / permission-denied / non-dir path must fail LOUD + clean (rc=1), not traceback.
+    try:
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
+        manifest_path = manifest_dir / f"manifest_v{SCANNER_VERSION}_{timestamp}.{ext}"
+        manifest_path.write_text(output, encoding="utf-8")
+        md_path = manifest_dir / f"report_v{SCANNER_VERSION}_{timestamp}.md"  # report alongside
+        md_path.write_text(manifest_to_markdown(manifest), encoding="utf-8")
+    except OSError as e:
+        print(f"file-observer: cannot write output to {manifest_dir}: {e} "
+              f"(use -o <writable dir> or --stdout)", file=sys.stderr)
+        sys.exit(1)
     print(f"Manifest written to {manifest_path}")
-
-    # v0.10.2: write markdown report alongside the manifest
-    md_path = manifest_dir / f"report_v{SCANNER_VERSION}_{timestamp}.md"
-    md_path.write_text(manifest_to_markdown(manifest), encoding="utf-8")
     print(f"Report written to {md_path}")
 
 

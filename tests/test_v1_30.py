@@ -123,29 +123,28 @@ def test_valid_scan_manifest_byte_identical(tmp_path):
 # ── leg-1: the default output dir is skipped, so a re-scan can't self-include ──
 
 def test_output_dir_skipped_during_discovery(tmp_path):
-    """The tool's own default output dir is skipped at any level — a re-scan of the cwd
-    never observes its own prior manifest/report (the leg-1 self-inclusion catch)."""
+    """v1.30.1 REFINED this: the skip is anchored to fo's ACTUAL output dir, and the
+    programmatic API sets no output dir (it writes nothing) — so a `file-observer-manifests`
+    dir that ISN'T fo's output is NOT dropped (v1.30.0's bare-name skip wrongly dropped it,
+    even via the API — leg-2/OpenAI red-team)."""
     src = tmp_path / "tree"; src.mkdir(); _corpus(src)
-    outdir = src / "file-observer-manifests"; outdir.mkdir()       # simulate a prior run's output
-    (outdir / "manifest_v1.30.0_x.json").write_text("{}")
-    (outdir / "report_v1.30.0_x.md").write_text("# r\n")
-    m = scan(src)
+    outdir = src / "file-observer-manifests"; outdir.mkdir()       # a same-named dir, NOT fo's output
+    (outdir / "kept.json").write_text("{}")
+    m = scan(src)                                                  # API → no skip
     paths = {fr.path for fr in m.files}
-    assert "a.md" in paths and "b.txt" in paths                    # real content still scanned
-    assert not any("file-observer-manifests" in p for p in paths), \
-        "the tool's own output dir must be skipped during discovery"
+    assert "a.md" in paths and "b.txt" in paths
+    assert any("file-observer-manifests/kept.json" in p for p in paths), \
+        "the API never skips; an unrelated same-named dir must be included (v1.30.1)"
 
 
 def test_rescan_of_cwd_does_not_self_include(tmp_path):
-    """End-to-end: bare `fo .` twice — the second scan does NOT observe the first's output."""
+    """End-to-end: bare `fo .` twice (SAME default output) — the second scan skips its OWN
+    output dir, so it does not observe the first run's output at that location."""
     src = tmp_path / "proj"; src.mkdir(); _corpus(src)
-    out1 = _run(["."], cwd=src)
-    assert out1.returncode == 0, out1.stderr
+    assert _run(["."], cwd=src).returncode == 0
     assert (src / "file-observer-manifests").is_dir()              # first run wrote into the tree
-    odir = tmp_path / "o"                                          # read the 2nd run via a disjoint -o
-    out2 = _run([".", "-o", str(odir)], cwd=src)
-    assert out2.returncode == 0, out2.stderr
-    written = json.loads(next(odir.glob("manifest_*.json")).read_text())
-    paths = {f["path"] for f in written["files"]}
+    assert _run(["."], cwd=src).returncode == 0                   # 2nd run, SAME default output
+    latest = sorted((src / "file-observer-manifests").glob("manifest_*.json"))[-1]
+    paths = {f["path"] for f in json.loads(latest.read_text())["files"]}
     assert not any("file-observer-manifests" in p for p in paths), \
-        "a re-scan of the cwd must not include the prior run's output dir"
+        "a re-scan must skip its OWN default output dir"
