@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.30.1"
-    assert SCHEMA_VERSION == "1.16"  # unchanged at v1.30.1 (no manifest field/shape change)
-    assert LOGIC_VERSION == "1.15.2"  # v1.30.1 — self-inclusion skip anchored to the actual output dir (leg-2/OpenAI red-team)
+    assert SCANNER_VERSION == "1.30.2"
+    assert SCHEMA_VERSION == "1.16"  # unchanged at v1.30.2 (no manifest field/shape change)
+    assert LOGIC_VERSION == "1.15.3"  # v1.30.2 — ReDoS / bounded-time hardening: 3 content regexes made linear (manifest_checksum moves only on pathological inputs)
 
 
 def test_legacy_scanner_import_warns():
