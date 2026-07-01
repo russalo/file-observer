@@ -3066,7 +3066,7 @@ class Scanner:
         skip_rel_parts: tuple[str, ...] | None = None
         if self.config.skip_output_dir is not None:
             try:
-                out_res = self.config.skip_output_dir.resolve()
+                out_res = Path(self.config.skip_output_dir).resolve()  # Path() so a str is safe (leg-4/gemini)
                 if out_res != root_resolved and out_res.is_relative_to(root_resolved):
                     skip_rel_parts = tuple(os.path.normcase(p) for p in out_res.relative_to(root_resolved).parts)
             except (OSError, ValueError):
@@ -7658,11 +7658,13 @@ def main() -> None:
             sys.exit(2)
         sys.exit(run_watch(source_dir=Path(args.source), config=config))
 
-    # v1.30.1: pre-compute the file-output dir so discovery can skip fo's OWN output
-    # (self-inclusion), ANCHORED to the actual dir. Only for the one-shot FILE path — `--stdout`
-    # writes no file (leave None → no skip); `--watch`/`--schema` already exited above.
-    if not args.stdout:
-        config.skip_output_dir = Path(args.output) if args.output else Path.cwd() / DEFAULT_OUTPUT_DIRNAME
+    # v1.30.1: pre-compute fo's OWN output LOCATION so discovery skips it (self-inclusion),
+    # ANCHORED to the actual dir. Set for BOTH the file path AND `--stdout` (leg-4/Codex): a
+    # `fo . --stdout` rescan must still skip a PRIOR `fo .`'s output dir at that location, even
+    # though this run writes nothing there. `--stdout` has no `-o`, so its location is the cwd
+    # default. (`--watch`/`--schema` already exited.) The anchored is_relative_to check fires
+    # only when that location is inside the scanned source.
+    config.skip_output_dir = Path(args.output) if args.output else Path.cwd() / DEFAULT_OUTPUT_DIRNAME
 
     scanner = Scanner(source_dir=Path(args.source), config=config)
     manifest = scanner.scan()

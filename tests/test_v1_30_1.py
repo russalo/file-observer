@@ -66,3 +66,26 @@ def test_valid_scan_still_byte_identical(tmp_path):
     assert out.returncode == 0, out.stderr
     written = json.loads(next(odir.glob("manifest_*.json")).read_text())
     assert written["manifest_checksum"] == scan(src).manifest_checksum
+
+
+def test_str_skip_output_dir_does_not_crash(tmp_path):
+    """leg-4/gemini: a str (not Path) skip_output_dir must not crash iter_files (never-crash —
+    other path-config fields like ignore_file/previous_manifest are str-typed)."""
+    from file_observer.scanner import Scanner, ScannerConfig
+    src = tmp_path / "s"; src.mkdir(); (src / "a.txt").write_text("x\n")
+    m = Scanner(src, ScannerConfig(skip_output_dir=str(src / "file-observer-manifests"))).scan()
+    assert m.stats.total_files == 1   # scanned cleanly, no AttributeError
+
+
+def test_stdout_rescan_skips_prior_output_dir(tmp_path):
+    """leg-4/Codex: `fo . --stdout` must skip a PRIOR `fo .`'s output dir (self-inclusion),
+    even though the stdout run itself writes no file."""
+    src = tmp_path / "proj"; src.mkdir(); (src / "a.txt").write_text("x\n")
+    assert _run(["."], cwd=src).returncode == 0            # bare run writes ./file-observer-manifests/
+    assert (src / "file-observer-manifests").is_dir()
+    out = _run([".", "--stdout"], cwd=src)                 # stdout rescan
+    assert out.returncode == 0, out.stderr
+    paths = {f["path"] for f in json.loads(out.stdout)["files"]}
+    assert "a.txt" in paths
+    assert not any("file-observer-manifests" in p for p in paths), \
+        "a --stdout rescan must skip fo's output location"
