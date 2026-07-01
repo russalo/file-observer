@@ -217,7 +217,7 @@
 | `filename_patterns` | file | 1 | stable |
 | `preservation` | file | 1 | stable |
 | `provenance` | corpus | 2 | stable |
-| `reference_tokens` | file | 2 | stable |
+| `reference_tokens` | file | 3 | stable |
 
 ## safety_flags
 

@@ -182,15 +182,15 @@ CODE_STRIP_RE = re.compile(
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
 FRONTMATTER_OPEN_RE = re.compile(r"\A---\r?\n", re.DOTALL)
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f]")
-# v1.30.2 ReDoS hardening: BOUND the label/target spans ({0,300}/{1,400}) so a run of
-# unmatched `[` can't force super-linear backtracking (a 64 KB `[`-run took ~1.7 s
-# before; now ~24 ms). The character classes are otherwise UNCHANGED from the original
-# `[^\]]*` / `[^)]+` — bounding alone gives linearity, so real markdown (incl. multiline
-# alt text / wrapped targets) still matches byte-identically (leg-2/OpenAI review caught
-# that an earlier `\n`-excluding form regressed multiline links). Only a label > 300 or a
-# target > 400 chars (e.g. a giant base64 data-URI, which extract_assets skips as a
-# non-path anyway) is no longer matched — a deliberate, pathological-only change.
-ASSET_RE = re.compile(r"!?\[[^\]]{0,300}\]\(([^)]{1,400})\)")
+# v1.30.2 ReDoS hardening: BOUND the label/target spans so a run of unmatched `[` can't
+# force super-linear backtracking (a 64 KB `[`-run took ~1.7 s before; now ~50 ms). The
+# character classes are otherwise UNCHANGED from the original `[^\]]*` / `[^)]+` —
+# bounding alone gives linearity, so real markdown (incl. multiline alt text / wrapped
+# targets) still matches byte-identically (leg-2/OpenAI review caught that an earlier
+# `\n`-excluding form regressed multiline links). Bounds sized so no VALID target is ever
+# excluded (leg-4/Codex P2): target {1,4096} = Linux PATH_MAX (a longer "path" cannot
+# exist on disk), label {0,1024}. Only pathological spans past those are unmatched.
+ASSET_RE = re.compile(r"!?\[[^\]]{0,1024}\]\(([^)]{1,4096})\)")
 FILENAME_DATE_RE = re.compile(r"(\d{4})[-_](\d{2})[-_](\d{2})")
 HTML_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 MD_HEADING_RE = re.compile(r"^(#{1,6})\s+(.+)$", re.MULTILINE)
@@ -1243,9 +1243,14 @@ CHATLOG_SPEAKER_STOP_LIST_CF: frozenset[str] = frozenset({
 
 # v0.9: Reference tokens vector identity constants.
 REFERENCE_TOKENS_VECTOR_ID = "reference_tokens"
-REFERENCE_TOKENS_METHOD_VERSION = 2
+# v1.30.2: method_version 2→3 — the wiki_links counting rule changed (the ReDoS-hardened
+# regex no longer matches a bracket-bearing/multiline `[[…]]` span; real wiki links are
+# unaffected), and the definition string below carries the actual pattern, so the
+# rules_hash MUST move with it (the v1.6 provenance lesson: rule data that gates output
+# but isn't in the hash is the recurring determinism bug; leg-4/Codex P2 on PR #113).
+REFERENCE_TOKENS_METHOD_VERSION = 3
 REFERENCE_TOKENS_RULES_DEFINITION = (
-    "count:at_mentions(@[a-zA-Z0-9_]+),wiki_links([[.+?]]),"
+    "count:at_mentions(@[a-zA-Z0-9_]+),wiki_links([[[^\\[\\]\\n]+]]),"
     "code_fence_blocks(```pairs),url_count(https?://\\S+),"
     "email_mentions(addr_re),path_references(unix+windows,3+segments,url_stripped),"
     "numeric_id_patterns(#dd+,semver,PROJECT-dd+)"
