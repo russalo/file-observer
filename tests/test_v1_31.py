@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from file_observer.scanner import (
     Scanner,
     ScannerConfig,
@@ -94,36 +96,50 @@ class TestHeldSetsStayProvisional:
         assert fr["is_polyglot"] == "provisional"
 
 
+# The emitted shape of EVERY promoted field (bounded-observation `null` is always allowed).
+# Types per the extraction contract: string-or-null, except the bool presence flags and the
+# numeric dims/duration. A designation-only promotion must not change any of these.
+IMAGE_FIELD_TYPES = {
+    "make": (str,), "model": (str,), "orientation": (str, int),
+    "datetime_original": (str,), "gps_present": (bool,), "xmp_present": (bool,),
+}
+VIDEO_FIELD_TYPES = {
+    "codec": (str,), "duration_s": (int, float), "width": (int,), "height": (int,),
+    "creation_date": (str,), "creation_date_qt": (str,), "make": (str,), "model": (str,),
+    "gps_present": (bool,), "gps_source": (str,),
+}
+
+
 class TestDesignationOnly:
     """Promotion changes the stability promise, not scan output."""
 
-    def _manifest(self):
+    @pytest.fixture(scope="class")
+    def manifest(self):
+        # scan once for the whole class (scanning fixtures + extracting is expensive)
         return Scanner(source_dir=FIXTURES, config=ScannerConfig(enable_specialists=True)).scan()
 
-    def test_stability_does_not_leak_into_manifest(self):
-        blob = manifest_to_json(self._manifest())
+    def test_stability_does_not_leak_into_manifest(self, manifest):
+        blob = manifest_to_json(manifest)
         assert '"stability"' not in blob, "stability is a --schema-only surface, not the manifest"
 
-    def test_promoted_field_shapes_unchanged(self):
-        # where the image/video namespaces appear, the promoted fields keep their emitted shape
+    def test_promoted_field_shapes_unchanged(self, manifest):
+        # where the image/video namespaces appear, EVERY promoted field keeps its emitted shape
         # (promotion is designation-only — no value/type change).
-        m = self._manifest()
-        for r in m.files:
+        def check(ns_val, types, label):
+            for f, ok in types.items():
+                if f in ns_val:
+                    v = ns_val[f]
+                    assert v is None or isinstance(v, ok), f"{label}.{f}={v!r} (want {ok} or None)"
+        for r in manifest.files:
             img = (r.specialist_metadata or {}).get("image")
             if img:
-                for f in ("make", "model", "orientation", "datetime_original"):
-                    if f in img:
-                        assert img[f] is None or isinstance(img[f], (str, int)), f"image.{f}={img[f]!r}"
-                if "gps_present" in img:
-                    assert isinstance(img["gps_present"], bool)
+                check(img, IMAGE_FIELD_TYPES, "image")
             vid = (r.specialist_metadata or {}).get("video")
             if vid:
-                if "gps_present" in vid:
-                    assert isinstance(vid["gps_present"], bool)
-                if "duration_s" in vid:
-                    assert vid["duration_s"] is None or isinstance(vid["duration_s"], (int, float))
+                check(vid, VIDEO_FIELD_TYPES, "video")
 
     def test_manifest_deterministic(self):
+        # genuinely needs TWO independent scans — do not share the cached fixture
         a = Scanner(source_dir=FIXTURES, config=ScannerConfig(enable_specialists=True)).scan()
         b = Scanner(source_dir=FIXTURES, config=ScannerConfig(enable_specialists=True)).scan()
         assert a.manifest_checksum == b.manifest_checksum
