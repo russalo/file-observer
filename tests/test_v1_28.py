@@ -82,4 +82,4 @@ def test_stdout_utf8_non_ascii_metadata(tmp_path):
 def test_version_surfaces():
     assert tuple(map(int, SCANNER_VERSION.split("."))) >= (1, 28, 0), SCANNER_VERSION  # floor (superseded)
     assert tuple(map(int, LOGIC_VERSION.split("."))) >= (1, 14, 1)  # floor — was 1.14.1 at v1.28; 1.15.0 at v1.29.0
-    assert SCHEMA_VERSION == "1.16"    # unchanged
+    assert tuple(map(int, SCHEMA_VERSION.split("."))) >= (1, 16)  # floor — 1.16 held through v1.30.x; 1.17 at the v1.31 promotion pass

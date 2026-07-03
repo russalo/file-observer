@@ -1,5 +1,5 @@
 {
-  "$comment": "Generated from the file-observer dataclasses by `file-observer --schema --schema-format json-schema` (scanner 1.30.2, schema 1.16). Pin the MAJOR of schema_version (the breaking-change point). Stable core typed strictly; namespace-keyed/provisional dicts are open.",
+  "$comment": "Generated from the file-observer dataclasses by `file-observer --schema --schema-format json-schema` (scanner 1.31.0, schema 1.17). Pin the MAJOR of schema_version (the breaking-change point). Stable core typed strictly; namespace-keyed/provisional dicts are open.",
   "$defs": {
     "DeltaRecord": {
       "additionalProperties": false,
@@ -697,8 +697,8 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/russalo/file-observer/manifest/1.16.schema.json",
+  "$id": "https://github.com/russalo/file-observer/manifest/1.17.schema.json",
   "$ref": "#/$defs/ScanManifest",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "File Observer manifest (schema_version 1.16)"
+  "title": "File Observer manifest (schema_version 1.17)"
 }

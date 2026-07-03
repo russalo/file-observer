@@ -78,15 +78,16 @@ class TestStabilityAnnotation:
         # format_signatures/is_polyglot stay provisional (held-by-design, §2.4 — vocabulary stays fluid)
         assert fr["format_signatures"] == "provisional" and fr["is_polyglot"] == "provisional"
 
-    def test_capture_metadata_fields_are_provisional(self, schema_doc):
-        # v1.21.1: image-EXIF (v1.16) + the whole video namespace (v1.17–1.20) are
-        # provisional in --schema (corrected intake oversight that emitted them stable).
+    def test_capture_metadata_fields_promoted_stable_v1_31(self, schema_doc):
+        # v1.31.0 promotion pass: the v1.16 image-EXIF fields + the whole v1.17–1.20
+        # video namespace were promoted provisional→stable (see test_v1_31). This guard
+        # tracks the now-current reality so test_v1_14 doesn't lag the contract.
         for f in ("make", "model", "orientation", "datetime_original", "gps_present", "xmp_present"):
-            assert _field_stability(schema_doc, "image", f) == "provisional", f"image.{f}"
+            assert _field_stability(schema_doc, "image", f) == "stable", f"image.{f}"
         for f in ("codec", "duration_s", "width", "height", "creation_date",
                   "creation_date_qt", "make", "model", "gps_present", "gps_source"):
-            assert _field_stability(schema_doc, "video", f) == "provisional", f"video.{f}"
-        # the OLD image dimensions stay STABLE (not swept into the correction)
+            assert _field_stability(schema_doc, "video", f) == "stable", f"video.{f}"
+        # the OLD image dimensions were already stable (since 0.5)
         for f in ("width", "height", "bit_depth"):
             assert _field_stability(schema_doc, "image", f) == "stable", f"image.{f}"
 
@@ -113,15 +114,9 @@ class TestProvisionalRegistryMatchesContract:
             ("chatlog", "speaker_turn_counts"),
             ("chatlog", "speaker_turn_chars"),
             ("chatlog", "alternation"),
-            # v1.21.1: image-EXIF (v1.16) + the whole video namespace (v1.17–1.20) are
-            # provisional (promotion-pass candidates) — corrected from an intake oversight
-            # that had them emitting as stable. Old image dimensions stay stable (not here).
-            ("image", "make"), ("image", "model"), ("image", "orientation"),
-            ("image", "datetime_original"), ("image", "gps_present"), ("image", "xmp_present"),
-            ("video", "codec"), ("video", "duration_s"), ("video", "width"), ("video", "height"),
-            ("video", "creation_date"), ("video", "creation_date_qt"), ("video", "make"),
-            ("video", "model"), ("video", "gps_present"), ("video", "gps_source"),
-            # v1.24 (Candidate B): new presentation namespace — provisional on arrival
+            # v1.31.0 promotion pass: image-EXIF (v1.16) + the whole video namespace
+            # (v1.17–1.20) were PROMOTED provisional→stable → no longer here (see test_v1_31).
+            # v1.24 (Candidate B): new presentation namespace — provisional on arrival (held: too young)
             ("presentation", "slide_count"), ("presentation", "title"),
             ("presentation", "author"), ("presentation", "application"),
             # v1.25 (Candidate B ph.2): new audio namespace — provisional on arrival

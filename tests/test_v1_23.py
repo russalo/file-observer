@@ -67,13 +67,14 @@ def test_held_by_design_fields_stay_provisional():
     assert ("FileRecord", "is_polyglot") in PROVISIONAL_MANIFEST_FIELDS
 
 
-def test_capture_fields_stay_provisional():
-    # the promotion must not sweep up the days-old capture fields (season first)
+def test_capture_fields_promoted_stable_in_v1_31():
+    # v1.23 deliberately did NOT sweep up the then-days-old capture fields ("season first");
+    # the v1.31 promotion pass later graduated them provisional→stable (see test_v1_31).
     doc = _schema()
     img = {f["name"]: f["stability"] for f in doc["specialists"]["fields"]["image"]}
     vid = {f["name"]: f["stability"] for f in doc["specialists"]["fields"]["video"]}
-    assert img["gps_present"] == "provisional" and img["make"] == "provisional"
-    assert vid["creation_date_qt"] == "provisional" and vid["codec"] == "provisional"
+    assert img["gps_present"] == "stable" and img["make"] == "stable"
+    assert vid["creation_date_qt"] == "stable" and vid["codec"] == "stable"
 
 
 class TestDesignationOnly:
