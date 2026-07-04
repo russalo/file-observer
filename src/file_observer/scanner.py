@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.31.0
-    Schema:     1.17
+    Version:    1.32.0
+    Schema:     1.18
     Python:     >= 3.12
-    Spec:       docs/v1.31.0_RFC_Specification.md (current)
+    Spec:       docs/v1.32.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -82,9 +82,9 @@ except ImportError:
 # output location (cwd/<this>) AND skipped during discovery (iter_files) so a re-scan of the
 # cwd never observes its own prior manifest/report — the leg-1 self-inclusion catch.
 DEFAULT_OUTPUT_DIRNAME = "file-observer-manifests"
-SCANNER_VERSION = "1.31.0"
-LOGIC_VERSION = "1.15.3"   # v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.17"   # v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.32.0"
+LOGIC_VERSION = "1.16.0"   # v1.32.0 — new content-detection routing: the generic kv-fact-block specialist (FR #114). A text file whose BODY (frontmatter stripped) is a `key: value` block now carries `is_fact_block` + a `fact_block` specialist dispatch (content-shape, any text body; the sentence-value veto keeps it off dialogue). Additive: `is_fact_block` False→True only; no file's prior routing flips away. The v1.2/v1.29 detection-LOGIC precedent. Prior 1.15.3 = v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.18"   # v1.32.0 — new `fact_block` namespace (pair_count/pairs/duplicate_keys) for the generic kv-fact-block specialist (FR #114); a new namespace = contract-shape change (the v1.24/v1.25 precedent), new fields provisional. Prior 1.17 = v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -388,6 +388,10 @@ PROVENANCE_TRIGGERS: dict[str, dict[str, str]] = {
     "content_pattern_match":    {"layer": "derived", "method": "_detect_chatlog_pattern", "description": "content matched the chatlog detection rules"},
     "content_pattern_none":     {"layer": "derived", "method": "_detect_chatlog_pattern", "description": "content did not match the chatlog detection rules"},
     "chatlog_activation":       {"layer": "derived", "method": "content_detected_specialist", "description": "chatlog specialist activated on a content-detected match"},
+    "fact_block_pattern_match":  {"layer": "derived", "method": "_fact_block_analyze", "description": "body matched the kv-fact-block detection rules"},
+    "fact_block_pattern_none":   {"layer": "derived", "method": "_fact_block_analyze", "description": "body did not match the kv-fact-block detection rules"},
+    "fact_block_activation":     {"layer": "derived", "method": "content_detected_specialist", "description": "fact_block specialist activated on a content-detected match"},
+    "fact_block_bounded_text":   {"layer": "derived", "method": "_fact_block_analyze", "description": "fact_block key:value pairs extracted from the body within bounds"},
     # baseline text eligibility
     "text_eligible":            {"layer": "derived", "method": "_extract_reference_tokens", "description": "file routed into the baseline text-analysis tier"},
     # structural extraction
@@ -578,6 +582,9 @@ class FileRecord:
     # conversational or document-evolution structure). Always present, runs
     # even when enable_specialists=False because detection is cheap.
     is_chatlog: bool = False
+    # v1.32 (FR #114): content-detected fact-block flag — set when the body is a
+    # `key: value` block (frontmatter stripped). Always present; detection is cheap.
+    is_fact_block: bool = False
     # v0.9: reference token counts across seven subcategories. Present on
     # every text-decoded file (null on binary). See spec §3.2.
     reference_tokens: dict[str, int] | None = None
@@ -803,6 +810,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
         "top_capitalized_tokens", "capitalized_token_count",
         "vocabulary_size_estimate",
     ],
+    "fact_block": ["pair_count", "pairs", "duplicate_keys"],  # v1.32 (FR #114)
 }
 
 
@@ -838,6 +846,8 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("audio", "artist"),
     ("audio", "album"),
     ("audio", "year"),
+    # v1.32 (FR #114): the new fact_block namespace — provisional on arrival.
+    ("fact_block", "pair_count"), ("fact_block", "pairs"), ("fact_block", "duplicate_keys"),
 })
 PROVISIONAL_VECTORS: frozenset[str] = frozenset()  # v1.23.0 promoted `preservation` → stable (was the only one)
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
@@ -1001,6 +1011,10 @@ SPECIALIST_MIME_GUARD: dict[str, set[str]] = {
     # v0.8: chatlog is the first content-detected (not extension-driven)
     # specialist. Its MIME guard accepts text/plain and the markdown variants.
     "chatlog": {"text/plain", "text/markdown", "text/x-markdown", "application/json", "application/jsonl", "application/x-ndjson"},
+    # v1.32 (FR #114): content-detected on a text body — accept the text/prose MIME types. text/html
+    # is included because libmagic mis-types some kv-block `.md` as html (angle-bracket values); real
+    # HTML markup is not kv-dominated so it stays below the ratio. Excludes code (text/x-script.*).
+    "fact_block": {"text/plain", "text/markdown", "text/x-markdown", "text/html"},
 }
 
 # v1.15.2: MIME types that are TEXT-based (no magic byte signature exists even for a
@@ -1034,6 +1048,59 @@ EXTENSION_EXTRA_GUARD_MIMES: dict[str, set[str]] = {
 # and namespace; the runtime dispatch in scan_file() consumes them directly.
 CHATLOG_NAMESPACE = "chatlog"
 CHATLOG_TOOL = "chatlog_signals"
+
+# --- v1.32: generic kv-fact-block specialist (FR #114) -----------------------
+# A content-detected specialist: when a text file's BODY (frontmatter stripped) is
+# dominated by `key: value` lines, emit the OBSERVED pairs verbatim + generic (never
+# a per-consumer schema). A sentence-value veto keeps it off dialogue (the chatlog
+# `Key:value` collision). Measure-first: scratch/measure_kv_fact_block.py.
+FACT_BLOCK_NAMESPACE = "fact_block"
+FACT_BLOCK_TOOL = "fact_block_signals"
+FACT_BLOCK_VECTOR_ID = "fact_block"
+FACT_BLOCK_METHOD_VERSION = 1
+
+FACT_BLOCK_MIN_PAIRS = 3          # >=3 fact-pairs to fire
+FACT_BLOCK_MIN_RATIO = 0.6       # fact-pairs / body-content-lines
+FACT_BLOCK_MAX_PAIRS = 4096      # bounded observation (v1.8.1): cap emitted pairs
+FACT_BLOCK_MAX_KEY_LEN = 64      # cap key length
+FACT_BLOCK_MAX_VALUE_LEN = 4096  # cap value length (PATH_MAX-class)
+# Static tuning (sensitivity knobs) — separate from the rules, per the chatlog rules-vs-tuning split.
+FACT_BLOCK_STATIC_TUNING = {"min_pairs": FACT_BLOCK_MIN_PAIRS, "min_ratio": FACT_BLOCK_MIN_RATIO}
+
+# A body fact-pair line: optional list dash, identifier-ish key, ':', space, value.
+# Anchored + bounded quantifiers (ReDoS-safe — added to the all-regex battery).
+FACT_BLOCK_KV_RE = re.compile(r"^\s{0,8}-?\s{0,4}([A-Za-z][A-Za-z0-9_. -]{0,63}):[ \t]{1,4}(\S.*)$")
+# Markdown-structural body lines excluded from the ratio denominator.
+FACT_BLOCK_STRUCT_RE = re.compile(r"^\s{0,8}(#{1,6}\s|>\s|`{3}|\|)")
+# Sentence-value veto: a value with a function word AND sentence length/punctuation is
+# dialogue/prose, not a fact. Own closed set so it feeds the fact_block rules_hash
+# independently of the chatlog stop-list.
+FACT_BLOCK_VETO_WORDS: frozenset[str] = frozenset("""
+the a an is are was were be been to of and or but in on at for with as by from
+i you he she it we they this that these those my your his her our their not do
+does did have has had will would can could about what when where why how
+""".split())
+FACT_BLOCK_VETO_RE = re.compile(r"\b(" + "|".join(sorted(FACT_BLOCK_VETO_WORDS)) + r")\b", re.IGNORECASE)
+
+
+def fact_block_rules_fingerprint() -> str:
+    """The rules-definition string fed to compute_rules_hash for the fact_block vector —
+    derived from the LIVE thresholds/regexes/veto set so any rule edit moves the digest
+    (the v1.6 provenance / rules-fingerprint determinism contract)."""
+    return "|".join([
+        "fact_block/v1",
+        f"max_pairs={FACT_BLOCK_MAX_PAIRS}",
+        f"max_key={FACT_BLOCK_MAX_KEY_LEN}",
+        f"max_value={FACT_BLOCK_MAX_VALUE_LEN}",
+        f"kv_re={FACT_BLOCK_KV_RE.pattern}",
+        f"struct_re={FACT_BLOCK_STRUCT_RE.pattern}",
+        f"veto_flags={int(FACT_BLOCK_VETO_RE.flags)}",
+        "veto_words=" + ",".join(sorted(FACT_BLOCK_VETO_WORDS)),
+        # gating rules beyond the pattern (cross-model review #1): the frontmatter strip changes the
+        # body analyzed, and the MIME guard gates emission — a change to either changes output.
+        f"frontmatter_re={FRONTMATTER_RE.pattern}",
+        "mime_guard=" + ",".join(sorted(SPECIALIST_MIME_GUARD.get(FACT_BLOCK_NAMESPACE, set()))),
+    ])
 
 # v0.9: Chatlog vector identity constants. The rules definition string
 # captures the three detection rules + extraction logic version. Changing
@@ -2091,6 +2158,8 @@ class Scanner:
         self._chatlog_summary_marker_count: int = 0
         self._chatlog_summary_styles: set[str] = set()
         self._reference_tokens_applied_count: int = 0
+        self._fact_block_applied_count: int = 0   # v1.32 (FR #114)
+        self._fact_block_total_pairs: int = 0
         self._reference_tokens_sums: dict[str, int] = {
             "at_mentions": 0, "wiki_links": 0, "code_fence_blocks": 0,
             "url_count": 0, "email_mentions": 0, "path_references": 0,
@@ -2126,12 +2195,19 @@ class Scanner:
             if rec.specialist_metadata and "email" in rec.specialist_metadata and "body_chatlog" in rec.specialist_metadata.get("email", {}):
                 self._chatlog_applied_count += 1
                 self._accumulate_chatlog_summary(rec.specialist_metadata["email"]["body_chatlog"])
+            # v1.32 (FR #114): fact_block vector applied set — derived from records (pure scan)
+            if rec.is_fact_block:
+                self._fact_block_applied_count += 1
+                _fbm = (rec.specialist_metadata or {}).get(FACT_BLOCK_NAMESPACE)
+                if _fbm:
+                    self._fact_block_total_pairs += _fbm.get("pair_count", 0)
 
         # Register file-scoped vectors from accumulated state
         self._register_chatlog_vector()
         self._register_reference_tokens_vector()
         self._register_filename_patterns_vector()
         self._register_preservation_vector()
+        self._register_fact_block_vector()
 
         # Run corpus-scoped vectors after the file walk completes
         self._run_corpus_vectors(records)
@@ -2369,6 +2445,30 @@ class Scanner:
             identity_digest=identity_digest,
             applied_to_count=self._reference_tokens_applied_count,
             summary=summary,
+        ))
+
+    def _register_fact_block_vector(self) -> None:
+        """v1.32 (FR #114): register the fact_block vector. The gate/veto/caps feed the
+        rules_hash (derived from the live config via fact_block_rules_fingerprint) and the
+        thresholds feed the static_tuning_hash, so any rule/threshold edit moves the
+        identity_digest — the determinism contract (v1.6 provenance pattern)."""
+        rules_hash = compute_rules_hash(fact_block_rules_fingerprint())
+        tuning_hash = compute_tuning_hash(FACT_BLOCK_STATIC_TUNING)
+        identity_digest = compute_vector_identity_digest(
+            FACT_BLOCK_VECTOR_ID, FACT_BLOCK_METHOD_VERSION, rules_hash, tuning_hash,
+        )
+        self._vector_registry.register(VectorRecord(
+            vector_id=FACT_BLOCK_VECTOR_ID,
+            method_version=FACT_BLOCK_METHOD_VERSION,
+            scope="file",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=None,
+            identity_digest=identity_digest,
+            applied_to_count=self._fact_block_applied_count,
+            summary={"matched_files": self._fact_block_applied_count,
+                     "total_pairs": self._fact_block_total_pairs},
         ))
 
     def _register_filename_patterns_vector(self) -> None:
@@ -3270,6 +3370,7 @@ class Scanner:
         asset_matches: list[str] = []
         frontmatter = FrontmatterRecord()
         is_chatlog = False
+        is_fact_block = False
         reference_tokens_result: dict[str, int] | None = None
         # v0.8: hoisted out of the specialist block so chatlog extraction
         # (which lives in the text-handling block above the extension-based
@@ -3361,6 +3462,48 @@ class Scanner:
                                             trigger="bounded_text",
                                             detail={"tool": CHATLOG_TOOL, "text_chars": text_len},
                                         ))
+
+                # v1.32 (FR #114): generic kv-fact-block detection — the FALLBACK observer for a
+                # text body that NO dedicated specialist owns (content-shape, not extension-driven).
+                # Gated on `not requires_specialist_tool` so .eml/.pdf/.docx (whose own headers are
+                # kv-blocks) stay with their specialist — no double-handling. The sentence-value veto
+                # keeps it off the dialogue the chatlog gate claims. A MIME-guard miss skips silently
+                # (a content-detected fallback mismatch is not an error).
+                if not requires_specialist_tool:
+                    fb = self._fact_block_analyze(text)
+                    # is_fact_block ⟺ (body is a kv-block AND the MIME is a trusted text type) — so the
+                    # flag is coherent with extraction (no flag-without-pairs), and a source file that
+                    # libmagic types non-text (a `.py`/`.pyi` of `name: Type` annotations) never flags.
+                    is_fact_block = fb["fires"] and mime_type in SPECIALIST_MIME_GUARD.get(FACT_BLOCK_NAMESPACE, set())
+                    provenance["is_fact_block"] = asdict(ProvenanceEntry(
+                        layer="derived",
+                        method="_fact_block_analyze",
+                        trigger="fact_block_pattern_match" if is_fact_block else "fact_block_pattern_none",
+                        inputs=["encoding"],
+                    ))
+                    if is_fact_block:
+                        specialist_tool = FACT_BLOCK_TOOL
+                        requires_specialist_tool = True
+                        provenance["requires_specialist_tool"] = asdict(ProvenanceEntry(
+                            layer="derived",
+                            method="content_detected_specialist",
+                            trigger="fact_block_activation",
+                            inputs=["is_fact_block"],
+                            detail=f"{FACT_BLOCK_TOOL} (content-detected)",
+                        ))
+                        if self.config.enable_specialists:
+                            if specialist_metadata is None:
+                                specialist_metadata = {}
+                            fb_meta = {"pair_count": fb["pair_count"], "pairs": fb["pairs"],
+                                       "duplicate_keys": fb["duplicate_keys"]}
+                            specialist_metadata[FACT_BLOCK_NAMESPACE] = fb_meta
+                            for key in fb_meta:
+                                provenance[f"specialist_metadata.{FACT_BLOCK_NAMESPACE}.{key}"] = asdict(ProvenanceEntry(
+                                    layer="derived",
+                                    method="_fact_block_analyze",
+                                    trigger="fact_block_bounded_text",
+                                    detail={"tool": FACT_BLOCK_TOOL, "text_chars": len(text)},
+                                ))
 
                 # v0.9: reference_tokens vector — runs on every text-eligible file
                 if extension in REFERENCE_TOKENS_EXTENSIONS:
@@ -3667,6 +3810,7 @@ class Scanner:
             format_signatures=format_signatures,
             is_polyglot=is_polyglot,
             is_chatlog=is_chatlog,
+            is_fact_block=is_fact_block,
             reference_tokens=reference_tokens_result,
             filename_patterns=fp,
             preservation=self._extract_preservation(path.suffix),
@@ -5921,6 +6065,47 @@ class Scanner:
         # surfaced as an observation (content_shape), but recurring-label-in-prose
         # joins the accepted recurring-taxonomy FP residual (see LIMITATIONS).
         return True
+
+    def _fact_block_analyze(self, text: str) -> dict[str, Any]:
+        """v1.32 (FR #114): over the BODY (frontmatter stripped), collect body `key: value`
+        fact-pairs — bounded, with the sentence-value veto (a value that reads like a sentence
+        is dialogue/prose, not a fact). Returns {fires, pairs, pair_count, duplicate_keys}.
+        Pure + never raises; the ratio is fact-lines / body-content-lines. First-occurrence
+        wins for a repeated key (recall decision #2); duplicates counted, not emitted."""
+        m = FRONTMATTER_RE.match(text)
+        body = text[m.end():] if m else text
+        content = 0
+        n_fact_lines = 0
+        pairs: list[dict[str, str]] = []
+        seen: set[str] = set()
+        dup = 0
+        for ln in body.splitlines():
+            if not ln.strip() or FACT_BLOCK_STRUCT_RE.match(ln):
+                continue
+            content += 1
+            m2 = FACT_BLOCK_KV_RE.match(ln)
+            if not m2:
+                continue
+            key = m2.group(1).strip()[:FACT_BLOCK_MAX_KEY_LEN]
+            val = m2.group(2).strip()[:FACT_BLOCK_MAX_VALUE_LEN]  # cap BEFORE the veto work (bounded)
+            # sentence-value veto: a function word AND sentence shape → dialogue/prose, not a fact.
+            # `split(None, 5)` bounds the word count (a hostile long value can't force a full split).
+            if FACT_BLOCK_VETO_RE.search(val) and (len(val.split(None, 5)) >= 5 or val[-1:] in ".?!"):
+                continue
+            n_fact_lines += 1
+            if key in seen:
+                dup += 1
+            elif len(pairs) < FACT_BLOCK_MAX_PAIRS:
+                seen.add(key)
+                pairs.append({"key": key, "value": val})
+        ratio = (n_fact_lines / content) if content else 0.0
+        # A fact-block is a RECORD of DISTINCT facts — gate on the distinct-key count (len(pairs)),
+        # NOT raw matched lines. This rejects repeated-key LISTS (a changelog's `Added:`×N, a FAQ's
+        # `Q:`/`A:`, `id:1/id:2/id:3`) while the ratio keeps the body kv-DOMINATED (not prose with a
+        # few stray pairs). Resolves the cross-model review's changelog/FAQ FP + the dedup/min-pairs
+        # inconsistency (a matched line that dedups away must not count toward firing).
+        fires = len(pairs) >= FACT_BLOCK_MIN_PAIRS and ratio >= FACT_BLOCK_MIN_RATIO
+        return {"fires": fires, "pairs": pairs, "pair_count": len(pairs), "duplicate_keys": dup}
 
     def _detect_chatlog_pattern(self, text: str) -> bool:
         """Content-based detection of chatlog / journal / vault structure.
