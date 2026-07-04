@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.31.0"
-    assert SCHEMA_VERSION == "1.17"  # v1.31.0 promotion pass — image EXIF + video → stable (contract change; manifest byte-identical)
-    assert LOGIC_VERSION == "1.15.3"  # UNCHANGED at v1.31.0 (designation-only promotion, no routing/value change); last moved at v1.30.2 (ReDoS hardening)
+    assert SCANNER_VERSION == "1.32.0"
+    assert SCHEMA_VERSION == "1.18"  # v1.32.0 — new fact_block namespace (kv-fact-block specialist, FR #114); a new namespace = contract-shape change
+    assert LOGIC_VERSION == "1.16.0"  # v1.32.0 — new content-detection routing (is_fact_block + fact_block dispatch on a kv-block text body)
 
 
 def test_legacy_scanner_import_warns():

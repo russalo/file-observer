@@ -1,5 +1,5 @@
 {
-  "$comment": "Generated from the file-observer dataclasses by `file-observer --schema --schema-format json-schema` (scanner 1.31.0, schema 1.17). Pin the MAJOR of schema_version (the breaking-change point). Stable core typed strictly; namespace-keyed/provisional dicts are open.",
+  "$comment": "Generated from the file-observer dataclasses by `file-observer --schema --schema-format json-schema` (scanner 1.32.0, schema 1.18). Pin the MAJOR of schema_version (the breaking-change point). Stable core typed strictly; namespace-keyed/provisional dicts are open.",
   "$defs": {
     "DeltaRecord": {
       "additionalProperties": false,
@@ -157,6 +157,9 @@
         "is_chatlog": {
           "type": "boolean"
         },
+        "is_fact_block": {
+          "type": "boolean"
+        },
         "is_polyglot": {
           "type": "boolean"
         },
@@ -261,6 +264,7 @@
         "format_signatures",
         "is_polyglot",
         "is_chatlog",
+        "is_fact_block",
         "reference_tokens",
         "filename_patterns",
         "preservation",
@@ -697,8 +701,8 @@
       "type": "object"
     }
   },
-  "$id": "https://github.com/russalo/file-observer/manifest/1.17.schema.json",
+  "$id": "https://github.com/russalo/file-observer/manifest/1.18.schema.json",
   "$ref": "#/$defs/ScanManifest",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "File Observer manifest (schema_version 1.17)"
+  "title": "File Observer manifest (schema_version 1.18)"
 }

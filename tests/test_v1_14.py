@@ -122,6 +122,8 @@ class TestProvisionalRegistryMatchesContract:
             # v1.25 (Candidate B ph.2): new audio namespace — provisional on arrival
             ("audio", "format"), ("audio", "bitrate"), ("audio", "duration_s"),
             ("audio", "title"), ("audio", "artist"), ("audio", "album"), ("audio", "year"),
+            # v1.32 (FR #114): new fact_block namespace — provisional on arrival
+            ("fact_block", "pair_count"), ("fact_block", "pairs"), ("fact_block", "duplicate_keys"),
         })
         assert PROVISIONAL_VECTORS == frozenset()  # v1.23.0 promoted `preservation` (was the only one)
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({
