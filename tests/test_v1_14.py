@@ -124,6 +124,10 @@ class TestProvisionalRegistryMatchesContract:
             ("audio", "title"), ("audio", "artist"), ("audio", "album"), ("audio", "year"),
             # v1.32 (FR #114): new fact_block namespace — provisional on arrival
             ("fact_block", "pair_count"), ("fact_block", "pairs"), ("fact_block", "duplicate_keys"),
+            # v1.33: the new ai_session namespace — provisional on arrival.
+            ("ai_session", "vendor"), ("ai_session", "surface"), ("ai_session", "models"),
+            ("ai_session", "id_prefix"), ("ai_session", "object_types"), ("ai_session", "schema_mismatch"),
+            ("ai_session", "usage"),
         })
         assert PROVISIONAL_VECTORS == frozenset()  # v1.23.0 promoted `preservation` (was the only one)
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({

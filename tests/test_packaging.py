@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.32.0"
-    assert SCHEMA_VERSION == "1.18"  # v1.32.0 — new fact_block namespace (kv-fact-block specialist, FR #114); a new namespace = contract-shape change
-    assert LOGIC_VERSION == "1.16.0"  # v1.32.0 — new content-detection routing (is_fact_block + fact_block dispatch on a kv-block text body)
+    assert SCANNER_VERSION == "1.33.0"
+    assert SCHEMA_VERSION == "1.19"  # v1.33.0 — new ai_session namespace (AI-session observation increment 1); a new namespace = contract-shape change
+    assert LOGIC_VERSION == "1.17.0"  # v1.33.0 — ai_session usage sums + producer-schema fingerprint values move manifest_checksum on AI-session corpora (v1.29 values-move precedent)
 
 
 def test_legacy_scanner_import_warns():
