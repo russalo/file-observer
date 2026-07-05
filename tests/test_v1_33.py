@@ -298,6 +298,35 @@ class TestReviewHardening:
         models = _analyze(text)["models"]
         assert len(models) == len(set(models)), models   # no duplicate truncated entries
 
+    def test_internal_usage_cap_sets_truncated(self, monkeypatch):
+        # leg-4 (Codex P2 + CodeRabbit MAJOR, converged): hitting the in-memory usage-dict cap — not
+        # just the 64MB byte cap — must flag `truncated` (partial sums honest at EVERY layer).
+        import file_observer.scanner as S
+        monkeypatch.setattr(S, "AI_SESSION_MAX_USAGE_DICTS", 3)
+        lines = []
+        for i in range(6):
+            lines.append(json.dumps({"role": "user", "content": f"question {i} please help me here today"}))
+            lines.append(json.dumps({"id": f"msg_{i}", "role": "assistant", "content": "ok here you go now",
+                                     "usage": {"input_tokens": 10, "output_tokens": 5}}))
+        u = _analyze("\n".join(lines))["usage"]
+        assert u["truncated"] is True
+        assert u["turns_with_usage"] == 3   # capped, not the full 6
+
+    def test_pretty_printed_single_document_parsed(self):
+        # leg-4 (gemini HIGH): a pretty-printed single JSON doc (array of turns) must be parsed as one
+        # value via the whole-doc-first path, not lost to premature line-by-line parsing.
+        doc = json.dumps([
+            {"id": "msg_1", "role": "assistant", "model": "claude-opus-4-8", "content": "hi there friend",
+             "usage": {"input_tokens": 10, "output_tokens": 5}},
+            {"role": "user", "content": "thanks so much for the help today"},
+            {"id": "msg_2", "role": "assistant", "content": "you are very welcome indeed",
+             "usage": {"input_tokens": 8, "output_tokens": 4}},
+        ], indent=2)
+        a = _analyze(doc)
+        assert a is not None
+        assert a["vendor"] == "anthropic"
+        assert a["usage"]["input_tokens"] == 18   # both turns summed from the outer structure
+
     def test_id_prefix_consistent_with_vendor(self):
         # leg-1: on a mixed log, id_prefix must not contradict the vendor decision.
         text = "\n".join(json.dumps(o) for o in [

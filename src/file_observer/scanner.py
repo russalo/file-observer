@@ -1121,9 +1121,12 @@ AI_SESSION_TOOL = "ai_session_signals"
 AI_SESSION_VECTOR_ID = "ai_session"
 AI_SESSION_METHOD_VERSION = 1
 
-# Bounded observation (v1.8.1 discipline) — untrusted session logs.
-AI_SESSION_MAX_NODES = 20000      # walk cap
-AI_SESSION_MAX_USAGE_DICTS = 8192  # turns_with_usage cap
+# Bounded observation (v1.8.1 discipline) — untrusted session logs. Sized to cover a FULL 64 MiB
+# session (~130k turns × ~10 nodes) so a real session isn't internally capped; if a (pathological)
+# file still hits either cap, `usage.truncated` fires (leg-4 Codex/CodeRabbit — the truncation-honesty
+# guarantee must hold at EVERY layer, not just the byte cap).
+AI_SESSION_MAX_NODES = 2_000_000      # walk cap
+AI_SESSION_MAX_USAGE_DICTS = 200_000  # turns_with_usage cap
 AI_SESSION_MAX_MODELS = 64        # distinct model-string cap
 AI_SESSION_MAX_STR = 256          # cap any surfaced string (model/id/object) length
 AI_SESSION_TOKEN_CAP = 10 ** 13   # reject absurd/hostile token counts (bounded sum)
@@ -6549,6 +6552,7 @@ class Scanner:
         roles: set[str] = set()
         usage_dicts: list[dict] = []
         seen = [0]
+        usage_capped = [False]   # a recognized usage dict was DROPPED at the cap → partial (leg-4)
 
         def visit(node: Any) -> None:
             stack = [node]
@@ -6560,9 +6564,11 @@ class Scanner:
                         u = cur.get(uk)
                         # only a dict carrying a RECOGNIZED token key counts as usage (rejects a
                         # non-token dict merely named `usage`, e.g. {"cpu":5} — leg-1/leg-2 FP review)
-                        if (isinstance(u, dict) and len(usage_dicts) < AI_SESSION_MAX_USAGE_DICTS
-                                and any(k in AI_SESSION_USAGE_KEYS for k in u.keys())):
-                            usage_dicts.append(u)
+                        if isinstance(u, dict) and any(k in AI_SESSION_USAGE_KEYS for k in u.keys()):
+                            if len(usage_dicts) < AI_SESSION_MAX_USAGE_DICTS:
+                                usage_dicts.append(u)
+                            else:
+                                usage_capped[0] = True   # dropped a real usage turn → sums partial
                     idv = cur.get("id")
                     if isinstance(idv, str):
                         for pfx in AI_SESSION_ID_PREFIXES:
@@ -6584,30 +6590,32 @@ class Scanner:
                 elif isinstance(cur, list):
                     stack.extend(x for x in cur if isinstance(x, (dict, list)))
 
+        # Whole-document FIRST (leg-4 gemini): a pretty-printed single JSON object — or a JSON array
+        # of turns — must be parsed as one value; otherwise a standalone valid line short-circuits the
+        # line loop and misses the outer structure. For JSONL this fails fast (extra data after the
+        # first object) → line-by-line. (RecursionError = the deeply-nested v1.30.2 class; caught.)
         parsed_any = False
-        for line in text.split("\n"):
-            line = line.strip()
-            if not line or line[0] not in "{[":
-                continue
+        s = text.strip()
+        if s[:1] in "{[":
             try:
-                obj = json.loads(line)
+                visit(json.loads(s)); parsed_any = True
             except (json.JSONDecodeError, ValueError, RecursionError):
-                # RecursionError: a bounded-size but deeply-nested line (the v1.30.2 class) — the
-                # C json scanner recurses; never-crash requires catching it here (leg-1 review).
-                continue
-            parsed_any = True
-            visit(obj)
-            if seen[0] >= AI_SESSION_MAX_NODES:
-                break
+                pass
         if not parsed_any:
-            s = text.strip()
-            if s[:1] in "{[":
+            for line in text.split("\n"):
+                line = line.strip()
+                if not line or line[0] not in "{[":
+                    continue
                 try:
-                    visit(json.loads(s))
+                    obj = json.loads(line)
                 except (json.JSONDecodeError, ValueError, RecursionError):
-                    return None
-            else:
-                return None
+                    continue
+                parsed_any = True
+                visit(obj)
+                if seen[0] >= AI_SESSION_MAX_NODES:
+                    break
+        if not parsed_any:
+            return None
 
         # --- vendor / surface fingerprint (durable anchors first: id-prefix / object-type) ---
         vendor = "unknown"
@@ -6681,8 +6689,9 @@ class Scanner:
             for kind in AI_SESSION_USAGE_KINDS:
                 usage[kind] = sums.get(kind) if kind in present else None
             usage["raw_keys"] = sorted(k[:AI_SESSION_MAX_STR] for k in raw_keys)[:AI_SESSION_MAX_MODELS]
-            # honesty flag: the file exceeded the full-file cap → these sums are partial
-            usage["truncated"] = bool(truncated)
+            # honesty flag: partial sums from ANY layer — the file-byte cap (caller `truncated`) OR an
+            # internal walk/usage-dict cap (leg-4 Codex/CodeRabbit convergence — the guarantee at every layer)
+            usage["truncated"] = bool(truncated) or seen[0] >= AI_SESSION_MAX_NODES or usage_capped[0]
 
         # --- self-claim (model string) vs structural vendor → mismatch signal ---
         schema_mismatch = False
