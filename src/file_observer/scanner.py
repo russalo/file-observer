@@ -1248,7 +1248,12 @@ def _canonical_iso_ms(dt: Any) -> str:
     """An aware UTC datetime → canonical ISO-8601 `YYYY-MM-DDTHH:MM:SS.sssZ` (fixed ms precision, Z).
     Fixed precision + Z = byte-deterministic AND lexically==chronologically sortable (recall's flat query).
     Manual zero-padding (NOT strftime `%Y`) so a year < 1000 stays 4-digit and lexical order holds
-    (leg-2/Gemini review: `%Y` emits `999-…`, breaking the sort)."""
+    (leg-2/Gemini review: `%Y` emits `999-…`, breaking the sort).
+
+    ⚠ CROSS-SEAM CONTRACT (recall#62, confirmed by recall 2026-07-07): the MILLISECOND precision is
+    load-bearing. recall generates its `$gte/$lt` bucket-window edges at the SAME `.sssZ` shape, because
+    a seconds-precision edge sorts lexically WRONG against a ms value (`.` < `Z`, so `…00.123Z` < `…00Z`).
+    Changing this precision is a COUPLED change — flag recall (its edge generator + golden tests pin %.3fZ)."""
     return (f"{dt.year:04d}-{dt.month:02d}-{dt.day:02d}"
             f"T{dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}.{dt.microsecond // 1000:03d}Z")
 
