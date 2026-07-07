@@ -3700,7 +3700,7 @@ class Scanner:
                                                 detail={"tool": AI_SESSION_TOOL,
                                                         "reason": "ai_session_full_file_required",
                                                         "max_bytes": AI_SESSION_MAX_FILE_BYTES,
-                                                        "truncated": ai_over_cap},
+                                                        "truncated": full_over_cap},
                                             ))
 
                 # v1.32 (FR #114): generic kv-fact-block detection — the FALLBACK observer for a
@@ -6829,8 +6829,11 @@ class Scanner:
             while stack and seen[0] < CHATLOG_AXES_MAX_NODES:
                 cur = stack.pop(); seen[0] += 1
                 if isinstance(cur, dict):
-                    # don't collect from — or descend into — a tool payload block (leg-1/leg-2 FP defense)
-                    if cur.get("type") in CHATLOG_TIMESTAMP_SKIP_BLOCKS:
+                    # don't collect from — or descend into — a tool payload block (leg-1/leg-2 FP defense).
+                    # `isinstance(str)` guard: a non-string `type` (list/dict) is unhashable → `in frozenset`
+                    # would TypeError-crash on hostile JSON (leg-4/gemini; the v1.29 unhashable-type class).
+                    _bt = cur.get("type")
+                    if isinstance(_bt, str) and _bt in CHATLOG_TIMESTAMP_SKIP_BLOCKS:
                         continue
                     for k in CHATLOG_TIMESTAMP_KEYS:
                         if k in cur:

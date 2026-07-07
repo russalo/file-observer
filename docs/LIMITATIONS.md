@@ -293,10 +293,16 @@ as `null` or a shifted value, never a crash):
   this affects only a hypothetical mixed-convention log.
 
 For very large sessions the axes use a head+tail read (v1.5 PDF precedent): turns are
-chronological, so `first` is read from the file head and `last` from the tail. If a
-log's timestamps are non-monotonic, an extreme sitting in the unread middle of a
->64 MiB file could be missed — real session logs are chronological, so this is not
-observed in practice.
+chronological, so `first` is read from the file head and `last` from the tail. Two edges:
+
+- **Non-monotonic timestamps in a >64 MiB file** — an extreme sitting in the unread
+  middle could be missed. Real session logs are chronological, so this is not observed
+  in practice.
+- **A single-document JSON chatlog over 64 MiB** — the head+tail slices are then two
+  *incomplete* fragments of one giant object/array, which don't parse, so the axes read
+  `null` (honest — "not observed within bounds"). The head+tail guarantee holds for the
+  JSONL-shaped logs recall targets (one object per line); an oversized single-doc JSON
+  export is the uncovered case.
 
 ---
 

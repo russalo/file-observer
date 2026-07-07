@@ -150,6 +150,35 @@ class TestReviewFixes:
         assert m["first_timestamp"] == "2026-07-04T10:00:00.000Z"   # NOT dragged back to 2011
         assert m["last_timestamp"] == "2026-07-04T10:10:00.000Z"
 
+    def test_unhashable_type_does_not_crash(self):
+        # leg-4/gemini: a non-string `type` (list/dict) is unhashable → `in frozenset` would TypeError.
+        text = "\n".join(json.dumps(o) for o in [
+            {"type": ["unhashable"], "role": "user", "content": "hi please help me out today",
+             "timestamp": "2026-07-04T10:00:00.000Z"},
+            {"type": {"n": 1}, "role": "assistant", "content": "sure I can help you now",
+             "timestamp": "2026-07-04T10:05:00.000Z"},
+            {"role": "user", "content": "thanks so much for the help", "timestamp": "2026-07-04T10:10:00.000Z"},
+        ])
+        m = _meta(text)   # must not raise
+        assert m["first_timestamp"] == "2026-07-04T10:00:00.000Z"
+
+    def test_ai_session_dispatch_leaves_no_error(self, tmp_path):
+        # leg-4/codex: the dispatch restructure left `ai_over_cap` undefined → a NameError silently
+        # swallowed into an ErrorRecord. A usage-bearing chatlog must scan cleanly with the ai_session
+        # provenance intact.
+        log = "\n".join(json.dumps(o) for o in [
+            {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "hi please help me today"}]},
+             "cwd": "/x", "timestamp": "2026-07-04T10:00:00.000Z"},
+            {"type": "assistant", "message": {"id": "msg_1", "role": "assistant", "model": "claude-opus-4-8",
+                "content": [{"type": "text", "text": "sure I can help you now"}], "stop_reason": "end_turn",
+                "usage": {"input_tokens": 10, "output_tokens": 5}}, "timestamp": "2026-07-04T10:05:00.000Z"},
+            {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": "thanks for the help friend"}]},
+             "timestamp": "2026-07-04T10:10:00.000Z"},
+        ])
+        rec, _ = _scan(tmp_path, "s.jsonl", log)
+        assert rec.specialist_metadata.get("ai_session") is not None
+        assert rec.errors == [], [e.code for e in rec.errors]   # no swallowed NameError
+
     def test_year_below_1000_zero_padded(self):
         # leg-2/Gemini: %Y emits `999-…`, breaking lexical sort. Manual zero-pad keeps 4 digits.
         from file_observer.scanner import _parse_timestamp_utc, _canonical_iso_ms
