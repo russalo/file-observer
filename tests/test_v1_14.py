@@ -114,6 +114,10 @@ class TestProvisionalRegistryMatchesContract:
             ("chatlog", "speaker_turn_counts"),
             ("chatlog", "speaker_turn_chars"),
             ("chatlog", "alternation"),
+            # v1.34: session axes — provisional on arrival
+            ("chatlog", "first_timestamp"),
+            ("chatlog", "last_timestamp"),
+            ("chatlog", "cwd"),
             # v1.31.0 promotion pass: image-EXIF (v1.16) + the whole video namespace
             # (v1.17–1.20) were PROMOTED provisional→stable → no longer here (see test_v1_31).
             # v1.24 (Candidate B): new presentation namespace — provisional on arrival (held: too young)

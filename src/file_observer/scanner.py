@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.33.0
-    Schema:     1.19
+    Version:    1.34.0
+    Schema:     1.20
     Python:     >= 3.12
-    Spec:       docs/v1.33.0_RFC_Specification.md (current)
+    Spec:       docs/v1.34.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -82,9 +82,9 @@ except ImportError:
 # output location (cwd/<this>) AND skipped during discovery (iter_files) so a re-scan of the
 # cwd never observes its own prior manifest/report — the leg-1 self-inclusion catch.
 DEFAULT_OUTPUT_DIRNAME = "file-observer-manifests"
-SCANNER_VERSION = "1.33.0"
-LOGIC_VERSION = "1.17.0"   # v1.33.0 — AI-session observation increment 1: a new provisional `ai_session` namespace on is_chatlog-detected AI session logs (Claude Code / OpenAI / Gemini), carrying token-usage SUMS (canonical fo names, null-per-absent, vendor raw keys preserved) + a producer-schema fingerprint (vendor/surface/models/id_prefix/object_types/schema_mismatch) anchored on id-prefix+object-type (NOT the usage-key vocab — OpenAI Responses collides with Anthropic on input_tokens; measure_ai_session_2026-07-05). Observe-only: SUMS never priced. VALUES move manifest_checksum on AI-session corpora (the v1.29 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.16.0 = v1.32.0 — new content-detection routing: the generic kv-fact-block specialist (FR #114). A text file whose BODY (frontmatter stripped) is a `key: value` block now carries `is_fact_block` + a `fact_block` specialist dispatch (content-shape, any text body; the sentence-value veto keeps it off dialogue). Additive: `is_fact_block` False→True only; no file's prior routing flips away. The v1.2/v1.29 detection-LOGIC precedent. Prior 1.15.3 = v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.19"   # v1.33.0 — new `ai_session` namespace (vendor/surface/models/id_prefix/object_types/schema_mismatch/usage) for AI-session observation increment 1; a new namespace = contract-shape change (the v1.24/v1.25/v1.32 precedent), all fields provisional. Prior 1.18 = v1.32.0 — new `fact_block` namespace (pair_count/pairs/duplicate_keys) for the generic kv-fact-block specialist (FR #114); a new namespace = contract-shape change (the v1.24/v1.25 precedent), new fields provisional. Prior 1.17 = v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.34.0"
+LOGIC_VERSION = "1.18.0"   # v1.34.0 — chatlog session axes (recall#62): the chatlog specialist emits three new FLAT top-level scalars — first_timestamp/last_timestamp (min/max turn timestamp, recognized-key set {timestamp,created_date,create_time,created_at}, parsed ISO-string-or-epoch → canonical ISO-8601 UTC `…Z`/ms, null-when-untimestamped) + cwd (first-seen top-level cwd, verbatim/bounded, null-when-absent). Deterministic pure function of the file (observe, don't derive); values move manifest_checksum on timestamped/cwd-bearing chatlog corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips, is_chatlog unchanged. chatlog method_version 10→11 (new signals + recognized-key set/normalization feed the chatlog rules_hash). Prior 1.17.0 = v1.33.0 — AI-session observation increment 1: a new provisional `ai_session` namespace on is_chatlog-detected AI session logs (Claude Code / OpenAI / Gemini), carrying token-usage SUMS (canonical fo names, null-per-absent, vendor raw keys preserved) + a producer-schema fingerprint (vendor/surface/models/id_prefix/object_types/schema_mismatch) anchored on id-prefix+object-type (NOT the usage-key vocab — OpenAI Responses collides with Anthropic on input_tokens; measure_ai_session_2026-07-05). Observe-only: SUMS never priced. VALUES move manifest_checksum on AI-session corpora (the v1.29 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.16.0 = v1.32.0 — new content-detection routing: the generic kv-fact-block specialist (FR #114). A text file whose BODY (frontmatter stripped) is a `key: value` block now carries `is_fact_block` + a `fact_block` specialist dispatch (content-shape, any text body; the sentence-value veto keeps it off dialogue). Additive: `is_fact_block` False→True only; no file's prior routing flips away. The v1.2/v1.29 detection-LOGIC precedent. Prior 1.15.3 = v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.20"   # v1.34.0 — three new provisional fields in the `chatlog` namespace (first_timestamp/last_timestamp/cwd) for the recall#62 session time+project axes; new fields = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.19 = v1.33.0 — new `ai_session` namespace (vendor/surface/models/id_prefix/object_types/schema_mismatch/usage) for AI-session observation increment 1; a new namespace = contract-shape change (the v1.24/v1.25/v1.32 precedent), all fields provisional. Prior 1.18 = v1.32.0 — new `fact_block` namespace (pair_count/pairs/duplicate_keys) for the generic kv-fact-block specialist (FR #114); a new namespace = contract-shape change (the v1.24/v1.25 precedent), new fields provisional. Prior 1.17 = v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -810,6 +810,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
         "max_turn_chars", "min_turn_chars", "reference_tokens",
         "top_capitalized_tokens", "capitalized_token_count",
         "vocabulary_size_estimate",
+        "first_timestamp", "last_timestamp", "cwd",   # v1.34 (recall#62) session axes
     ],
     "fact_block": ["pair_count", "pairs", "duplicate_keys"],  # v1.32 (FR #114)
     "ai_session": ["vendor", "surface", "models", "id_prefix", "object_types", "schema_mismatch", "usage"],  # v1.33
@@ -827,6 +828,9 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("chatlog", "speaker_turn_counts"),
     ("chatlog", "speaker_turn_chars"),
     ("chatlog", "alternation"),
+    ("chatlog", "first_timestamp"),   # v1.34 (recall#62) session axes — provisional
+    ("chatlog", "last_timestamp"),
+    ("chatlog", "cwd"),
     # v1.31.0 promotion pass: the v1.16 image-EXIF fields (make/model/orientation/
     # datetime_original/gps_present/xmp_present) AND the entire v1.17–1.20 `video` namespace
     # (codec/duration_s/width/height/creation_date/creation_date_qt/make/model/gps_present/
@@ -1194,7 +1198,66 @@ def ai_session_rules_fingerprint() -> str:
 # any detection regex or extraction algorithm requires bumping METHOD_VERSION
 # and updating the rules definition string.
 CHATLOG_VECTOR_ID = "chatlog"
-CHATLOG_METHOD_VERSION = 10  # v1.29.0: agentic turn recognition — a turn with a conversational role + a text-bearing block OR a DISTINCTIVE agentic block (thinking/tool_use/tool_result) counts in BOTH detection and turn-counting signals (prose signals stay text+thinking only). Recovers tool-heavy Claude Code sessions the text-centric gate false-negatived. Prior 9 = v1.4.0: content-shape gate over the count rule — utterance_ratio (function-word/punct/length arms) + FP-lexicon dominance + version-tag structure-vote + FAQ complete-set; density surfaced but not gated
+# v1.34.0: session axes (recall#62). Recognized per-turn timestamp keys (measure-first grounded:
+# Claude Code `timestamp`, oasst `created_date`, ChatGPT export `create_time`, + common `created_at`;
+# generic `date`/`time`/`created` EXCLUDED = FP risk). cwd = the session's working directory.
+CHATLOG_TIMESTAMP_KEYS: frozenset[str] = frozenset({"timestamp", "created_date", "create_time", "created_at"})
+CHATLOG_SESSION_AXIS_FIELDS: frozenset[str] = frozenset({"first_timestamp", "last_timestamp", "cwd"})
+# v1.34 review (leg-1 + leg-2 CONVERGED): do NOT collect timestamps/cwd from inside tool payloads —
+# a `tool_result` carrying a `gh api` JSON object (created_at) or a `tool_use` input carrying a cwd
+# would pollute the session span/dir. Skip descending into these content blocks. (Measure-first: 0 real
+# federation logs embed nested timestamp keys today, but two decorrelated legs flagged it → defensive.)
+CHATLOG_TIMESTAMP_SKIP_BLOCKS: frozenset[str] = frozenset({"tool_use", "tool_result"})
+# The temporal read is HEAD (reused full_text) + a TAIL slice for >64 MiB files — chatlog turns are
+# chronological, so `last_timestamp` lives at the END; a front-only read truncated it (leg-1 + real-data
+# verify: a 141 MB / 2-day session reported a partial span). Bounded (the v1.5 PDF head+tail precedent).
+CHATLOG_TAIL_BYTES = 8 * 1024 * 1024   # tail slice read for a >64 MiB session
+CHATLOG_CWD_MAX_STR = 4096          # cap the surfaced cwd (PATH_MAX-class; bounded observation)
+CHATLOG_AXES_MAX_NODES = 2_000_000  # bounded walk (the ai_session cap) over a full 64 MiB session
+
+
+def _parse_timestamp_utc(value: Any) -> Any:
+    """Parse a recognized turn-timestamp value → aware UTC datetime. Accepts an ISO-8601 string
+    (incl. a trailing `Z`, tz offsets, ms/µs precision) OR a numeric epoch (int/float seconds).
+    Returns None on anything else — never crashes (the v1.8.1 bounded/never-crash bar)."""
+    from datetime import datetime, timezone
+    if isinstance(value, bool):        # bool is an int subclass — reject
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            if not (0 <= float(value) < 1e13):   # reject absurd/hostile epoch magnitudes
+                return None
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    if isinstance(value, str):
+        s = value.strip()
+        if s[-1:] in ("Z", "z"):       # 3.10 fromisoformat doesn't accept Z; normalize
+            s = s[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(s)
+        except (ValueError, TypeError):
+            return None
+        if dt.tzinfo is None:          # naive → assume UTC (fo's capture-metadata stance)
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+    return None
+
+
+def _canonical_iso_ms(dt: Any) -> str:
+    """An aware UTC datetime → canonical ISO-8601 `YYYY-MM-DDTHH:MM:SS.sssZ` (fixed ms precision, Z).
+    Fixed precision + Z = byte-deterministic AND lexically==chronologically sortable (recall's flat query).
+    Manual zero-padding (NOT strftime `%Y`) so a year < 1000 stays 4-digit and lexical order holds
+    (leg-2/Gemini review: `%Y` emits `999-…`, breaking the sort).
+
+    ⚠ CROSS-SEAM CONTRACT (recall#62, confirmed by recall 2026-07-07): the MILLISECOND precision is
+    load-bearing. recall generates its `$gte/$lt` bucket-window edges at the SAME `.sssZ` shape, because
+    a seconds-precision edge sorts lexically WRONG against a ms value (`.` < `Z`, so `…00.123Z` < `…00Z`).
+    Changing this precision is a COUPLED change — flag recall (its edge generator + golden tests pin %.3fZ)."""
+    return (f"{dt.year:04d}-{dt.month:02d}-{dt.day:02d}"
+            f"T{dt.hour:02d}:{dt.minute:02d}:{dt.second:02d}.{dt.microsecond // 1000:03d}Z")
+
+CHATLOG_METHOD_VERSION = 11  # v1.34.0: session axes — first_timestamp/last_timestamp (min/max turn timestamp over the recognized-key set, normalized to canonical ISO-8601 UTC) + cwd (first-seen), three new flat scalars (recall#62). New extracted signals + the recognized-key set/normalization feed the chatlog rules_hash. Prior 10 = v1.29.0: agentic turn recognition — a turn with a conversational role + a text-bearing block OR a DISTINCTIVE agentic block (thinking/tool_use/tool_result) counts in BOTH detection and turn-counting signals (prose signals stay text+thinking only). Recovers tool-heavy Claude Code sessions the text-centric gate false-negatived. Prior 9 = v1.4.0: content-shape gate over the count rule — utterance_ratio (function-word/punct/length arms) + FP-lexicon dominance + version-tag structure-vote + FAQ complete-set; density surfaced but not gated
 # v1.29.0: DISTINCTIVE agentic content-block types. A turn carrying >=1 block of
 # these types is a real conversational turn even when it yields no prose (tool_use/
 # tool_result) — counted in detection + turn_count. Deliberately the Anthropic-
@@ -1229,7 +1292,13 @@ CHATLOG_RULES_DEFINITION = (
     "extract:turn_count,speaker_labels(freq>=3,nonspeaker_ci),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,content_shape{utterance_ratio,density},"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
-    "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate;"
+    "top_capitalized_tokens(freq>=3,top20),vocabulary_size_estimate,"
+    # v1.34.0: session axes — min/max turn timestamp over the recognized-key set → canonical
+    # ISO-8601 UTC; first-seen cwd. Key set + normalization + cwd cap feed the rules_hash.
+    "session_axes{first_timestamp,last_timestamp,cwd(first_seen)};"
+    "timestamp_keys:created_at,created_date,create_time,timestamp;"
+    "timestamp_norm:parse(iso|epoch)->utc->canonical_iso8601_ms_Z,min/max,null_if_none;"
+    "cwd_max:" + str(CHATLOG_CWD_MAX_STR) + ";"
     # fp_lexicon_ci = CHATLOG_FP_LABEL_LEXICON (the §3.3 dominance rule) — admonition
     # conventions + Keep-a-Changelog verbs ONLY. FAQ tokens are a SEPARATE set
     # (faq_set, the §4 complete-set rule), not part of the FP lexicon.
@@ -3557,7 +3626,33 @@ class Scanner:
                                             "expected": sorted(chatlog_guard)},
                                 ))
                             else:
-                                chatlog_meta = self._extract_chatlog_metadata(text)
+                                # v1.34: read the FULL file once (bounded deviation, 64 MiB cap). Session
+                                # logs far exceed the 64 KB baseline window, so the timestamp min/max —
+                                # and the ai_session usage sums — MUST see every turn, not a partial
+                                # window (a windowed max gives the wrong session span). The windowed
+                                # `text` still drives the EXISTING chatlog signals (turn_count, speaker
+                                # stats — unchanged, byte-identical); only the NEW session axes use full_text.
+                                try:
+                                    _, full_text, _ = self.decode_text(sample, path, AI_SESSION_MAX_FILE_BYTES)
+                                    full_over_cap = path.stat().st_size > AI_SESSION_MAX_FILE_BYTES
+                                except (OSError, ValueError):
+                                    full_text, full_over_cap = text, True   # fell back to the window
+                                # v1.34: for the timestamp axes, append a TAIL slice when the file exceeds
+                                # the 64 MiB read — chatlog turns are chronological so `last_timestamp` is
+                                # at the END, beyond a front-only read. head (full_text) + tail captures both
+                                # extremes, bounded (the v1.5 PDF head+tail precedent). axes_partial = the
+                                # tail couldn't be read (last_timestamp may be understated → honest provenance).
+                                temporal_text = full_text
+                                axes_partial = False
+                                if full_over_cap:
+                                    try:
+                                        with open(path, "rb") as _tf:
+                                            _tf.seek(-CHATLOG_TAIL_BYTES, 2)
+                                            _tail = _tf.read(CHATLOG_TAIL_BYTES)
+                                        temporal_text = full_text + "\n" + _tail.decode("utf-8", "replace")
+                                    except OSError:
+                                        axes_partial = True   # tail unreadable → last_timestamp partial
+                                chatlog_meta = self._extract_chatlog_metadata(text, temporal_text=temporal_text)
                                 if chatlog_meta is None:
                                     errors.append(ErrorRecord(
                                         code=ERR_SPECIALIST_PROBE_FAILED,
@@ -3579,12 +3674,18 @@ class Scanner:
                                     # text length consumed.
                                     text_len = len(text)
                                     for key in chatlog_meta:
-                                        provenance[f"specialist_metadata.{CHATLOG_NAMESPACE}.{key}"] = asdict(ProvenanceEntry(
-                                            layer="derived",
-                                            method="_extract_chatlog_metadata",
-                                            trigger="bounded_text",
-                                            detail={"tool": CHATLOG_TOOL, "text_chars": text_len},
-                                        ))
+                                        # v1.34: the session-axis fields come from the FULL-file read
+                                        # (a declared deviation), the rest from the bounded window.
+                                        if key in CHATLOG_SESSION_AXIS_FIELDS:
+                                            _p = ProvenanceEntry(layer="derived", method="_extract_chatlog_temporal",
+                                                trigger="bounded_deviation",
+                                                detail={"tool": CHATLOG_TOOL, "reason": "chatlog_head_tail_read",
+                                                        "max_bytes": AI_SESSION_MAX_FILE_BYTES,
+                                                        "tail_bytes": CHATLOG_TAIL_BYTES, "truncated": axes_partial})
+                                        else:
+                                            _p = ProvenanceEntry(layer="derived", method="_extract_chatlog_metadata",
+                                                trigger="bounded_text", detail={"tool": CHATLOG_TOOL, "text_chars": text_len})
+                                        provenance[f"specialist_metadata.{CHATLOG_NAMESPACE}.{key}"] = asdict(_p)
                                     # v1.33: AI-session observation — usage sums + producer-schema
                                     # fingerprint. Fires only on a RECOGNIZED token-usage block.
                                     # Reads the FULL file (bounded to AI_SESSION_MAX_FILE_BYTES) — a
@@ -3592,12 +3693,8 @@ class Scanner:
                                     # baseline window (a 1.6 MB session = 268 usage turns, ~7 in 64 KB),
                                     # so a windowed sum would be silently partial. Never-crash: a read
                                     # failure falls back to the baseline `text` (partial, flagged).
-                                    try:
-                                        _, ai_text, _ = self.decode_text(sample, path, AI_SESSION_MAX_FILE_BYTES)
-                                        ai_over_cap = path.stat().st_size > AI_SESSION_MAX_FILE_BYTES
-                                    except (OSError, ValueError):
-                                        ai_text, ai_over_cap = text, True   # fell back to the window
-                                    ai_session = self._extract_ai_session(ai_text, truncated=ai_over_cap)
+                                    # v1.33/v1.34: reuse the full-file read above (single read, no double I/O).
+                                    ai_session = self._extract_ai_session(full_text, truncated=full_over_cap)
                                     if ai_session is not None:
                                         specialist_metadata[AI_SESSION_NAMESPACE] = ai_session
                                         for key in ai_session:
@@ -3608,7 +3705,7 @@ class Scanner:
                                                 detail={"tool": AI_SESSION_TOOL,
                                                         "reason": "ai_session_full_file_required",
                                                         "max_bytes": AI_SESSION_MAX_FILE_BYTES,
-                                                        "truncated": ai_over_cap},
+                                                        "truncated": full_over_cap},
                                             ))
 
                 # v1.32 (FR #114): generic kv-fact-block detection — the FALLBACK observer for a
@@ -6720,10 +6817,81 @@ class Scanner:
             "usage": usage,
         }
 
+    def _extract_chatlog_temporal(self, text: str) -> dict[str, Any]:
+        """v1.34 — chatlog session axes: min/max turn timestamp (recognized-key set, normalized to
+        canonical ISO-8601 UTC) + first-seen `cwd`, over the log's JSON objects. Deterministic pure
+        function of the file; bounded/never-crash (capped walk, non-parseable values skipped). Non-JSON
+        (prose) → all None. Returns {first_timestamp, last_timestamp, cwd}, each None if absent."""
+        nulls = {"first_timestamp": None, "last_timestamp": None, "cwd": None}
+        if not text:
+            return dict(nulls)
+
+        state = {"min": None, "max": None, "cwd": None}
+        seen = [0]
+
+        def visit(node: Any) -> None:
+            stack = [node]
+            while stack and seen[0] < CHATLOG_AXES_MAX_NODES:
+                cur = stack.pop(); seen[0] += 1
+                if isinstance(cur, dict):
+                    # don't collect from — or descend into — a tool payload block (leg-1/leg-2 FP defense).
+                    # `isinstance(str)` guard: a non-string `type` (list/dict) is unhashable → `in frozenset`
+                    # would TypeError-crash on hostile JSON (leg-4/gemini; the v1.29 unhashable-type class).
+                    _bt = cur.get("type")
+                    if isinstance(_bt, str) and _bt in CHATLOG_TIMESTAMP_SKIP_BLOCKS:
+                        continue
+                    for k in CHATLOG_TIMESTAMP_KEYS:
+                        if k in cur:
+                            dt = _parse_timestamp_utc(cur[k])
+                            if dt is not None:
+                                if state["min"] is None or dt < state["min"]:
+                                    state["min"] = dt
+                                if state["max"] is None or dt > state["max"]:
+                                    state["max"] = dt
+                    if state["cwd"] is None:
+                        cv = cur.get("cwd")
+                        if isinstance(cv, str):
+                            state["cwd"] = cv[:CHATLOG_CWD_MAX_STR]
+                    # reversed → DFS visits siblings/lines in file order (so first-seen cwd is the first
+                    # LINE's cwd for JSONL — the Claude Code case). NOTE: pre-order still reads a parent's
+                    # own cwd before descending, so for a nested single-doc a shallow cwd can precede a
+                    # textually-earlier nested one; deterministic either way (leg-1 review — comment fix).
+                    stack.extend(reversed([v for v in cur.values() if isinstance(v, (dict, list))]))
+                elif isinstance(cur, list):
+                    stack.extend(reversed([x for x in cur if isinstance(x, (dict, list))]))
+
+        # Whole-document first (pretty-printed single doc / JSON array of turns); for JSONL this
+        # fails fast → line-by-line, in FILE ORDER so first-seen cwd is the first line's (ai_session shape).
+        s = text.strip()
+        parsed = False
+        if s[:1] in "{[":
+            try:
+                visit(json.loads(s)); parsed = True
+            except (json.JSONDecodeError, ValueError, RecursionError):
+                pass
+        if not parsed:
+            for line in text.split("\n"):
+                line = line.strip()
+                if not line or line[0] not in "{[":
+                    continue
+                try:
+                    obj = json.loads(line)
+                except (json.JSONDecodeError, ValueError, RecursionError):
+                    continue
+                visit(obj)
+                if seen[0] >= CHATLOG_AXES_MAX_NODES:
+                    break
+
+        return {
+            "first_timestamp": _canonical_iso_ms(state["min"]) if state["min"] is not None else None,
+            "last_timestamp": _canonical_iso_ms(state["max"]) if state["max"] is not None else None,
+            "cwd": state["cwd"],
+        }
+
     # Default top-N for capitalized tokens. Per spec §2.5 N=20.
     _CHATLOG_TOP_TOKENS_N = 20
 
-    def _extract_chatlog_metadata(self, text: str) -> dict[str, Any] | None:
+    def _extract_chatlog_metadata(self, text: str, temporal_text: str | None = None) -> dict[str, Any] | None:
         """Extract drift-visible signals from a chatlog/journal/vault text.
 
         Supports two formats:
@@ -6908,6 +7076,11 @@ class Scanner:
             "top_capitalized_tokens": top_capitalized_tokens,
             "capitalized_token_count": capitalized_token_count,
             "vocabulary_size_estimate": vocabulary_size_estimate,
+            # v1.34.0 (recall#62): session axes — flat top-level scalars, null when the log
+            # doesn't carry them. Extracted from `temporal_text` when the caller passes the FULL
+            # file (the scan path — so min/max span the whole session, not the 64 KB window); falls
+            # back to `text` (unit calls / small logs where windowed == full).
+            **self._extract_chatlog_temporal(temporal_text if temporal_text is not None else text),
         }
 
     def _extract_email_body(self, path: Path, extension: str, sample: bytes) -> str | None:
