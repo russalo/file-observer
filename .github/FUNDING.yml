@@ -1,0 +1,4 @@
+# GitHub Sponsors / funding sources for file-observer.
+# Adds a "Sponsor" button to the repo. Points at the live pay-what-you-want
+# one-time Stripe donation link (attributed project=file-observer).
+custom: ["https://donate.stripe.com/28EaEZ7bi6MP4r17pA9AA00"]
