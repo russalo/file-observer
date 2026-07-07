@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.33.0"
-    assert SCHEMA_VERSION == "1.19"  # v1.33.0 — new ai_session namespace (AI-session observation increment 1); a new namespace = contract-shape change
-    assert LOGIC_VERSION == "1.17.0"  # v1.33.0 — ai_session usage sums + producer-schema fingerprint values move manifest_checksum on AI-session corpora (v1.29 values-move precedent)
+    assert SCANNER_VERSION == "1.34.0"
+    assert SCHEMA_VERSION == "1.20"  # v1.34.0 — three new provisional chatlog fields (first/last_timestamp + cwd) for the recall#62 session axes; new fields = additive contract change
+    assert LOGIC_VERSION == "1.18.0"  # v1.34.0 — chatlog session axes: new observed values move manifest_checksum on timestamped/cwd-bearing chatlog corpora (v1.29/v1.33 values-move precedent)
 
 
 def test_legacy_scanner_import_warns():

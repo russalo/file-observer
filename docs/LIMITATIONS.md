@@ -274,6 +274,30 @@ known changelog/admonition vocabularies are still rejected.
 These are deliberate trade-offs to keep false positives low. As always, a null or
 absent `is_chatlog` means "not detected within these rules," not "not a conversation."
 
+## Chatlog session timestamps: recognized units + timezone assumptions (v1.34)
+
+`chatlog.first_timestamp` / `last_timestamp` are the min/max of a session's turn
+timestamps, normalized to canonical ISO-8601 UTC. Two accepted limits (both surface
+as `null` or a shifted value, never a crash):
+
+- **Epoch timestamps are read as SECONDS only.** A recognized numeric timestamp
+  (`create_time`) is parsed as epoch *seconds* (the ChatGPT-export convention).
+  A log stamping epoch *milliseconds* or *microseconds* is not recognized and its
+  timestamps read as `null` — a fully-timestamped session then looks untimestamped.
+  No measured chatlog schema uses ms/µs epochs; heuristic unit-guessing was declined
+  as interpretation (fo observes, it doesn't guess the unit).
+- **Naive (offset-less) timestamps are assumed UTC.** A turn timestamp with no
+  timezone is treated as UTC (fo's capture-metadata stance). A log that mixes
+  naive *local-time* turns with tz-aware turns can therefore order them wrongly
+  by the local offset. All measured chatlog schemas are tz-aware or UTC-epoch, so
+  this affects only a hypothetical mixed-convention log.
+
+For very large sessions the axes use a head+tail read (v1.5 PDF precedent): turns are
+chronological, so `first` is read from the file head and `last` from the tail. If a
+log's timestamps are non-monotonic, an extreme sitting in the unread middle of a
+>64 MiB file could be missed — real session logs are chronological, so this is not
+observed in practice.
+
 ---
 
 *If a limitation here conflicts with observed behavior, the behavior is the
