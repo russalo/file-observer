@@ -177,7 +177,12 @@ class TestReviewFixes:
         ])
         rec, _ = _scan(tmp_path, "s.jsonl", log)
         assert rec.specialist_metadata.get("ai_session") is not None
-        assert rec.errors == [], [e.code for e in rec.errors]   # no swallowed NameError
+        # a caught NameError would land here; tolerate the benign no-libmagic MIME diagnostic
+        # (present on the forced-fallback + Windows CI jobs, not a crash).
+        crash_errors = [e for e in rec.errors if e.code != "mime_type_fallback"]
+        assert crash_errors == [], [e.code for e in crash_errors]
+        # direct proof the ai_session provenance loop RAN (would be absent if it NameError'd first)
+        assert any(k.startswith("specialist_metadata.ai_session.") for k in (rec.signal_provenance or {}))
 
     def test_year_below_1000_zero_padded(self):
         # leg-2/Gemini: %Y emits `999-…`, breaking lexical sort. Manual zero-pad keeps 4 digits.
