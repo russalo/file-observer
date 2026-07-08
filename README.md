@@ -5,8 +5,10 @@
 # File Observer
 
 [![PyPI](https://img.shields.io/pypi/v/file-observer)](https://pypi.org/project/file-observer/)
+[![Downloads](https://img.shields.io/pypi/dm/file-observer)](https://pypi.org/project/file-observer/)
 ![Python](https://img.shields.io/pypi/pyversions/file-observer)
 [![tests](https://github.com/russalo/file-observer/actions/workflows/tests.yml/badge.svg)](https://github.com/russalo/file-observer/actions/workflows/tests.yml)
+[![Container](https://img.shields.io/badge/ghcr.io-file--observer-2496ED?logo=docker&logoColor=white)](https://github.com/russalo/file-observer/pkgs/container/file-observer)
 [![License: AGPL-3.0 + commercial](https://img.shields.io/badge/license-AGPL--3.0%20%2B%20commercial-blue)](https://github.com/russalo/file-observer/blob/main/LICENSE)
 
 **Know what's in your files before you open them.**

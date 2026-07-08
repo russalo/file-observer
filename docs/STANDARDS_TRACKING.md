@@ -67,7 +67,7 @@ Things we should be aware of even if we haven't acted on them. License obligatio
 | `python-magic` license (PSF/MIT) | dependency | Attribution in distribution | Acknowledge in LICENSE/NOTICE when project goes public |
 | `chardet` license (LGPL 2.1) | dependency | Source/binary distinction; attribution | Same |
 | `olefile` license (BSD-2) | optional dependency | Attribution | Same |
-| `defusedxml` license (PSF) | optional dependency | Attribution | Same |
+| `purexml` license (MIT) | optional dependency (v1.36+, replaced `defusedxml`) | Attribution | Same |
 | `PyYAML` license (MIT) | optional dependency | Attribution | Same |
 
 **Rule:** Anything in this list that needs action gets a date or a triggering event next to it. Don't let things rot here without a follow-up.
