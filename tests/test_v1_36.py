@@ -31,7 +31,12 @@ from file_observer.scanner import (
 REPO = Path(__file__).resolve().parent.parent
 FIXTURES = REPO / "tests" / "fixtures"
 
+# purexml is the [security] optional dep — skip the backend-specific tests when it's absent (a minimal
+# install falls back to unhardened stdlib, which has no limits) — leg-4/gemini.
+_needs_purexml = pytest.mark.skipif(_xml_backend != "purexml", reason="purexml backend not active (optional [security] dep)")
 
+
+@_needs_purexml
 class TestBackendAndLimits:
     def test_backend_is_purexml_with_limits(self):
         # the swap landed: purexml is the hardened backend and the structural caps are in force
@@ -71,6 +76,7 @@ def _minimal_docx(path: Path, document_xml: str) -> Path:
     return path
 
 
+@_needs_purexml
 class TestEndToEnd:
     def test_deep_xml_in_docx_degrades_not_crash(self, tmp_path):
         # the never-crash floor end-to-end: a docx whose document.xml is pathologically deep must

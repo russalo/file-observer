@@ -81,8 +81,8 @@ try:
     from purexml import RECOMMENDED_LIMITS as XML_STRUCTURAL_LIMITS
     _xml_backend = "purexml"
 
-    def xml_fromstring(data: Any) -> Any:
-        return _xml_fromstring_backend(data, limits=XML_STRUCTURAL_LIMITS)
+    def xml_fromstring(text: Any) -> Any:   # `text` matches both purexml's and stdlib's first param name
+        return _xml_fromstring_backend(text, limits=XML_STRUCTURAL_LIMITS)
 except ImportError:
     from xml.etree.ElementTree import fromstring as xml_fromstring   # unhardened stdlib fallback
     XML_STRUCTURAL_LIMITS = None
