@@ -132,6 +132,7 @@ class TestProvisionalRegistryMatchesContract:
             ("ai_session", "vendor"), ("ai_session", "surface"), ("ai_session", "models"),
             ("ai_session", "id_prefix"), ("ai_session", "object_types"), ("ai_session", "schema_mismatch"),
             ("ai_session", "usage"),
+            ("ai_session", "usage_by_model"),   # v1.35: per-model usage attribution — provisional on arrival
         })
         assert PROVISIONAL_VECTORS == frozenset()  # v1.23.0 promoted `preservation` (was the only one)
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({
