@@ -1179,7 +1179,7 @@ def ai_session_rules_fingerprint() -> str:
     usage = ";".join(k + "=" + "|".join("/".join(p) for p in paths)
                      for k, paths in AI_SESSION_USAGE_MAP.items())
     return "|".join([
-        "ai_session/v1",
+        "ai_session/v2",   # v1.35: per-model usage attribution added to the block rules
         "id_prefixes=" + ",".join(AI_SESSION_ID_PREFIXES),
         "object_types=" + ",".join(f"{k}:{v}" for k, v in sorted(AI_SESSION_OBJECT_TYPES.items())),
         "usage=" + usage,
@@ -1191,8 +1191,15 @@ def ai_session_rules_fingerprint() -> str:
         f"max_nodes={AI_SESSION_MAX_NODES}",
         f"max_usage_dicts={AI_SESSION_MAX_USAGE_DICTS}",
         f"max_object_types={AI_SESSION_MAX_OBJECT_TYPES}",
+        # v1.35 (leg-1 review): max_models + max_raw_keys GATE the surfaced output (bucket cardinality /
+        # raw-key list length) — they were absent from the fingerprint, so a future edit would change output
+        # WITHOUT moving rules_hash (the silent-drift class the v1.6 rules-fingerprint lens forbids). Now included.
+        f"max_models={AI_SESSION_MAX_MODELS}",
+        f"max_raw_keys={AI_SESSION_MAX_RAW_KEYS}",
         f"max_file_bytes={AI_SESSION_MAX_FILE_BYTES}",
         "read=full_file_bounded_deviation",
+        # v1.35: per-model usage attribution — the co-located model source + null/overflow-fold rule
+        "per_model=usage_by_model/co_located(model|modelVersion)/empty_or_overflow_to_null",
     ])
 
 

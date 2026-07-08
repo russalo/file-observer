@@ -25,6 +25,7 @@ from file_observer.scanner import (
     SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
     AI_SESSION_NAMESPACE, AI_SESSION_METHOD_VERSION, AI_SESSION_MAX_MODELS,
     AI_SESSION_USAGE_KINDS,
+    ai_session_rules_fingerprint,
     build_schema_document,
 )
 
@@ -144,6 +145,18 @@ class TestCrossVendor:
         assert ai["usage_by_model"][0]["model"] == "gpt-5.5-2026-04-23"
         _assert_invariant(ai)
 
+    def test_cross_vendor_single_log_splits_by_model(self):
+        # leg-1 review (Finding 2): a single log mixing an Anthropic `msg_` turn and an OpenAI `resp_`
+        # turn → two buckets — the realistic blended case; buckets key on the model string, vendor-agnostic.
+        text = _jsonl([
+            {"message": {"id": "msg_1", "model": "claude-opus-4-8", "usage": {"input_tokens": 10, "output_tokens": 5}}},
+            {"id": "resp_1", "object": "response", "model": "gpt-5.5", "usage": {"input_tokens": 20, "output_tokens": 7}},
+        ])
+        ai = _analyze(text)
+        by = {e["model"]: e for e in ai["usage_by_model"]}
+        assert set(by) == {"claude-opus-4-8", "gpt-5.5"}
+        _assert_invariant(ai)
+
     def test_gemini_generatecontent_per_model(self):
         text = _jsonl([
             {"modelVersion": "gemini-2.5-flash", "responseId": "r1",
@@ -196,6 +209,16 @@ class TestVersioningAndSchema:
         assert _v(LOGIC_VERSION) >= (1, 19, 0)
         assert _v(SCHEMA_VERSION) >= (1, 21)
         assert AI_SESSION_METHOD_VERSION >= 2
+
+    def test_rules_fingerprint_covers_per_model_rule(self):
+        # leg-1 review (Finding 1/3): max_models GATES the per-model output (bucket cardinality) and the
+        # raw-key list — they MUST be in the live fingerprint so a future edit moves rules_hash, closing
+        # the silent-rule-drift class (the v1.6 rules-fingerprint lens; the doc claim "feeds the rules_hash").
+        fp = ai_session_rules_fingerprint()
+        assert "max_models=" in fp, "AI_SESSION_MAX_MODELS gates per-model output but is absent from the fingerprint"
+        assert "max_raw_keys=" in fp
+        assert "per_model=" in fp
+        assert "ai_session/v2" in fp   # rules-version marker moved with the new per-model rule
 
     def test_usage_by_model_is_provisional_in_schema(self):
         doc = build_schema_document()
