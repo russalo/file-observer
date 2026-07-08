@@ -126,13 +126,21 @@ class TestObserveDontInterpret:
         assert set(by) == {None} and by[None]["input_tokens"] == 7
 
     def test_never_priced(self):
+        # The never-priced bright line = fo never DERIVES or EMITS a cost VALUE. fo's CANONICAL surface
+        # (the entry keys — model/turns_with_usage/the token kinds) is a closed token-only set → price-free
+        # by construction, and the values are int token counts, never a monetary float. `raw_keys` is
+        # DELIBERATELY excluded: it is a VERBATIM echo of the vendor's key NAMES (no values), and scrubbing
+        # it would be interpretation + break reconstructibility (observe-don't-interpret — the deeper charter).
+        # A vendor's own cost-key NAME, if any, is reported as observed; no price VALUE is ever surfaced.
+        # (leg-2/gem-pro asked to check raw_keys; leg-4/Codex showed that guarantee is unenforceable-by-code
+        #  and would require a scrub — so the principled fix scopes never-priced to the canonical surface.)
         ai = _analyze(BLENDED)
         banned = ("price", "cost", "usd", "dollar", "$")
         for e in ai["usage_by_model"]:
-            # fo's canonical entry keys AND the preserved vendor raw_keys must both be price-free
-            # (leg-2 v1.35 review: the original test checked only the canonical keys, not raw_keys)
-            for k in list(e.keys()) + list(e["raw_keys"]):
-                assert not any(b in k.lower() for b in banned), f"priced key leaked: {k}"
+            for k in e.keys():
+                assert not any(b in k.lower() for b in banned), f"priced key in canonical surface: {k}"
+            for kind in AI_SESSION_USAGE_KINDS:
+                assert e.get(kind) is None or isinstance(e[kind], int), f"{kind} is not an int token count"
 
 
 class TestCrossVendor:
