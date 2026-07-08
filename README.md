@@ -43,8 +43,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.20",
-  "context": { "scanner_version": "1.34.0", "logic_version": "1.18.0", "...": "…" },
+  "schema_version": "1.21",
+  "context": { "scanner_version": "1.35.0", "logic_version": "1.19.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -76,8 +76,8 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.34.0` |
-| **Schema** | `1.20` |
+| **Version** | `1.35.0` |
+| **Schema** | `1.21` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
 | **Tests** | 1000+ (run `pytest` for the exact count) + a 49,879-file / 13-tree shakedown — ran clean (zero fatal errors), see "Validated at scale" below |
@@ -331,7 +331,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.34.0 RFC Specification](docs/v1.34.0_RFC_Specification.md) | Current release spec — **Chatlog session axes.** The chatlog specialist emits three new provisional flat scalars: `first_timestamp`/`last_timestamp` (min/max turn timestamp, normalized to canonical ISO-8601 UTC) + `cwd` (the session's working directory). A deterministic pure function of the file (observe, don't derive) — gives a downstream index a time axis + a project attr on the session. `LOGIC_VERSION` 1.17.0→1.18.0 (values move on timestamped/cwd-bearing chatlog corpora); SCHEMA 1.19→1.20 (new fields, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.35.0 RFC Specification](docs/v1.35.0_RFC_Specification.md) | Current release spec — **AI-session per-model usage attribution.** A new provisional `ai_session.usage_by_model` — a deterministic list of per-model token-usage sums, keyed on the model co-located with each usage dict (Claude `message.model` / OpenAI `response.model` / Gemini `modelVersion`, all measured 100% co-located). Invariant: `usage` == elementwise sum of `usage_by_model` (the session path untouched). Model verbatim (incl. markers); model-less turns → the null bucket; never priced. `LOGIC_VERSION` 1.18.0→1.19.0 (values move on ai_session corpora; ai_session method_version 1→2); SCHEMA 1.20→1.21 (new field, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.34.0 RFC Specification](docs/v1.34.0_RFC_Specification.md) | Prior release spec — **Chatlog session axes.** The chatlog specialist emits three new provisional flat scalars: `first_timestamp`/`last_timestamp` (min/max turn timestamp, normalized to canonical ISO-8601 UTC) + `cwd` (the session's working directory). A deterministic pure function of the file (observe, don't derive) — gives a downstream index a time axis + a project attr on the session. `LOGIC_VERSION` 1.17.0→1.18.0 (values move on timestamped/cwd-bearing chatlog corpora); SCHEMA 1.19→1.20 (new fields, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.33.0 RFC Specification](docs/v1.33.0_RFC_Specification.md) | **AI-session observation, increment 1.** On an `is_chatlog`-detected AI session log (Claude Code / OpenAI / Gemini), fo emits a new provisional `ai_session` namespace: token-usage **sums** (canonical fo names, null-per-absent, vendor raw keys preserved) + a **producer-schema fingerprint** (`vendor`/`surface`/`models`/`id_prefix`/`object_types`/`schema_mismatch`) anchored on id-prefix + object-type. Observe-only — sums are **never priced**. `LOGIC_VERSION` 1.16.0→1.17.0 (values move `manifest_checksum` on AI-session corpora); SCHEMA 1.18→1.19 (new namespace, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.32.0 RFC Specification](docs/v1.32.0_RFC_Specification.md) | **Generic kv-fact-block specialist (FR #114).** When a text file's body (frontmatter stripped) is dominated by `key: value` lines, fo emits the observed pairs verbatim + generic (new provisional `fact_block` namespace: `pair_count`/`pairs`/`duplicate_keys`) — never a per-consumer schema. A content-shape detector like `is_chatlog`; a sentence-value veto keeps it off dialogue (measure-first: prose 0/397, dialogue 0/60, fact-blocks 497/497). `LOGIC_VERSION` 1.15.3→1.16.0 (new content-detection routing); SCHEMA 1.17→1.18 (new namespace, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.31.0 RFC Specification](docs/v1.31.0_RFC_Specification.md) | Prior — **Promotion pass: capture-metadata → stable.** The v1.16 image-EXIF fields (`make`/`model`/`orientation`/`datetime_original`/`gps_present`/`xmp_present`) and the entire v1.17–1.20 `video` namespace graduate provisional → stable — settled logic since ship, exiftool-oracle-validated, corpus-proven, and red-teamed. Designation-only: the manifest is byte-identical (stability lives only in `--schema`); `LOGIC_VERSION` unchanged (1.15.3); SCHEMA 1.16→1.17 (a promotion = contract change). v1.0.0 RFC remains the binding schema-freeze contract. |
