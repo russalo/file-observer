@@ -46,6 +46,7 @@ Optional extras for richer extraction:
 pip install "file-observer[all]"      # every optional specialist (one line — recommended)
 pip install "file-observer[pdf]"      # object-stream + encrypted PDF metadata (pypdf + cryptography)
 pip install "file-observer[msg]"      # OLE2 .msg/.doc/.xls/.ppt (olefile)
+pip install "file-observer[security]" # hardened XML parsing (purexml — pure-stdlib, adds structural caps)
 pip install "file-observer[watch]"    # --watch FS-event mode (watchfiles)
 ```
 
@@ -118,8 +119,9 @@ PDF yields `page_count`, `producer`, `xref_type`, encryption state, …; **image
 (`.mp4`/`.mov`/`.m4v`) yields `codec`, `duration_s`, dimensions, capture dates
 (`creation_date` and the timezone-bearing `creation_date_qt`), and Apple-device
 `make`/`model` + GPS-presence; Office formats yield author/title/application
-(plus word/heading counts, sheet names); emails yield the envelope
-(subject/from/to/date). GPS-presence on a photo or video also raises the
+(plus word/heading counts, sheet names, slide counts); **audio** (`.mp3`) yields
+format/bitrate/duration plus ID3 tags (title/artist/album/year); emails yield the
+envelope (subject/from/to/date). GPS-presence on a photo or video also raises the
 `geotagged` safety flag. Specialists observe within declared byte bounds —
 `null` means "not seen within bounds," not "absent."
 
@@ -131,7 +133,17 @@ file-observer detects conversational structure by **content**, not extension. A
 `.md` or `.txt` or `.jsonl` whose content reads as a dialogue (speaker turns,
 or role/content JSON across ConvoKit / ShareGPT / oasst / hh-rlhf schemas) gets
 `is_chatlog: true` and a `chatlog` vector with turn counts, speakers, and shape
-signals. This runs even with specialists disabled.
+signals. This runs even with specialists disabled, and recognizes agentic
+(tool-turn) AI sessions, not just prose dialogue.
+
+**AI-session logs go further.** When a chatlog is an AI coding/assistant session
+(Claude Code / OpenAI / Gemini), the `ai_session` namespace observes token-usage
+**sums** — per session and **per model** (`usage_by_model`) — plus a producer-schema
+fingerprint (which vendor/surface produced it), and the chatlog block carries the
+session's time span (`first_timestamp`/`last_timestamp`) and working directory
+(`cwd`) as flat scalars. Observe-only: token sums are recorded, **never priced**.
+That's what lets a downstream index answer "what did the fleet burn — by model, by
+week, by project" without file-observer ever leaving the observation layer.
 
 ## 7. Discovering the full output surface
 
