@@ -1133,6 +1133,8 @@ AI_SESSION_METHOD_VERSION = 2   # v1.35: per-model usage attribution (usage_by_m
 AI_SESSION_MAX_NODES = 2_000_000      # walk cap
 AI_SESSION_MAX_USAGE_DICTS = 200_000  # turns_with_usage cap
 AI_SESSION_MAX_MODELS = 64        # distinct model-string cap
+AI_SESSION_MAX_RAW_KEYS = 64      # cap the surfaced vendor usage-key-name list (was AI_SESSION_MAX_MODELS — a
+                                  # model-cardinality bound mis-applied to a key list; same value → byte-identical; leg-2/leg-4 v1.35 review)
 AI_SESSION_MAX_STR = 256          # cap any surfaced string (model/id/object) length
 AI_SESSION_TOKEN_CAP = 10 ** 13   # reject absurd/hostile token counts (bounded sum)
 # Session logs routinely exceed the baseline window (a real 1.6 MB session = 268 usage turns, of
@@ -6671,9 +6673,9 @@ class Scanner:
                                 # measured 100% co-located) for per-model usage attribution. Verbatim/capped;
                                 # None when this object names no model (→ the null/unattributed bucket).
                                 cm = cur.get("model")
-                                if not isinstance(cm, str):
+                                if not (isinstance(cm, str) and cm.strip()):   # empty/whitespace model → try modelVersion, else null (leg-4 v1.35: "" is functionally no-model)
                                     cm = cur.get("modelVersion")
-                                usage_models.append(cm[:AI_SESSION_MAX_STR] if isinstance(cm, str) else None)
+                                usage_models.append(cm[:AI_SESSION_MAX_STR] if isinstance(cm, str) and cm.strip() else None)
                             else:
                                 usage_capped[0] = True   # dropped a real usage turn → sums partial
                     idv = cur.get("id")
@@ -6795,7 +6797,7 @@ class Scanner:
             usage = {"turns_with_usage": len(usage_dicts)}
             for kind in AI_SESSION_USAGE_KINDS:
                 usage[kind] = sums.get(kind) if kind in present else None
-            usage["raw_keys"] = sorted(k[:AI_SESSION_MAX_STR] for k in raw_keys)[:AI_SESSION_MAX_MODELS]
+            usage["raw_keys"] = sorted(k[:AI_SESSION_MAX_STR] for k in raw_keys)[:AI_SESSION_MAX_RAW_KEYS]
             # honesty flag: partial sums from ANY layer — the file-byte cap (caller `truncated`) OR an
             # internal walk/usage-dict cap (leg-4 Codex/CodeRabbit convergence — the guarantee at every layer)
             usage["truncated"] = bool(truncated) or seen[0] >= AI_SESSION_MAX_NODES or usage_capped[0]
@@ -6838,7 +6840,7 @@ class Scanner:
                 entry: dict[str, Any] = {"model": m, "turns_with_usage": b["turns"]}
                 for kind in AI_SESSION_USAGE_KINDS:
                     entry[kind] = b["sums"].get(kind) if kind in b["present"] else None
-                entry["raw_keys"] = sorted(k[:AI_SESSION_MAX_STR] for k in b["raw_keys"])[:AI_SESSION_MAX_MODELS]
+                entry["raw_keys"] = sorted(k[:AI_SESSION_MAX_STR] for k in b["raw_keys"])[:AI_SESSION_MAX_RAW_KEYS]
                 usage_by_model.append(entry)
 
         # --- self-claim (model string) vs structural vendor → mismatch signal ---

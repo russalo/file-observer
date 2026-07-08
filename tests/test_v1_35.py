@@ -114,11 +114,23 @@ class TestObserveDontInterpret:
         by = {e["model"]: e for e in _analyze(text)["usage_by_model"]}
         assert None in by and by[None]["input_tokens"] == 7
 
+    def test_empty_model_folds_to_null(self):
+        # leg-4 v1.35: an empty/whitespace model string is functionally "no model" → the null bucket,
+        # not its own (first-sorting) bucket.
+        text = _jsonl([
+            {"message": {"id": "msg_1", "model": "", "usage": {"input_tokens": 3}}},
+            {"message": {"id": "msg_2", "model": "  ", "usage": {"input_tokens": 4}}},
+        ])
+        by = {e["model"]: e for e in _analyze(text)["usage_by_model"]}
+        assert set(by) == {None} and by[None]["input_tokens"] == 7
+
     def test_never_priced(self):
         ai = _analyze(BLENDED)
         banned = ("price", "cost", "usd", "dollar", "$")
         for e in ai["usage_by_model"]:
-            for k in e:
+            # fo's canonical entry keys AND the preserved vendor raw_keys must both be price-free
+            # (leg-2 v1.35 review: the original test checked only the canonical keys, not raw_keys)
+            for k in list(e.keys()) + list(e["raw_keys"]):
                 assert not any(b in k.lower() for b in banned), f"priced key leaked: {k}"
 
 
