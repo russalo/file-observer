@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.35.0"
-    assert SCHEMA_VERSION == "1.21"  # v1.35.0 — new provisional ai_session.usage_by_model field (per-model token-usage attribution); a new field in an existing namespace = additive contract change
-    assert LOGIC_VERSION == "1.19.0"  # v1.35.0 — AI-session per-model usage attribution: new observed values move manifest_checksum on ai_session corpora (v1.29/v1.33 values-move precedent); ai_session method_version 1→2
+    assert SCANNER_VERSION == "1.36.0"
+    assert SCHEMA_VERSION == "1.21"  # UNCHANGED at v1.36.0 — the defusedxml→purexml swap adds no field/shape (ScanContext.dependencies is an existing structure)
+    assert LOGIC_VERSION == "1.20.0"  # v1.36.0 — defusedxml→purexml changeover: fo opts into purexml's structural caps (RECOMMENDED_LIMITS) → rejects pathologically-deep/oversized XML (output changes on pathological input only, the v1.30.2 precedent); parse byte-identical on real files
 
 
 def test_legacy_scanner_import_warns():

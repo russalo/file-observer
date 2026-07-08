@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.35.0"
+version = "1.36.0"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -44,7 +44,7 @@ dependencies = ["python-magic; platform_system != 'Windows'", "chardet"]
 [project.optional-dependencies]
 yaml = ["PyYAML"]
 msg = ["olefile"]
-security = ["defusedxml"]
+security = ["purexml>=1.0.0"]   # v1.36: pure-stdlib, oracle-gated defusedxml replacement (a 2.0 is a breaking-contract re-review)
 pdf = ["pypdf", "cryptography"]   # v1.8: object-stream page_count/Info (tier 1; stdlib fallback if absent). v1.12: cryptography required by pypdf for AES-256/V5 owner-locked PDFs (e.g. Caltrans 2025 specs)
 watch = ["watchfiles"]   # v1.11: --watch FS-event backend (measured vs watchdog; watchfiles won 1:1 delivery + 43ms latency)
 # v1.28.1: one-line full coverage — the union of every RUNTIME extra (NOT dev). Self-references

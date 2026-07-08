@@ -78,8 +78,9 @@ Optional *extras* widen coverage further:
 
 - **PyYAML** — frontmatter parsing
 - **olefile** — OLE2 specialists (`.msg`, `.doc`, `.xls`, `.ppt`)
-- **defusedxml** — hardened XML parsing (stdlib fallback is used if absent, with
-  a documented risk)
+- **purexml** (`file-observer[security]`) — hardened XML parsing (v1.36+; pure-stdlib,
+  oracle-gated-to-defusedxml, adds structural depth/size caps; replaced `defusedxml`).
+  The stdlib fallback is used if absent, with a documented risk (no hardening, no caps)
 - **pypdf** (`file-observer[pdf]`) — object-stream PDF `page_count`/`/Info`
   (tier 1; the stdlib fallback recovers most common cases when absent)
 - **watchfiles** (`file-observer[watch]`) — backend for `--watch` continuous
