@@ -134,7 +134,8 @@ class TestProvisionalRegistryMatchesContract:
             ("ai_session", "usage"),
             ("ai_session", "usage_by_model"),   # v1.35: per-model usage attribution — provisional on arrival
             # v1.38: the new lexicon_match namespace — provisional on arrival (bring-your-own-lexicon)
-            ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"), ("lexicon_match", "total_hits"),
+            ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"),
+            ("lexicon_match", "total_hits"), ("lexicon_match", "total_tokens"),
         })
         assert PROVISIONAL_VECTORS == frozenset()  # v1.23.0 promoted `preservation` (was the only one)
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({

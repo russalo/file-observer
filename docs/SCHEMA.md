@@ -206,7 +206,7 @@
 - **email**: `body_chatlog`, `date`, `from`, `has_attachments`, `message_id`, `subject`, `to`
 - **fact_block**: `duplicate_keys` _(provisional)_, `pair_count` _(provisional)_, `pairs` _(provisional)_
 - **image**: `bit_depth`, `datetime_original`, `gps_present`, `height`, `make`, `model`, `orientation`, `width`, `xmp_present`
-- **lexicon_match**: `categories` _(provisional)_, `lexicon_id` _(provisional)_, `total_hits` _(provisional)_
+- **lexicon_match**: `categories` _(provisional)_, `lexicon_id` _(provisional)_, `total_hits` _(provisional)_, `total_tokens` _(provisional)_
 - **pdf**: `author`, `creation_date`, `creator`, `encrypted`, `has_text_streams`, `page_count`, `parser`, `pdf_version`, `producer`, `sample_text_marker_density`, `text_detected`, `title`, `xref_type`
 - **presentation**: `application` _(provisional)_, `author` _(provisional)_, `slide_count` _(provisional)_, `title` _(provisional)_
 - **spreadsheet**: `application`, `format`, `header_rows`, `sheet_names`

@@ -827,7 +827,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
     ],
     "fact_block": ["pair_count", "pairs", "duplicate_keys"],  # v1.32 (FR #114)
     "ai_session": ["vendor", "surface", "models", "id_prefix", "object_types", "schema_mismatch", "usage", "usage_by_model"],  # v1.33; usage_by_model v1.35
-    "lexicon_match": ["lexicon_id", "categories", "total_hits"],  # v1.38 bring-your-own-lexicon (only when a lexicon is supplied)
+    "lexicon_match": ["lexicon_id", "categories", "total_hits", "total_tokens"],  # v1.38 bring-your-own-lexicon (only when a lexicon is supplied)
 }
 
 
@@ -874,7 +874,8 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("ai_session", "usage"),
     ("ai_session", "usage_by_model"),   # v1.35: per-model usage attribution — provisional on arrival
     # v1.38: the new lexicon_match namespace — provisional on arrival (bring-your-own-lexicon).
-    ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"), ("lexicon_match", "total_hits"),
+    ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"),
+    ("lexicon_match", "total_hits"), ("lexicon_match", "total_tokens"),
 })
 PROVISIONAL_VECTORS: frozenset[str] = frozenset()  # v1.23.0 promoted `preservation` → stable (was the only one)
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
@@ -3984,9 +3985,16 @@ class Scanner:
                 # failure falls back to the windowed text (flagged truncated). Stored under
                 # specialist_metadata so no-lexicon scans stay byte-identical. Terms NEVER emitted.
                 if self._lexicon is not None:
+                    # Reuse the already-decoded windowed `text` when the whole file fits the baseline
+                    # window (the common case — avoids a second read+decode; leg-1 efficiency). Only a
+                    # file LARGER than the window needs the extra full-file read (a risk term could sit
+                    # past the window). Never-crash: a read failure falls back to `text` (flagged).
                     try:
-                        _, lex_text, _ = self.decode_text(sample, path, LEXICON_MAX_FILE_BYTES)
                         lex_truncated = path.stat().st_size > LEXICON_MAX_FILE_BYTES
+                        if path.stat().st_size <= eff["baseline_max_bytes"]:
+                            lex_text = text
+                        else:
+                            _, lex_text, _ = self.decode_text(sample, path, LEXICON_MAX_FILE_BYTES)
                     except (OSError, ValueError):
                         lex_text, lex_truncated = text, True
                     lex_result = self._lexicon_scan(lex_text)
@@ -3997,6 +4005,7 @@ class Scanner:
                         "lexicon_id": self._lexicon["lexicon_id"],
                         "categories": lex_result["categories"],
                         "total_hits": lex_result["total_hits"],
+                        "total_tokens": lex_result["total_tokens"],   # denominator, so a consumer can recompute density
                     }
                     provenance[f"specialist_metadata.{LEXICON_NAMESPACE}"] = asdict(ProvenanceEntry(
                         layer="derived",
@@ -4189,10 +4198,17 @@ class Scanner:
                                 stage="specialist",
                             ))
                     ns = SPECIALIST_NAMESPACE.get(extension)
+                    # v1.38: MERGE into (don't reassign) specialist_metadata — a baseline-tier
+                    # namespace (lexicon_match) may already be present on a TEXT file that also has an
+                    # extension specialist (e.g. .eml + a lexicon), and a wholesale reassign silently
+                    # dropped it (leg-1 review). For binary specialists specialist_metadata is None
+                    # here, so the merge is byte-identical to the old reassign.
+                    if specialist_metadata is None:
+                        specialist_metadata = {}
                     if ns:
-                        specialist_metadata = {ns: raw_metadata}
+                        specialist_metadata[ns] = raw_metadata
                     else:
-                        specialist_metadata = raw_metadata
+                        specialist_metadata.update(raw_metadata)
                     tool = SPECIALIST_TOOLS.get(extension, "unknown")
                     # Specialists that read beyond the 8 KB sample declare it as a
                     # deviation so the per-field provenance can't claim the value came
@@ -8088,6 +8104,8 @@ def _referenced_dataclass_names(type_str: str) -> list[str]:
     (v1.13 leg-1 #3 — the COMPLETE claim must hold)."""
     import dataclasses as _dc
     import re as _re
+    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use — READ-ONLY lookup of
+    # module-level names, filtered to `isinstance(obj, type) and is_dataclass`; no assignment, no exec.
     g = globals()
     out = []
     for token in _re.findall(r"[A-Za-z_][A-Za-z0-9_]*", type_str):
@@ -8115,6 +8133,8 @@ def _collect_manifest_dataclasses() -> dict[str, list[dict[str, str]]]:
         seen[name] = fields
         for f in fields:
             for ref in _referenced_dataclass_names(f["type"]):
+                # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use — READ-ONLY
+                # dataclass-name lookup for --schema introspection; filtered to is_dataclass, no assignment.
                 obj = globals().get(ref)
                 if isinstance(obj, type) and _dc.is_dataclass(obj) and ref not in seen:
                     queue.append(obj)

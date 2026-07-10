@@ -114,6 +114,28 @@ class TestMatchingSemantics:
         assert blk["total_hits"] == 3
 
 
+class TestCoexistsWithSpecialist:
+    def test_lexicon_and_email_specialist_both_present(self, tmp_path):
+        # leg-1 review: a TEXT file with an extension specialist (.eml) + a lexicon must keep BOTH
+        # namespaces — the extension-specialist path must MERGE, not reassign (which clobbered lexicon).
+        (tmp_path / "m.eml").write_text(
+            "From: alice@example.com\nTo: bob@example.com\nSubject: apple harvest\n\n"
+            "We should discuss the apple and banana crop.\n")
+        m = _scan(tmp_path, lexicon=BENIGN_LEXICON, specialists=True)
+        sm = _rec(m, "m.eml").specialist_metadata or {}
+        assert "email" in sm, "email specialist metadata was clobbered"
+        assert LEXICON_NAMESPACE in sm, "lexicon metadata was clobbered by the email specialist"
+        assert sm[LEXICON_NAMESPACE]["categories"]["fruit"]["count"] >= 2   # apple + banana
+
+    def test_total_tokens_emitted_and_reconciles_density(self, tmp_path):
+        (tmp_path / "f.txt").write_text("apple banana cat and some filler words here")
+        blk = _lexblock(_scan(tmp_path, lexicon=BENIGN_LEXICON), "f.txt")
+        tt = blk["total_tokens"]
+        assert tt == 8   # tokens in the file
+        # a consumer can recompute density from count + total_tokens
+        assert blk["categories"]["fruit"]["density"] == round(blk["categories"]["fruit"]["count"] / tt, 8)
+
+
 class TestPresenceFlag:
     def test_flag_on_hit_only(self, tmp_path):
         (tmp_path / "hit.txt").write_text("apple")
