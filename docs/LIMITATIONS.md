@@ -12,6 +12,16 @@ declared bounds, deterministically. This document states plainly what it does
 dangerous." File Observer never quarantines, scores, or verdicts a file. Apply
 your own threat model to the observations.
 
+The **bring-your-own-lexicon term observer** (v1.38, `--lexicon`) is the same
+discipline: it counts *your* category-tagged terms in a file's text and reports
+per-category counts + density (and a `lexicon_match` flag on any hit) — a
+**count, not a verdict**. It does **not** predict any specific provider's content
+guardrail (those are unpublished; fo counts only the lexicon you supply), and it
+does **not** do obfuscation resistance — matching is literal, word-boundary,
+case-folded (l33t/homoglyph/embedded variants are out of scope in this release).
+The lexicon is **your** runtime input; fo ships no term list. The mapping from
+"category X matched N times" to "risky / block / review" is yours to define.
+
 ## It observes within bounds — null means "not seen here," not "not present"
 
 Observation is bounded by design:

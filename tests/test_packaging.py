@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.37.0"
-    assert SCHEMA_VERSION == "1.21"  # UNCHANGED at v1.37.0 — the MCP server is a new SURFACE (front-door); manifest checksum-identical to scan(), no field/shape change
-    assert LOGIC_VERSION == "1.20.0"  # UNCHANGED at v1.37.0 — the MCP server exposes the existing manifest/summary/schema; zero new observation (the v1.26 scan()/v1.28 --stdout front-door precedent)
+    assert SCANNER_VERSION == "1.38.0"
+    assert SCHEMA_VERSION == "1.22"  # v1.38.0 — additive: new provisional lexicon_match namespace + lexicon vector + lexicon_match safety_flag + lexicon_full_file trigger (bring-your-own-lexicon)
+    assert LOGIC_VERSION == "1.21.0"  # v1.38.0 — new baseline derivation (per-category term counts); manifest_checksum moves only for lexicon-supplied scans (the v1.30 gated-feature precedent)
 
 
 def test_legacy_scanner_import_warns():

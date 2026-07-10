@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.37.0
-    Schema:     1.21
+    Version:    1.38.0
+    Schema:     1.22
     Python:     >= 3.12
-    Spec:       docs/v1.37.0_RFC_Specification.md (current)
+    Spec:       docs/v1.38.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -93,9 +93,9 @@ except ImportError:
 # output location (cwd/<this>) AND skipped during discovery (iter_files) so a re-scan of the
 # cwd never observes its own prior manifest/report — the leg-1 self-inclusion catch.
 DEFAULT_OUTPUT_DIRNAME = "file-observer-manifests"
-SCANNER_VERSION = "1.37.0"   # v1.37.0 — MCP server (agent-native front-door): a new `file-observer-mcp` stdio entry point + `[mcp]` extra exposing the EXISTING manifest/summary/schema via the Model Context Protocol (read-only, deterministic; 4 tools with progressive disclosure). A NEW SURFACE — the manifest is checksum-identical to scan() → LOGIC + SCHEMA UNCHANGED (the v1.26 scan() / v1.28 --stdout front-door precedent). Prior 1.36.0 = defusedxml→purexml.
-LOGIC_VERSION = "1.20.0"   # v1.36.0 — defusedxml→purexml XML-dependency changeover: fo's XML hardening (OOXML/ODF specialists + structural XML-keys tier) moves from defusedxml to purexml (pure-stdlib, zero-dep, oracle-gated defusedxml replacement, MIT; capability-proven 2695/0 on fo's own corpus + 467/0 purexml's). fo OPTS INTO purexml's structural caps (RECOMMENDED_LIMITS: max_depth=1000/max_attributes=256/max_bytes=100 MiB) via `xml_fromstring` on the purexml path — so fo now REJECTS a pathologically-deep/attribute-flooded/oversized XML that defusedxml dutifully parsed (a catchable LimitExceeded⊂ValueError → the field degrades to null/error, never a crash). PARSE OUTPUT BYTE-IDENTICAL on real files (2695/0); output changes ONLY on pathological XML inputs → LOGIC bump (the v1.30.2 bounded-observation "output changes only on pathological input" precedent); no routing flag flips. Separately, ScanContext.dependencies records purexml (name+version+the applied limits) in place of defusedxml → manifest_checksum moves for EVERY manifest (the dep-record is in every ScanContext — Pillar 1: ScanContext explains environment variance; the same as any dep version bump). The stdlib fallback (no-purexml) stays unhardened + un-capped (LIMITATIONS). Prior 1.19.0 = v1.35.0 — AI-session per-model usage attribution (increment 3): a new provisional `ai_session.usage_by_model` — a deterministic list (real models sorted, null bucket last) of per-model token-usage SUMS, keyed on the model CO-LOCATED with each usage dict (Claude Code message.model / OpenAI response.model / Gemini modelVersion — all measured 100% co-located). INVARIANT: `usage` == elementwise sum of `usage_by_model` (the tested v1.33 session path untouched → session `usage` byte-identical). Model verbatim incl. markers (`<synthetic>`); model-less usage-turns + a hostile-cardinality overflow beyond AI_SESSION_MAX_MODELS → the null bucket (sums stay complete). NEVER priced (the bright line). ai_session method_version 1→2 (per-model grouping is a new block rule → feeds the ai_session rules_hash). VALUES move manifest_checksum on ai_session corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.18.0 = v1.34.0 — chatlog session axes (recall#62): the chatlog specialist emits three new FLAT top-level scalars — first_timestamp/last_timestamp (min/max turn timestamp, recognized-key set {timestamp,created_date,create_time,created_at}, parsed ISO-string-or-epoch → canonical ISO-8601 UTC `…Z`/ms, null-when-untimestamped) + cwd (first-seen top-level cwd, verbatim/bounded, null-when-absent). Deterministic pure function of the file (observe, don't derive); values move manifest_checksum on timestamped/cwd-bearing chatlog corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips, is_chatlog unchanged. chatlog method_version 10→11 (new signals + recognized-key set/normalization feed the chatlog rules_hash). Prior 1.17.0 = v1.33.0 — AI-session observation increment 1: a new provisional `ai_session` namespace on is_chatlog-detected AI session logs (Claude Code / OpenAI / Gemini), carrying token-usage SUMS (canonical fo names, null-per-absent, vendor raw keys preserved) + a producer-schema fingerprint (vendor/surface/models/id_prefix/object_types/schema_mismatch) anchored on id-prefix+object-type (NOT the usage-key vocab — OpenAI Responses collides with Anthropic on input_tokens; measure_ai_session_2026-07-05). Observe-only: SUMS never priced. VALUES move manifest_checksum on AI-session corpora (the v1.29 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.16.0 = v1.32.0 — new content-detection routing: the generic kv-fact-block specialist (FR #114). A text file whose BODY (frontmatter stripped) is a `key: value` block now carries `is_fact_block` + a `fact_block` specialist dispatch (content-shape, any text body; the sentence-value veto keeps it off dialogue). Additive: `is_fact_block` False→True only; no file's prior routing flips away. The v1.2/v1.29 detection-LOGIC precedent. Prior 1.15.3 = v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
-SCHEMA_VERSION = "1.21"   # v1.35.0 — new provisional `ai_session.usage_by_model` field (per-model token-usage attribution); a new field in an existing namespace = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.20 = v1.34.0 — three new provisional fields in the `chatlog` namespace (first_timestamp/last_timestamp/cwd) for the recall#62 session time+project axes; new fields = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.19 = v1.33.0 — new `ai_session` namespace (vendor/surface/models/id_prefix/object_types/schema_mismatch/usage) for AI-session observation increment 1; a new namespace = contract-shape change (the v1.24/v1.25/v1.32 precedent), all fields provisional. Prior 1.18 = v1.32.0 — new `fact_block` namespace (pair_count/pairs/duplicate_keys) for the generic kv-fact-block specialist (FR #114); a new namespace = contract-shape change (the v1.24/v1.25 precedent), new fields provisional. Prior 1.17 = v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
+SCANNER_VERSION = "1.38.0"   # v1.38.0 — bring-your-own-lexicon term observer: fo counts a CONSUMER-SUPPLIED, category-tagged lexicon's terms in a file's text and reports per-category counts + density (an OBSERVATION, never a verdict — the consumer thresholds). Values-neutral engine (built/tested with benign placeholder terms only); the sensitive lexicon is runtime config, never committed, never echoed into the manifest (only counts + category names + a content-hash dictionary_id). Motivated by knowing a file is a guardrail-trip risk BEFORE handing it to an AI (fo is not an AI → safe to read what an LLM couldn't). Word-boundary token(-sequence) match (measure-first: substring over-counts 9.4x on benign terms); full-file bounded read (64 MiB; a risk term can sit anywhere in a long log); gated on a lexicon → dormant otherwise (byte-identical). New provisional `lexicon_match` specialist namespace + `lexicon_match` safety_flag + `lexicon` vector (dictionary_id = sha256 of lexicon_id+sorted terms → dual-falsification). Prior 1.37.0 = MCP server (agent-native front-door).
+LOGIC_VERSION = "1.21.0"   # v1.38.0 — bring-your-own-lexicon term observer: a new baseline-tier content derivation (per-category term counts + density on a consumer-supplied lexicon). manifest_checksum moves ONLY for lexicon-supplied scans (the v1.30 gated-feature precedent) — no-lexicon scans are byte-identical, no routing flag flips. Prior 1.20.0 = v1.36.0 — defusedxml→purexml XML-dependency changeover: fo's XML hardening (OOXML/ODF specialists + structural XML-keys tier) moves from defusedxml to purexml (pure-stdlib, zero-dep, oracle-gated defusedxml replacement, MIT; capability-proven 2695/0 on fo's own corpus + 467/0 purexml's). fo OPTS INTO purexml's structural caps (RECOMMENDED_LIMITS: max_depth=1000/max_attributes=256/max_bytes=100 MiB) via `xml_fromstring` on the purexml path — so fo now REJECTS a pathologically-deep/attribute-flooded/oversized XML that defusedxml dutifully parsed (a catchable LimitExceeded⊂ValueError → the field degrades to null/error, never a crash). PARSE OUTPUT BYTE-IDENTICAL on real files (2695/0); output changes ONLY on pathological XML inputs → LOGIC bump (the v1.30.2 bounded-observation "output changes only on pathological input" precedent); no routing flag flips. Separately, ScanContext.dependencies records purexml (name+version+the applied limits) in place of defusedxml → manifest_checksum moves for EVERY manifest (the dep-record is in every ScanContext — Pillar 1: ScanContext explains environment variance; the same as any dep version bump). The stdlib fallback (no-purexml) stays unhardened + un-capped (LIMITATIONS). Prior 1.19.0 = v1.35.0 — AI-session per-model usage attribution (increment 3): a new provisional `ai_session.usage_by_model` — a deterministic list (real models sorted, null bucket last) of per-model token-usage SUMS, keyed on the model CO-LOCATED with each usage dict (Claude Code message.model / OpenAI response.model / Gemini modelVersion — all measured 100% co-located). INVARIANT: `usage` == elementwise sum of `usage_by_model` (the tested v1.33 session path untouched → session `usage` byte-identical). Model verbatim incl. markers (`<synthetic>`); model-less usage-turns + a hostile-cardinality overflow beyond AI_SESSION_MAX_MODELS → the null bucket (sums stay complete). NEVER priced (the bright line). ai_session method_version 1→2 (per-model grouping is a new block rule → feeds the ai_session rules_hash). VALUES move manifest_checksum on ai_session corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.18.0 = v1.34.0 — chatlog session axes (recall#62): the chatlog specialist emits three new FLAT top-level scalars — first_timestamp/last_timestamp (min/max turn timestamp, recognized-key set {timestamp,created_date,create_time,created_at}, parsed ISO-string-or-epoch → canonical ISO-8601 UTC `…Z`/ms, null-when-untimestamped) + cwd (first-seen top-level cwd, verbatim/bounded, null-when-absent). Deterministic pure function of the file (observe, don't derive); values move manifest_checksum on timestamped/cwd-bearing chatlog corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips, is_chatlog unchanged. chatlog method_version 10→11 (new signals + recognized-key set/normalization feed the chatlog rules_hash). Prior 1.17.0 = v1.33.0 — AI-session observation increment 1: a new provisional `ai_session` namespace on is_chatlog-detected AI session logs (Claude Code / OpenAI / Gemini), carrying token-usage SUMS (canonical fo names, null-per-absent, vendor raw keys preserved) + a producer-schema fingerprint (vendor/surface/models/id_prefix/object_types/schema_mismatch) anchored on id-prefix+object-type (NOT the usage-key vocab — OpenAI Responses collides with Anthropic on input_tokens; measure_ai_session_2026-07-05). Observe-only: SUMS never priced. VALUES move manifest_checksum on AI-session corpora (the v1.29 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.16.0 = v1.32.0 — new content-detection routing: the generic kv-fact-block specialist (FR #114). A text file whose BODY (frontmatter stripped) is a `key: value` block now carries `is_fact_block` + a `fact_block` specialist dispatch (content-shape, any text body; the sentence-value veto keeps it off dialogue). Additive: `is_fact_block` False→True only; no file's prior routing flips away. The v1.2/v1.29 detection-LOGIC precedent. Prior 1.15.3 = v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
+SCHEMA_VERSION = "1.22"   # v1.38.0 — additive: new provisional `lexicon_match` specialist namespace (lexicon_id/categories/total_hits) + new `lexicon_match` safety_flag + new `lexicon` vector + new `lexicon_full_file` provenance trigger, for the bring-your-own-lexicon term observer. A new namespace/vector/flag = contract-shape change (the v1.24/v1.32/v1.33 precedent), all provisional. Prior 1.21 = v1.35.0 — new provisional `ai_session.usage_by_model` field (per-model token-usage attribution); a new field in an existing namespace = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.20 = v1.34.0 — three new provisional fields in the `chatlog` namespace (first_timestamp/last_timestamp/cwd) for the recall#62 session time+project axes; new fields = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.19 = v1.33.0 — new `ai_session` namespace (vendor/surface/models/id_prefix/object_types/schema_mismatch/usage) for AI-session observation increment 1; a new namespace = contract-shape change (the v1.24/v1.25/v1.32 precedent), all fields provisional. Prior 1.18 = v1.32.0 — new `fact_block` namespace (pair_count/pairs/duplicate_keys) for the generic kv-fact-block specialist (FR #114); a new namespace = contract-shape change (the v1.24/v1.25 precedent), new fields provisional. Prior 1.17 = v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
 # v1.5 PDF specialist read sizes. MARKER_BUDGET is the head+tail window used for
 # text/image markers (text_detected AND requires_vision — kept identical across
@@ -374,6 +374,7 @@ SAFETY_FLAGS: dict[str, str] = {
     "has_external_references": "XML contains <!ENTITY with SYSTEM or PUBLIC",
     "extraction_permission_bypassed": "owner-locked encrypted PDF: EXTRACT permission not set but metadata extracted anyway (v1.12)",
     "geotagged": "image EXIF (GPS IFD) or video (ISO-6709 location box) carries location; presence only, coordinates NOT extracted (v1.16 image, v1.18 video)",
+    "lexicon_match": "the file's text matched >=1 term in the consumer-supplied lexicon (v1.38); presence only — a fact, NOT a risk verdict; per-category counts live in specialist_metadata.lexicon_match",
 }
 
 # v1.13: PROVENANCE_TRIGGERS — the complete signal_provenance trigger surface,
@@ -404,6 +405,7 @@ PROVENANCE_TRIGGERS: dict[str, dict[str, str]] = {
     "fact_block_activation":     {"layer": "derived", "method": "content_detected_specialist", "description": "fact_block specialist activated on a content-detected match"},
     "fact_block_bounded_text":   {"layer": "derived", "method": "_fact_block_analyze", "description": "fact_block key:value pairs extracted from the body within bounds"},
     "ai_session_full_file":      {"layer": "derived", "method": "_extract_ai_session", "description": "ai_session usage sums + producer-schema fingerprint extracted via a full-file bounded-deviation read (session logs exceed the baseline window; reason=ai_session_full_file_required)"},
+    "lexicon_full_file":         {"layer": "derived", "method": "_lexicon_scan", "description": "consumer-lexicon per-category term counts + density extracted via a full-file bounded-deviation read (a risk term can sit anywhere in a long log; v1.38, 64 MiB cap)"},
     # baseline text eligibility
     "text_eligible":            {"layer": "derived", "method": "_extract_reference_tokens", "description": "file routed into the baseline text-analysis tier"},
     # structural extraction
@@ -825,6 +827,7 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
     ],
     "fact_block": ["pair_count", "pairs", "duplicate_keys"],  # v1.32 (FR #114)
     "ai_session": ["vendor", "surface", "models", "id_prefix", "object_types", "schema_mismatch", "usage", "usage_by_model"],  # v1.33; usage_by_model v1.35
+    "lexicon_match": ["lexicon_id", "categories", "total_hits"],  # v1.38 bring-your-own-lexicon (only when a lexicon is supplied)
 }
 
 
@@ -870,6 +873,8 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("ai_session", "id_prefix"), ("ai_session", "object_types"), ("ai_session", "schema_mismatch"),
     ("ai_session", "usage"),
     ("ai_session", "usage_by_model"),   # v1.35: per-model usage attribution — provisional on arrival
+    # v1.38: the new lexicon_match namespace — provisional on arrival (bring-your-own-lexicon).
+    ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"), ("lexicon_match", "total_hits"),
 })
 PROVISIONAL_VECTORS: frozenset[str] = frozenset()  # v1.23.0 promoted `preservation` → stable (was the only one)
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
@@ -1211,6 +1216,120 @@ def ai_session_rules_fingerprint() -> str:
         "read=full_file_bounded_deviation",
         # v1.35: per-model usage attribution — the co-located model source + null/overflow-fold rule
         "per_model=usage_by_model/co_located(model|modelVersion)/empty_or_overflow_to_null",
+    ])
+
+
+# --- v1.38: bring-your-own-lexicon term observer -----------------------------
+# fo counts a CONSUMER-SUPPLIED, category-tagged lexicon's terms in a file's text and reports
+# per-category counts + density — an OBSERVATION, never a verdict (the consumer thresholds).
+# Values-neutral by construction: the mechanism ships empty; the terms are runtime config, never
+# committed, never echoed into the manifest (only counts + category names + a content-hash
+# dictionary_id). Motivated by knowing a file is a guardrail-trip risk before feeding it to an AI —
+# fo is not an AI, so it can safely read content an LLM couldn't. Measure-first (word-boundary over
+# substring: 9.4x FP; full-file over windowed: no silent miss): scratch/measure_lexicon_match_2026-07-10.*
+LEXICON_NAMESPACE = "lexicon_match"
+LEXICON_TOOL = "lexicon_match_signals"
+LEXICON_VECTOR_ID = "lexicon"
+LEXICON_METHOD_VERSION = 1
+LEXICON_SAFETY_FLAG = "lexicon_match"   # neutral presence bit (a fact: matched the supplied lexicon)
+
+# Bounds — a hostile/oversized lexicon must not DoS fo (the consumer's lexicon is semi-trusted;
+# the DOCUMENT is fully untrusted and walked linearly). Fail-loud on violation (parse_lexicon).
+LEXICON_MAX_CATEGORIES = 256
+LEXICON_MAX_TERMS_PER_CATEGORY = 100_000
+LEXICON_MAX_TOTAL_TERMS = 1_000_000
+LEXICON_MAX_TERM_TOKENS = 16       # a term longer than 16 tokens is a mistake, not a phrase
+LEXICON_MAX_TERM_LEN = 128
+LEXICON_MAX_ID_LEN = 128
+LEXICON_MAX_FILE_BYTES = AI_SESSION_MAX_FILE_BYTES   # 64 MiB full-file bounded read (reuse the cap)
+# Linear tokenizer — case-folded alnum runs. The ONLY regex here; no untrusted pattern is ever
+# compiled (the consumer supplies TERMS, never patterns) → ReDoS-safe by construction. In the battery.
+LEXICON_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def parse_lexicon(raw: Any) -> dict[str, Any]:
+    """Validate + normalize a consumer-supplied lexicon. Fail-loud on hostile/malformed input →
+    ValueError (the CLI turns it into rc=2; the API surfaces it). Never silently drops a term — a
+    dropped term is a false 'clear', the dangerous FN for a risk detector. Idempotent: re-parsing an
+    already-normalized lexicon yields the same structure. Returns {lexicon_id, categories:{cat:[terms]}}
+    with terms case-folded, tokenized→canonical space-joined form, deduped, sorted."""
+    if not isinstance(raw, dict):
+        raise ValueError("lexicon must be a JSON object")
+    lid = raw.get("lexicon_id")
+    if not isinstance(lid, str) or not lid or len(lid) > LEXICON_MAX_ID_LEN:
+        raise ValueError(f"lexicon_id must be a non-empty string <= {LEXICON_MAX_ID_LEN} chars")
+    cats = raw.get("categories")
+    if not isinstance(cats, dict) or not cats:
+        raise ValueError("lexicon.categories must be a non-empty object")
+    if len(cats) > LEXICON_MAX_CATEGORIES:
+        raise ValueError(f"lexicon has too many categories (> {LEXICON_MAX_CATEGORIES})")
+    out: dict[str, list[str]] = {}
+    total = 0
+    for cat, terms in cats.items():
+        if not isinstance(cat, str) or not cat or len(cat) > LEXICON_MAX_TERM_LEN:
+            raise ValueError(f"category name must be a non-empty string <= {LEXICON_MAX_TERM_LEN} chars")
+        if not isinstance(terms, list):
+            raise ValueError(f"category {cat!r}: terms must be a list")
+        if len(terms) > LEXICON_MAX_TERMS_PER_CATEGORY:
+            raise ValueError(f"category {cat!r}: too many terms (> {LEXICON_MAX_TERMS_PER_CATEGORY})")
+        normed: set[str] = set()
+        for t in terms:
+            if not isinstance(t, str):
+                raise ValueError(f"category {cat!r}: every term must be a string (got {type(t).__name__})")
+            if len(t) > LEXICON_MAX_TERM_LEN:
+                raise ValueError(f"category {cat!r}: term exceeds {LEXICON_MAX_TERM_LEN} chars")
+            toks = LEXICON_TOKEN_RE.findall(t.lower())
+            if not toks:
+                raise ValueError(f"category {cat!r}: term {t!r} has no matchable tokens")
+            if len(toks) > LEXICON_MAX_TERM_TOKENS:
+                raise ValueError(f"category {cat!r}: term {t!r} exceeds {LEXICON_MAX_TERM_TOKENS} tokens")
+            normed.add(" ".join(toks))   # canonical: space-joined token sequence
+        total += len(normed)
+        if total > LEXICON_MAX_TOTAL_TERMS:
+            raise ValueError(f"lexicon exceeds {LEXICON_MAX_TOTAL_TERMS} total terms")
+        out[cat] = sorted(normed)
+    return {"lexicon_id": lid, "categories": out}
+
+
+def build_lexicon_index(lexicon: dict[str, Any]) -> dict[str, tuple]:
+    """First-token index for the linear document walk: first_token → tuple of (term_token_tuple, category).
+    Built ONCE per scan (Scanner.__init__), not per file."""
+    index: dict[str, list] = {}
+    for cat in sorted(lexicon["categories"]):
+        for term in lexicon["categories"][cat]:
+            toks = tuple(term.split(" "))
+            index.setdefault(toks[0], []).append((toks, cat))
+    return {k: tuple(v) for k, v in index.items()}
+
+
+def lexicon_dictionary_id(lexicon: dict[str, Any]) -> str:
+    """SHA-256 over (lexicon_id + sorted categories → sorted terms). Emitted as the vector's
+    dictionary_id; moves on ANY term/category change even when the consumer's lexicon_id LABEL is
+    unchanged → catches silent lexicon drift (dual-falsification for the supplied dictionary). The
+    DIGEST is emitted; the terms are NOT — sensitive content stays out of the manifest."""
+    parts = ["lexicon_id=" + lexicon["lexicon_id"]]
+    for cat in sorted(lexicon["categories"]):
+        parts.append(cat + "=" + ",".join(lexicon["categories"][cat]))  # terms already sorted
+    return sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def lexicon_rules_fingerprint() -> str:
+    """Rules-definition string for the lexicon vector rules_hash — the MECHANISM (tokenizer pattern +
+    match semantics + caps + read policy), NOT the terms (those feed dictionary_id). Any engine edit
+    moves the digest (the v1.6 rules-fingerprint determinism contract)."""
+    return "|".join([
+        "lexicon/v1",
+        f"token_re={LEXICON_TOKEN_RE.pattern}",
+        "match=word_boundary_casefold_literal_token_subsequence",
+        "density=round(hits/total_tokens,8)",
+        "flag=lexicon_match@total_hits>=1",
+        "read=full_file_bounded_deviation",
+        f"max_file_bytes={LEXICON_MAX_FILE_BYTES}",
+        f"max_categories={LEXICON_MAX_CATEGORIES}",
+        f"max_terms_per_category={LEXICON_MAX_TERMS_PER_CATEGORY}",
+        f"max_total_terms={LEXICON_MAX_TOTAL_TERMS}",
+        f"max_term_tokens={LEXICON_MAX_TERM_TOKENS}",
+        f"max_term_len={LEXICON_MAX_TERM_LEN}",
     ])
 
 
@@ -1693,6 +1812,13 @@ class ScannerConfig:
                                     # own output dir. Anchored (not a bare name) so an unrelated
                                     # same-named user dir is NOT dropped. Runtime-only — NOT in
                                     # meta.config; None (the API default) → no skip.
+    lexicon: dict[str, Any] | None = None  # v1.38: consumer-supplied, category-tagged term lexicon
+                                    # {lexicon_id, categories:{cat:[terms]}} for the bring-your-own
+                                    # term observer. Validated/normalized in Scanner.__init__
+                                    # (parse_lexicon; fail-loud). CONSUMER-PRIVATE — EXCLUDED from
+                                    # meta.config (like signing_key; the vector's rules_hash +
+                                    # dictionary_id are the manifest-visible fingerprint, not the terms).
+                                    # None → the mechanism is dormant (manifest byte-identical).
 
     def effective_for(self, extension: str) -> dict[str, Any]:
         """Resolve effective config values for a given extension."""
@@ -2286,6 +2412,16 @@ class Scanner:
             except Exception:
                 self._magic = None
         self._ignore_patterns = self._load_ignore_patterns()
+        # v1.38: bring-your-own-lexicon. Validate + build the match index ONCE here (not per file),
+        # so scan_file stays pure/parallelizable. A malformed lexicon fails LOUD (ValueError) at
+        # construction — the CLI turns it into rc=2; the API surfaces it. Dormant when None.
+        self._lexicon: dict[str, Any] | None = None
+        self._lexicon_index: dict[str, tuple] = {}
+        self._lexicon_dictionary_id: str | None = None
+        if self.config.lexicon is not None:
+            self._lexicon = parse_lexicon(self.config.lexicon)
+            self._lexicon_index = build_lexicon_index(self._lexicon)
+            self._lexicon_dictionary_id = lexicon_dictionary_id(self._lexicon)
 
     def _load_ignore_patterns(self) -> list[str]:
         patterns: list[str] = []
@@ -2354,6 +2490,11 @@ class Scanner:
         self._filename_patterns_files_with_any: int = 0
         self._preservation_applied_count: int = 0
         self._preservation_tier_sums: dict[str, int] = {"current": 0, "at_risk": 0, "obsolete": 0}
+        # v1.38: lexicon vector accumulators (derived from records — pure scan). Only registered
+        # when a lexicon is supplied.
+        self._lexicon_applied_count: int = 0
+        self._lexicon_files_matched: int = 0
+        self._lexicon_category_sums: dict[str, int] = {}
         # v1.9: the per-file pass (scan_file) is pure and parallelizable. Discovery
         # yields a deterministic (sorted) path order; the records come back in that
         # SAME order (serial preserves it; ProcessPoolExecutor.map preserves input
@@ -2388,6 +2529,14 @@ class Scanner:
                 _u = _aim.get("usage") or {}
                 self._ai_session_input_tokens += _u.get("input_tokens") or 0
                 self._ai_session_output_tokens += _u.get("output_tokens") or 0
+            # v1.38: lexicon vector applied set — derived from records (pure scan)
+            _lxm = (rec.specialist_metadata or {}).get(LEXICON_NAMESPACE)
+            if _lxm is not None:
+                self._lexicon_applied_count += 1
+                if _lxm.get("total_hits", 0) >= 1:
+                    self._lexicon_files_matched += 1
+                for cat, d in _lxm.get("categories", {}).items():
+                    self._lexicon_category_sums[cat] = self._lexicon_category_sums.get(cat, 0) + d.get("count", 0)
 
         # Register file-scoped vectors from accumulated state
         self._register_chatlog_vector()
@@ -2396,6 +2545,8 @@ class Scanner:
         self._register_preservation_vector()
         self._register_fact_block_vector()
         self._register_ai_session_vector()
+        if self._lexicon is not None:   # v1.38: only when a lexicon was supplied
+            self._register_lexicon_vector()
 
         # Run corpus-scoped vectors after the file walk completes
         self._run_corpus_vectors(records)
@@ -2405,7 +2556,7 @@ class Scanner:
             scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
             source_dir=str(self.source_dir),
-            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress", "watch", "watch_debounce_ms", "watch_include_files", "skip_output_dir")},
+            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress", "watch", "watch_debounce_ms", "watch_include_files", "skip_output_dir", "lexicon")},
         )
         stats = self._compute_stats(records)
         quality = self._compute_quality(records)
@@ -2682,6 +2833,34 @@ class Scanner:
             summary={"matched_files": self._ai_session_applied_count,
                      "input_tokens": self._ai_session_input_tokens,
                      "output_tokens": self._ai_session_output_tokens},
+        ))
+
+    def _register_lexicon_vector(self) -> None:
+        """v1.38: register the lexicon vector. Two independent fingerprints feed identity_digest —
+        rules_hash = the MECHANISM (lexicon_rules_fingerprint: tokenizer + match semantics + caps),
+        dictionary_id = the SUPPLIED DICTIONARY (sha256 of lexicon_id+sorted terms; moves on any term
+        edit even when the label is unchanged). Dual-falsification: no forged count survives the
+        rules_hash, no silent term drift survives the dictionary_id. Terms never appear (only counts).
+        Called only when a lexicon is supplied."""
+        rules_hash = compute_rules_hash(lexicon_rules_fingerprint())
+        tuning_hash = compute_tuning_hash({})   # no sensitivity knobs
+        identity_digest = compute_vector_identity_digest(
+            LEXICON_VECTOR_ID, LEXICON_METHOD_VERSION, rules_hash, tuning_hash,
+            dictionary_id=self._lexicon_dictionary_id,
+        )
+        self._vector_registry.register(VectorRecord(
+            vector_id=LEXICON_VECTOR_ID,
+            method_version=LEXICON_METHOD_VERSION,
+            scope="file",
+            rules_hash=rules_hash,
+            static_tuning_hash=tuning_hash,
+            dynamic_tuning_hash=None,
+            dictionary_id=self._lexicon_dictionary_id,
+            identity_digest=identity_digest,
+            applied_to_count=self._lexicon_applied_count,
+            summary={"lexicon_id": self._lexicon["lexicon_id"],   # type: ignore[index]
+                     "files_matched": self._lexicon_files_matched,
+                     "category_hits": dict(sorted(self._lexicon_category_sums.items()))},
         ))
 
     def _register_filename_patterns_vector(self) -> None:
@@ -3592,6 +3771,7 @@ class Scanner:
         frontmatter = FrontmatterRecord()
         is_chatlog = False
         is_fact_block = False
+        lexicon_total_hits = 0   # v1.38: >=1 → the neutral lexicon_match presence flag (set in the baseline block)
         reference_tokens_result: dict[str, int] | None = None
         # v0.8: hoisted out of the specialist block so chatlog extraction
         # (which lives in the text-handling block above the extension-based
@@ -3794,6 +3974,40 @@ class Scanner:
                     ))
                 else:
                     reference_tokens_result = None
+
+                # v1.38: bring-your-own-lexicon term observer. Runs at the baseline tier (the
+                # lightweight pre-screen — no enable_specialists needed) whenever a lexicon is
+                # supplied, on any text-decoded file. Reports per-category term counts + density —
+                # an OBSERVATION, never a verdict. Full-file bounded read (a risk term can sit
+                # anywhere in a long log; the v1.33/v1.34 64 MiB precedent) — the windowed `text`
+                # above would silently miss a trailing term (a false "clear"). Never-crash: a read
+                # failure falls back to the windowed text (flagged truncated). Stored under
+                # specialist_metadata so no-lexicon scans stay byte-identical. Terms NEVER emitted.
+                if self._lexicon is not None:
+                    try:
+                        _, lex_text, _ = self.decode_text(sample, path, LEXICON_MAX_FILE_BYTES)
+                        lex_truncated = path.stat().st_size > LEXICON_MAX_FILE_BYTES
+                    except (OSError, ValueError):
+                        lex_text, lex_truncated = text, True
+                    lex_result = self._lexicon_scan(lex_text)
+                    lexicon_total_hits = lex_result["total_hits"]
+                    if specialist_metadata is None:
+                        specialist_metadata = {}
+                    specialist_metadata[LEXICON_NAMESPACE] = {
+                        "lexicon_id": self._lexicon["lexicon_id"],
+                        "categories": lex_result["categories"],
+                        "total_hits": lex_result["total_hits"],
+                    }
+                    provenance[f"specialist_metadata.{LEXICON_NAMESPACE}"] = asdict(ProvenanceEntry(
+                        layer="derived",
+                        method="_lexicon_scan",
+                        trigger="lexicon_full_file",
+                        detail={"tool": LEXICON_TOOL,
+                                "lexicon_id": self._lexicon["lexicon_id"],
+                                "dictionary_id": self._lexicon_dictionary_id,
+                                "max_bytes": LEXICON_MAX_FILE_BYTES,
+                                "truncated": lex_truncated},
+                    ))
 
                 if extension in {".md", ".mdx"}:
                     frontmatter = self.extract_frontmatter(text)
@@ -4055,6 +4269,12 @@ class Scanner:
                         message=f"email body chatlog cross-cut failed: {exc}",
                         stage="specialist",
                     ))
+
+        # v1.38: the neutral lexicon presence flag — a FACT (matched the supplied lexicon), not a
+        # verdict. Added here so it lands regardless of enable_specialists; re-sorted for a
+        # deterministic safety_flags order (some paths above don't re-sort).
+        if lexicon_total_hits >= 1 and LEXICON_SAFETY_FLAG not in safety_flags:
+            safety_flags = sorted([*safety_flags, LEXICON_SAFETY_FLAG])
 
         return FileRecord(
             path=rel_path.as_posix(),
@@ -7214,6 +7434,37 @@ class Scanner:
             "numeric_id_patterns": len(REFERENCE_TICKET_RE.findall(text)) + len(REFERENCE_SEMVER_RE.findall(text)) + len(REFERENCE_PROJECT_ID_RE.findall(text)),
         }
 
+    def _lexicon_scan(self, text: str) -> dict[str, Any]:
+        """v1.38: count the consumer-supplied lexicon's terms in `text`, word-boundary (case-folded,
+        literal token(-sequence) match — NOT substring, the measured 9.4x-FP decision). Returns
+        {categories:{cat:{count,density}}, total_hits, total_tokens}. Deterministic + linear: one
+        tokenizer pass + a first-token-indexed walk (candidate work bounded by the parsed lexicon).
+        The terms never enter the output — only counts. Called only when self._lexicon is set."""
+        tokens = LEXICON_TOKEN_RE.findall(text.lower())
+        total_tokens = len(tokens)
+        cats = self._lexicon["categories"]        # type: ignore[index]
+        counts = {c: 0 for c in cats}
+        index = self._lexicon_index
+        n = total_tokens
+        for i, tok in enumerate(tokens):
+            bucket = index.get(tok)
+            if not bucket:
+                continue
+            for term_tokens, cat in bucket:
+                L = len(term_tokens)
+                if L == 1:
+                    counts[cat] += 1                       # single-token: token-set membership
+                elif i + L <= n and tuple(tokens[i:i + L]) == term_tokens:
+                    counts[cat] += 1                       # phrase: contiguous token subsequence
+        categories: dict[str, Any] = {}
+        total_hits = 0
+        for c in sorted(cats):
+            cnt = counts[c]
+            total_hits += cnt
+            categories[c] = {"count": cnt,
+                             "density": round(cnt / total_tokens, 8) if total_tokens else 0.0}
+        return {"categories": categories, "total_hits": total_hits, "total_tokens": total_tokens}
+
     def detect_requires_vision(
         self, path: Path, sample: bytes, mime_type: str, extension: str, is_binary: bool
     ) -> tuple[bool, ProvenanceEntry]:
@@ -8313,6 +8564,7 @@ def main() -> None:
     parser.add_argument("--watch", action="store_true", help="Continuous mode: rescan on FS events and emit each delta as one JSONL line on stdout. Each emitted scan is byte-identical to a one-shot invocation at the same FS state (v1.11)")
     parser.add_argument("--watch-debounce-ms", type=int, default=200, metavar="N", help="Debounce window for batching FS events in --watch mode (default: 200ms)")
     parser.add_argument("--watch-include-files", action="store_true", help="Include files[] in each --watch emit (default: excluded to keep the stream small; the `delta` field carries what changed)")
+    parser.add_argument("--lexicon", metavar="PATH", default=None, help="Path to a consumer-supplied JSON lexicon {lexicon_id, categories:{cat:[terms]}} for the bring-your-own term observer (v1.38). fo counts each category's terms in every text file and reports per-category counts + density (an observation, never a verdict) + a `lexicon_match` safety_flag on any hit. Terms are consumer-private — never echoed into the manifest. Off by default.")
     parser.add_argument("--profile", choices=list(SCAN_PROFILES.keys()), default=None, help="Named scan profile (fast_sort, general, deep_extract)")
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
@@ -8398,6 +8650,17 @@ def main() -> None:
             key, val = kv.split("=", 1)
             ext_overrides.setdefault(ext_part, {})[key] = int(val) if val.isdigit() else val
 
+    # v1.38: load + validate the bring-your-own lexicon (fail-loud → rc=2, the v1.30 fail-loud
+    # philosophy: a bad lexicon must not silently produce a no-match "all clear"). Parsed here for
+    # an early, clear error; Scanner.__init__ re-validates (covers the API path).
+    lexicon_cfg = None
+    if args.lexicon is not None:
+        try:
+            lexicon_cfg = parse_lexicon(json.loads(Path(args.lexicon).read_text(encoding="utf-8")))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print(f"file-observer: --lexicon could not be loaded: {exc}", file=sys.stderr)
+            sys.exit(2)
+
     config = ScannerConfig(
         enable_specialists=profile_values.get("enable_specialists", args.specialists),
         exclude_hidden=args.exclude_hidden,
@@ -8413,6 +8676,7 @@ def main() -> None:
         watch=args.watch,
         watch_debounce_ms=args.watch_debounce_ms,
         watch_include_files=args.watch_include_files,
+        lexicon=lexicon_cfg,
     )
 
     # v1.28: --stdout writes the manifest to stdout (no file, no report). Mutually

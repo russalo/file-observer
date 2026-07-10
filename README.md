@@ -45,8 +45,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.21",
-  "context": { "scanner_version": "1.37.0", "logic_version": "1.20.0", "...": "…" },
+  "schema_version": "1.22",
+  "context": { "scanner_version": "1.38.0", "logic_version": "1.21.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -78,8 +78,8 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.37.0` |
-| **Schema** | `1.21` |
+| **Version** | `1.38.0` |
+| **Schema** | `1.22` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
 | **Tests** | 1000+ (run `pytest` for the exact count) + a 49,879-file / 13-tree shakedown — ran clean (zero fatal errors), see "Validated at scale" below |
@@ -359,7 +359,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.37.0 RFC Specification](docs/v1.37.0_RFC_Specification.md) | Current release spec — **MCP server (agent-native front-door).** A new `file-observer-mcp` stdio server + `[mcp]` extra exposes fo's existing manifest/summary/schema through the Model Context Protocol — read-only, deterministic, 4 tools with progressive disclosure (`scan_summary`/`scan_file`/`scan_directory`/`describe_surface`). A safe "look before you touch" primitive for agents facing untrusted files. A NEW SURFACE: the manifest is checksum-identical to `scan()`, so `LOGIC_VERSION`/`SCHEMA_VERSION` are UNCHANGED (the v1.26 `scan()` / v1.28 `--stdout` front-door precedent). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.38.0 RFC Specification](docs/v1.38.0_RFC_Specification.md) | Current release spec — **Bring-your-own-lexicon term observer.** When a consumer supplies a category-tagged lexicon (`--lexicon` / `ScannerConfig(lexicon=…)`), fo counts each category's terms (word-boundary, literal) in every text file over a full-file bounded read and reports per-category counts + density — an **observation, never a verdict** (the consumer thresholds) — plus a `lexicon_match` safety_flag on any hit. Values-neutral engine: the terms are consumer-private runtime config, **never echoed into the manifest** (only counts + a content-hash `dictionary_id`). Dormant when no lexicon is supplied (existing manifests byte-identical). New provisional `lexicon_match` namespace + `lexicon` vector. `LOGIC_VERSION` 1.20.0→1.21.0 (moves only for lexicon-supplied scans); SCHEMA 1.21→1.22 (additive). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.37.0 RFC Specification](docs/v1.37.0_RFC_Specification.md) | Prior release spec — **MCP server (agent-native front-door).** A new `file-observer-mcp` stdio server + `[mcp]` extra exposes fo's existing manifest/summary/schema through the Model Context Protocol — read-only, deterministic, 4 tools with progressive disclosure (`scan_summary`/`scan_file`/`scan_directory`/`describe_surface`). A safe "look before you touch" primitive for agents facing untrusted files. A NEW SURFACE: the manifest is checksum-identical to `scan()`, so `LOGIC_VERSION`/`SCHEMA_VERSION` are UNCHANGED (the v1.26 `scan()` / v1.28 `--stdout` front-door precedent). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.36.0 RFC Specification](docs/v1.36.0_RFC_Specification.md) | Prior release spec — **defusedxml → purexml XML-dependency changeover.** fo's XML hardening (OOXML/ODF specialists + structural XML-keys tier) moves from `defusedxml` to **purexml** — a pure-stdlib, zero-dependency, oracle-gated-to-defusedxml drop-in (MIT; capability-proven 2,695/0 on fo's own corpus). fo opts into purexml's structural caps (`max_depth`/`max_attributes`/`max_bytes`), so it now refuses a pathologically-deep/oversized XML that defusedxml parsed (a catchable `ValueError` → the field degrades, never crashes). Parse output byte-identical on real files. `LOGIC_VERSION` 1.19.0→1.20.0 (the structural-caps behavior, on pathological input only); SCHEMA unchanged (1.21). ⚠ `manifest_checksum` moves on every manifest (the dependency record changed). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.35.0 RFC Specification](docs/v1.35.0_RFC_Specification.md) | Prior release spec — **AI-session per-model usage attribution.** A new provisional `ai_session.usage_by_model` — a deterministic list of per-model token-usage sums, keyed on the model co-located with each usage dict (Claude `message.model` / OpenAI `response.model` / Gemini `modelVersion`, all measured 100% co-located). Invariant: `usage` == elementwise sum of `usage_by_model` (the session path untouched). Model verbatim (incl. markers); model-less turns → the null bucket; never priced. `LOGIC_VERSION` 1.18.0→1.19.0 (values move on ai_session corpora; ai_session method_version 1→2); SCHEMA 1.20→1.21 (new field, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.34.0 RFC Specification](docs/v1.34.0_RFC_Specification.md) | Prior release spec — **Chatlog session axes.** The chatlog specialist emits three new provisional flat scalars: `first_timestamp`/`last_timestamp` (min/max turn timestamp, normalized to canonical ISO-8601 UTC) + `cwd` (the session's working directory). A deterministic pure function of the file (observe, don't derive) — gives a downstream index a time axis + a project attr on the session. `LOGIC_VERSION` 1.17.0→1.18.0 (values move on timestamped/cwd-bearing chatlog corpora); SCHEMA 1.19→1.20 (new fields, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
