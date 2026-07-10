@@ -216,9 +216,12 @@
 
 | vector_id | scope | method_version | stability |
 |---|---|---|---|
+| `ai_session` | file | 2 | provisional |
 | `author_aggregate` | corpus | 1 | stable |
 | `chatlog` | file | 11 | stable |
+| `fact_block` | file | 1 | provisional |
 | `filename_patterns` | file | 1 | stable |
+| `lexicon` | file | 1 | provisional |
 | `preservation` | file | 1 | stable |
 | `provenance` | corpus | 2 | stable |
 | `reference_tokens` | file | 3 | stable |

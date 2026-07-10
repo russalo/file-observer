@@ -166,6 +166,13 @@ class TestDictionaryId:
         assert lexicon_dictionary_id(parse_lexicon(BENIGN_LEXICON)) == \
                lexicon_dictionary_id(parse_lexicon(BENIGN_LEXICON))
 
+    def test_no_delimiter_collision(self):
+        # leg-4/Codex: a naive `|`/`=`-joined preimage collides on valid inputs — a lexicon_id
+        # containing the delimiters vs a category with the same bytes. Canonical JSON must not collide.
+        a = parse_lexicon({"lexicon_id": "x", "categories": {"a": ["b"], "c": ["d"]}})
+        b = parse_lexicon({"lexicon_id": "x|a=b", "categories": {"c": ["d"]}})
+        assert lexicon_dictionary_id(a) != lexicon_dictionary_id(b)
+
     def test_moves_on_term_change_same_label(self):
         # same lexicon_id LABEL, different terms → different dictionary_id (silent-drift catch)
         a = parse_lexicon({"lexicon_id": "x", "categories": {"c": ["apple"]}})

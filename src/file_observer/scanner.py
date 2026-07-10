@@ -877,7 +877,14 @@ PROVISIONAL_SPECIALIST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"),
     ("lexicon_match", "total_hits"), ("lexicon_match", "total_tokens"),
 })
-PROVISIONAL_VECTORS: frozenset[str] = frozenset()  # v1.23.0 promoted `preservation` → stable (was the only one)
+PROVISIONAL_VECTORS: frozenset[str] = frozenset({
+    # v1.23.0 promoted `preservation` → stable. These file-scoped vectors are provisional on arrival
+    # (surfaced in `--schema` from v1.38, when the drift that omitted them from the vector table was
+    # fixed — leg-4/Codex): the fact_block (v1.32), ai_session (v1.33), and lexicon (v1.38) vectors.
+    # String literals (the *_VECTOR_ID constants are defined later in the file, like the namespace
+    # literals in PROVISIONAL_SPECIALIST_FIELDS above).
+    "fact_block", "ai_session", "lexicon",
+})
 PROVISIONAL_MANIFEST_FIELDS: frozenset[tuple[str, str]] = frozenset({
     # v1.23.0 promoted `("FileRecord","preservation")` → stable. The two below are NOT promotion
     # candidates — they're held-by-DESIGN / permanently-informational (PUBLIC_CONTRACT §2.4): the
@@ -1298,7 +1305,7 @@ def build_lexicon_index(lexicon: dict[str, Any]) -> dict[str, tuple]:
     index: dict[str, list] = {}
     for cat in sorted(lexicon["categories"]):
         for term in lexicon["categories"][cat]:
-            toks = tuple(term.split(" "))
+            toks = term.split(" ")   # list — compared directly to a doc-token list slice (no tuple alloc; leg-4/gemini)
             index.setdefault(toks[0], []).append((toks, cat))
     return {k: tuple(v) for k, v in index.items()}
 
@@ -1307,11 +1314,16 @@ def lexicon_dictionary_id(lexicon: dict[str, Any]) -> str:
     """SHA-256 over (lexicon_id + sorted categories → sorted terms). Emitted as the vector's
     dictionary_id; moves on ANY term/category change even when the consumer's lexicon_id LABEL is
     unchanged → catches silent lexicon drift (dual-falsification for the supplied dictionary). The
-    DIGEST is emitted; the terms are NOT — sensitive content stays out of the manifest."""
-    parts = ["lexicon_id=" + lexicon["lexicon_id"]]
-    for cat in sorted(lexicon["categories"]):
-        parts.append(cat + "=" + ",".join(lexicon["categories"][cat]))  # terms already sorted
-    return sha256("|".join(parts).encode("utf-8")).hexdigest()
+    DIGEST is emitted; the terms are NOT — sensitive content stays out of the manifest.
+    Serialized as CANONICAL JSON (sort_keys, no ambiguous delimiters) — a naive `|`/`=`-joined
+    preimage collides on valid inputs (e.g. `lexicon_id='x|a=b'` vs an `a`-category; leg-4/Codex),
+    which would let a different dictionary keep the same digest and defeat the drift check."""
+    canonical = json.dumps(
+        {"lexicon_id": lexicon["lexicon_id"],
+         "categories": {c: lexicon["categories"][c] for c in sorted(lexicon["categories"])}},
+        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
+    )
+    return sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def lexicon_rules_fingerprint() -> str:
@@ -2495,7 +2507,10 @@ class Scanner:
         # when a lexicon is supplied.
         self._lexicon_applied_count: int = 0
         self._lexicon_files_matched: int = 0
-        self._lexicon_category_sums: dict[str, int] = {}
+        # Seed with every defined category → 0 so the vector's category_hits lists ALL categories even
+        # when no text file was scanned (honest-null consistency; leg-4/gemini).
+        self._lexicon_category_sums: dict[str, int] = (
+            {c: 0 for c in self._lexicon["categories"]} if self._lexicon else {})
         # v1.9: the per-file pass (scan_file) is pure and parallelizable. Discovery
         # yields a deterministic (sorted) path order; the records come back in that
         # SAME order (serial preserves it; ProcessPoolExecutor.map preserves input
@@ -3990,8 +4005,13 @@ class Scanner:
                     # file LARGER than the window needs the extra full-file read (a risk term could sit
                     # past the window). Never-crash: a read failure falls back to `text` (flagged).
                     try:
-                        lex_truncated = path.stat().st_size > LEXICON_MAX_FILE_BYTES
-                        if path.stat().st_size <= eff["baseline_max_bytes"]:
+                        _size = path.stat().st_size
+                        lex_truncated = _size > LEXICON_MAX_FILE_BYTES
+                        # Reuse the windowed `text` ONLY when the whole file fits within BOTH the baseline
+                        # window AND the lexicon cap — a consumer raising baseline_max_bytes above 64 MiB
+                        # must NOT let the reused text count terms beyond the declared lexicon cap (which
+                        # would move counts without moving the rules_hash; leg-4/Codex).
+                        if _size <= min(eff["baseline_max_bytes"], LEXICON_MAX_FILE_BYTES):
                             lex_text = text
                         else:
                             _, lex_text, _ = self.decode_text(sample, path, LEXICON_MAX_FILE_BYTES)
@@ -7470,8 +7490,8 @@ class Scanner:
                 L = len(term_tokens)
                 if L == 1:
                     counts[cat] += 1                       # single-token: token-set membership
-                elif i + L <= n and tuple(tokens[i:i + L]) == term_tokens:
-                    counts[cat] += 1                       # phrase: contiguous token subsequence
+                elif i + L <= n and tokens[i:i + L] == term_tokens:
+                    counts[cat] += 1                       # phrase: contiguous token subsequence (list==list, no tuple alloc)
         categories: dict[str, Any] = {}
         total_hits = 0
         for c in sorted(cats):
@@ -8155,6 +8175,9 @@ def build_schema_document() -> dict[str, Any]:
         {"vector_id": PRESERVATION_VECTOR_ID, "scope": "file", "method_version": PRESERVATION_METHOD_VERSION, "stability": _vstab(PRESERVATION_VECTOR_ID)},
         {"vector_id": AUTHOR_AGGREGATE_VECTOR_ID, "scope": "corpus", "method_version": AUTHOR_AGGREGATE_METHOD_VERSION, "stability": _vstab(AUTHOR_AGGREGATE_VECTOR_ID)},
         {"vector_id": PROVENANCE_VECTOR_ID, "scope": "corpus", "method_version": PROVENANCE_METHOD_VERSION, "stability": _vstab(PROVENANCE_VECTOR_ID)},
+        {"vector_id": FACT_BLOCK_VECTOR_ID, "scope": "file", "method_version": FACT_BLOCK_METHOD_VERSION, "stability": _vstab(FACT_BLOCK_VECTOR_ID)},   # v1.32 (was missing — leg-4/Codex surfaced the drift)
+        {"vector_id": AI_SESSION_VECTOR_ID, "scope": "file", "method_version": AI_SESSION_METHOD_VERSION, "stability": _vstab(AI_SESSION_VECTOR_ID)},   # v1.33 (was missing)
+        {"vector_id": LEXICON_VECTOR_ID, "scope": "file", "method_version": LEXICON_METHOD_VERSION, "stability": _vstab(LEXICON_VECTOR_ID)},   # v1.38 bring-your-own-lexicon
     ]
     # MAGIC_SIGNATURES labels (the format vocabulary), sorted + deduped.
     magic_formats = sorted({label for _, label in MAGIC_SIGNATURES})

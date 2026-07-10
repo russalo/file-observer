@@ -137,7 +137,11 @@ class TestProvisionalRegistryMatchesContract:
             ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"),
             ("lexicon_match", "total_hits"), ("lexicon_match", "total_tokens"),
         })
-        assert PROVISIONAL_VECTORS == frozenset()  # v1.23.0 promoted `preservation` (was the only one)
+        # v1.38: the fact_block (v1.32), ai_session (v1.33), and lexicon (v1.38) file-scoped vectors are
+        # provisional — surfaced in --schema from v1.38 when the vector-table drift that omitted them was
+        # fixed (leg-4/Codex). v1.23.0 promoted `preservation` → stable.
+        from file_observer.scanner import FACT_BLOCK_VECTOR_ID, AI_SESSION_VECTOR_ID, LEXICON_VECTOR_ID
+        assert PROVISIONAL_VECTORS == frozenset({FACT_BLOCK_VECTOR_ID, AI_SESSION_VECTOR_ID, LEXICON_VECTOR_ID})
         assert PROVISIONAL_MANIFEST_FIELDS == frozenset({
             # v1.23.0 promoted ("FileRecord","preservation") → stable; the two below are held-by-DESIGN
             # (§2.4, permanently-informational — the signature vocabulary intentionally stays fluid).
