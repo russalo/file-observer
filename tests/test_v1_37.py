@@ -86,6 +86,26 @@ class TestTools:
             m["meta"]["scan_id"] = ""; m["meta"]["generated_at"] = ""
         assert via_mcp == oracle   # identical once the two volatile fields are neutralized
 
+    def test_describe_surface_rejects_bad_format(self):
+        with pytest.raises(ValueError):
+            mcp_server.describe_surface("xml")
+
+    def test_scan_summary_rejects_non_directory(self, tmp_path):
+        (tmp_path / "a.txt").write_text("x")
+        with pytest.raises(ValueError):
+            mcp_server.scan_summary(str(tmp_path / "a.txt"))   # a file, not a dir
+
+    def test_scan_file_does_not_mutate_the_target(self, tmp_path):
+        # leg-4/Codex P1: scan_file must be READ-ONLY on the target — a copy, not a hardlink (which would
+        # bump the target's link-count/ctime). Assert the target's stat is unchanged across a scan_file call.
+        import os as _os
+        f = tmp_path / "t.txt"; f.write_text("payload")
+        before = _os.stat(f)
+        mcp_server.scan_file(str(f))
+        after = _os.stat(f)
+        assert before.st_nlink == after.st_nlink == 1   # no hardlink was created
+        assert before.st_ctime == after.st_ctime         # ctime unchanged → not mutated
+
     def test_describe_surface(self):
         md = mcp_server.describe_surface("md")
         assert md.startswith("# File Observer output schema")

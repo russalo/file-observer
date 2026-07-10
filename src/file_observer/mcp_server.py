@@ -20,7 +20,13 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
+try:
+    from mcp.server.fastmcp import FastMCP
+except ModuleNotFoundError as _e:   # a friendly message instead of a bare traceback (leg-4/gemini);
+    # still an ImportError so `pytest.importorskip` skips cleanly when the [mcp] extra isn't installed.
+    raise ImportError(
+        'file-observer-mcp needs the MCP SDK — install it with:  pip install "file-observer[mcp]"'
+    ) from _e
 
 from file_observer.scanner import (
     Scanner,
@@ -81,6 +87,8 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000) ->
     deeper per-format extraction; leave off for a fast overview. GUARDED by `max_files`: a tree
     larger than that is refused before scanning (narrow the path) so it can't run away on a huge tree."""
     d = _resolve_in_root(path)
+    if not d.is_dir():
+        raise ValueError(f"not a directory (use scan_file for a single file): {path}")
     n = _count_files_bounded(d, max_files)
     if n > max_files:
         return json.dumps({
@@ -118,15 +126,15 @@ def scan_file(path: str, specialists: bool = True) -> str:
     fp = _resolve_in_root(path)
     if not fp.is_file():
         raise ValueError(f"not a file (use scan_summary/scan_directory for a folder): {path}")
-    # fo scans a DIRECTORY, so to observe ONLY this file (not its siblings — leg-2/leg-1 fix) scan a
-    # temp dir containing just a hardlink to it (same inode → identical content/checksum; copy fallback
-    # cross-filesystem). Report the caller's real path, not the temp name.
+    # fo scans a DIRECTORY, so to observe ONLY this file (not its siblings — leg-1/leg-2 fix) scan a
+    # temp dir containing a COPY of it. A COPY (not a hardlink): `os.link` would bump the target inode's
+    # link-count + ctime, MUTATING a file fo promises never to touch (leg-4/Codex P1). `copy2` only READS
+    # the target (same footprint as a normal scan) → read-only preserved. Report the caller's real path.
+    # NOTE: the isolated scan can't see the target's DIRECTORY CONTEXT, so a context-dependent field
+    # (`sidecar_exists`, `asset_matches`) reflects the isolated copy, not the original's neighbourhood.
     with tempfile.TemporaryDirectory() as td:
-        link = Path(td) / fp.name
-        try:
-            os.link(fp, link)
-        except OSError:
-            shutil.copy2(fp, link)
+        copy = Path(td) / fp.name
+        shutil.copy2(fp, copy)
         m = _scan(Path(td), specialists)
         for r in m.files:
             if r.path == fp.name:
@@ -144,6 +152,8 @@ def scan_directory(path: str, specialists: bool = False, max_files: int = 200) -
     Read-only, deterministic; the manifest is checksum-identical to a CLI scan run with the same
     `specialists` setting (default: off, matching the CLI default)."""
     d = _resolve_in_root(path)
+    if not d.is_dir():
+        raise ValueError(f"not a directory (use scan_file for a single file): {path}")
     n = _count_files_bounded(d, max_files)   # bound WORK: refuse before the expensive scan (leg-2/gem-pro DoS fix)
     if n > max_files:
         return json.dumps({
@@ -159,6 +169,8 @@ def describe_surface(format: str = "md") -> str:
     """The COMPLETE output surface fo can emit — every manifest field, specialist + its metadata
     fields, vector, safety flag, error code, provenance trigger, and preservation tier. The reference
     when writing a consumer or reasoning about the manifest shape. `format`: 'md' (default) or 'json'."""
+    if format not in ("md", "json"):
+        raise ValueError(f"invalid format {format!r}: expected 'md' or 'json'")
     doc = build_schema_document()
     if format == "json":
         return json.dumps(doc, indent=2, ensure_ascii=False)
@@ -173,7 +185,10 @@ def main() -> None:
     args = ap.parse_args()
     global _ROOT
     if args.root:
-        _ROOT = Path(args.root).expanduser().resolve()
+        root = Path(args.root).expanduser().resolve()
+        if not root.is_dir():   # fail fast at startup, not on every later tool call (leg-4/gemini)
+            ap.error(f"--root is not a directory: {args.root}")
+        _ROOT = root
     mcp.run(transport="stdio")
 
 
