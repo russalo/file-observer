@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.36.0"
+version = "1.37.0"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -47,10 +47,11 @@ msg = ["olefile"]
 security = ["purexml>=1.0.0"]   # v1.36: pure-stdlib, oracle-gated defusedxml replacement (a 2.0 is a breaking-contract re-review)
 pdf = ["pypdf", "cryptography"]   # v1.8: object-stream page_count/Info (tier 1; stdlib fallback if absent). v1.12: cryptography required by pypdf for AES-256/V5 owner-locked PDFs (e.g. Caltrans 2025 specs)
 watch = ["watchfiles"]   # v1.11: --watch FS-event backend (measured vs watchdog; watchfiles won 1:1 delivery + 43ms latency)
+mcp = ["mcp"]   # v1.37: MCP server (agent-native front-door) — the official MCP Python SDK; optional, runtime stays zero-required-dep
 # v1.28.1: one-line full coverage — the union of every RUNTIME extra (NOT dev). Self-references
 # the others so it can't drift (a new extra is picked up automatically). The drift-guard test
 # `test_all_extra_covers_every_runtime_extra` fails CI if a runtime extra is ever omitted here.
-all = ["file-observer[yaml,msg,security,pdf,watch]"]
+all = ["file-observer[yaml,msg,security,pdf,watch,mcp]"]
 dev = ["file-observer[all]", "pytest", "pytest-timeout", "jsonschema"]   # v1.28.1: dev = all runtime extras + test tooling (jsonschema = DEV-only manifest-schema validation guard; runtime stays zero-dep)
 
 [project.urls]
@@ -63,6 +64,7 @@ Changelog = "https://github.com/russalo/file-observer/blob/main/docs/HISTORY.md"
 [project.scripts]
 file-observer = "file_observer.scanner:main"
 fo = "file_observer.scanner:main"
+file-observer-mcp = "file_observer.mcp_server:main"   # v1.37: the MCP server (stdio); needs the [mcp] extra
 
 [tool.setuptools.packages.find]
 where = ["src"]
