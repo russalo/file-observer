@@ -46,7 +46,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.21",
-  "context": { "scanner_version": "1.36.0", "logic_version": "1.20.0", "...": "…" },
+  "context": { "scanner_version": "1.37.0", "logic_version": "1.20.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -78,7 +78,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.36.0` |
+| **Version** | `1.37.0` |
 | **Schema** | `1.21` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -153,6 +153,7 @@ pip install file-observer
 pip install "file-observer[all]"       # every optional specialist (one line — recommended)
 pip install "file-observer[msg]"       # .msg/.doc/.xls/.ppt (OLE2 formats)
 pip install "file-observer[security]"  # Hardened XML parsing
+pip install "file-observer[mcp]"       # MCP server (use it from an AI agent — see below)
 pip install "file-observer[dev]"       # Full dev environment
 ```
 
@@ -190,6 +191,31 @@ The image bundles `libmagic` + all optional specialists. (Builds from the [`Dock
 ```
 
 The action installs `file-observer[all]` into an isolated venv (it doesn't touch your workflow's Python) and writes the manifest via `--stdout`. Output: `manifest-path`. Diff it against a baseline, gate a job on `quality`/`safety_flags` with `jq`, or just archive it for audit.
+
+### Use it from an AI agent (MCP)
+
+`file-observer[mcp]` ships an **[MCP](https://modelcontextprotocol.io/) server** so an AI agent can scan a file tree as a tool — a safe **"look before you touch"** pass over unknown or untrusted files. Because File Observer is read-only, never executes file content, stays in-tree, and never crashes, it's safe to point at files you don't trust: the agent gets a deterministic manifest of *what's there* before opening or ingesting anything.
+
+Run the stdio server (or `uvx --from "file-observer[mcp]" file-observer-mcp`), then add it to your MCP client (Claude Desktop / Claude Code) config:
+
+```json
+{
+  "mcpServers": {
+    "file-observer": { "command": "file-observer-mcp", "args": [] }
+  }
+}
+```
+
+Four read-only tools, built for an agent's context budget (progressive disclosure):
+
+| tool | what |
+|---|---|
+| `scan_summary(path)` | **start here** — a compact overview: counts, types, and notable observations (chatlogs, MIME mismatches, polyglots, macros/JS, geotagged, at-risk formats). ~300 tokens on a big folder. |
+| `scan_file(path)` | the full observation record for one file — drill in after the summary flags something. |
+| `scan_directory(path, max_files)` | the full manifest (checksum-identical to a CLI scan with the same specialists setting); **guarded** — refused *before* scanning if the tree exceeds `max_files`, bounding both context size and work (a huge tree isn't read). |
+| `describe_surface()` | the complete output schema — the reference when writing a consumer. |
+
+It **observes and reports** — it never judges whether a file is safe; the agent interprets. `--root <dir>` restricts scans to a subtree (defense-in-depth). See [`examples/08-mcp-server/`](examples/08-mcp-server/).
 
 **Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for common binary formats (archives, images, data, media), then extension-based inference. Install it for the widest coverage:
 ```bash
@@ -333,7 +359,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.36.0 RFC Specification](docs/v1.36.0_RFC_Specification.md) | Current release spec — **defusedxml → purexml XML-dependency changeover.** fo's XML hardening (OOXML/ODF specialists + structural XML-keys tier) moves from `defusedxml` to **purexml** — a pure-stdlib, zero-dependency, oracle-gated-to-defusedxml drop-in (MIT; capability-proven 2,695/0 on fo's own corpus). fo opts into purexml's structural caps (`max_depth`/`max_attributes`/`max_bytes`), so it now refuses a pathologically-deep/oversized XML that defusedxml parsed (a catchable `ValueError` → the field degrades, never crashes). Parse output byte-identical on real files. `LOGIC_VERSION` 1.19.0→1.20.0 (the structural-caps behavior, on pathological input only); SCHEMA unchanged (1.21). ⚠ `manifest_checksum` moves on every manifest (the dependency record changed). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.37.0 RFC Specification](docs/v1.37.0_RFC_Specification.md) | Current release spec — **MCP server (agent-native front-door).** A new `file-observer-mcp` stdio server + `[mcp]` extra exposes fo's existing manifest/summary/schema through the Model Context Protocol — read-only, deterministic, 4 tools with progressive disclosure (`scan_summary`/`scan_file`/`scan_directory`/`describe_surface`). A safe "look before you touch" primitive for agents facing untrusted files. A NEW SURFACE: the manifest is checksum-identical to `scan()`, so `LOGIC_VERSION`/`SCHEMA_VERSION` are UNCHANGED (the v1.26 `scan()` / v1.28 `--stdout` front-door precedent). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.36.0 RFC Specification](docs/v1.36.0_RFC_Specification.md) | Prior release spec — **defusedxml → purexml XML-dependency changeover.** fo's XML hardening (OOXML/ODF specialists + structural XML-keys tier) moves from `defusedxml` to **purexml** — a pure-stdlib, zero-dependency, oracle-gated-to-defusedxml drop-in (MIT; capability-proven 2,695/0 on fo's own corpus). fo opts into purexml's structural caps (`max_depth`/`max_attributes`/`max_bytes`), so it now refuses a pathologically-deep/oversized XML that defusedxml parsed (a catchable `ValueError` → the field degrades, never crashes). Parse output byte-identical on real files. `LOGIC_VERSION` 1.19.0→1.20.0 (the structural-caps behavior, on pathological input only); SCHEMA unchanged (1.21). ⚠ `manifest_checksum` moves on every manifest (the dependency record changed). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.35.0 RFC Specification](docs/v1.35.0_RFC_Specification.md) | Prior release spec — **AI-session per-model usage attribution.** A new provisional `ai_session.usage_by_model` — a deterministic list of per-model token-usage sums, keyed on the model co-located with each usage dict (Claude `message.model` / OpenAI `response.model` / Gemini `modelVersion`, all measured 100% co-located). Invariant: `usage` == elementwise sum of `usage_by_model` (the session path untouched). Model verbatim (incl. markers); model-less turns → the null bucket; never priced. `LOGIC_VERSION` 1.18.0→1.19.0 (values move on ai_session corpora; ai_session method_version 1→2); SCHEMA 1.20→1.21 (new field, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.34.0 RFC Specification](docs/v1.34.0_RFC_Specification.md) | Prior release spec — **Chatlog session axes.** The chatlog specialist emits three new provisional flat scalars: `first_timestamp`/`last_timestamp` (min/max turn timestamp, normalized to canonical ISO-8601 UTC) + `cwd` (the session's working directory). A deterministic pure function of the file (observe, don't derive) — gives a downstream index a time axis + a project attr on the session. `LOGIC_VERSION` 1.17.0→1.18.0 (values move on timestamped/cwd-bearing chatlog corpora); SCHEMA 1.19→1.20 (new fields, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.33.0 RFC Specification](docs/v1.33.0_RFC_Specification.md) | **AI-session observation, increment 1.** On an `is_chatlog`-detected AI session log (Claude Code / OpenAI / Gemini), fo emits a new provisional `ai_session` namespace: token-usage **sums** (canonical fo names, null-per-absent, vendor raw keys preserved) + a **producer-schema fingerprint** (`vendor`/`surface`/`models`/`id_prefix`/`object_types`/`schema_mismatch`) anchored on id-prefix + object-type. Observe-only — sums are **never priced**. `LOGIC_VERSION` 1.16.0→1.17.0 (values move `manifest_checksum` on AI-session corpora); SCHEMA 1.18→1.19 (new namespace, provisional). v1.0.0 RFC remains the binding schema-freeze contract. |

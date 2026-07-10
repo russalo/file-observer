@@ -178,9 +178,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.36.0"
-    assert SCHEMA_VERSION == "1.21"  # UNCHANGED at v1.36.0 — the defusedxml→purexml swap adds no field/shape (ScanContext.dependencies is an existing structure)
-    assert LOGIC_VERSION == "1.20.0"  # v1.36.0 — defusedxml→purexml changeover: fo opts into purexml's structural caps (RECOMMENDED_LIMITS) → rejects pathologically-deep/oversized XML (output changes on pathological input only, the v1.30.2 precedent); parse byte-identical on real files
+    assert SCANNER_VERSION == "1.37.0"
+    assert SCHEMA_VERSION == "1.21"  # UNCHANGED at v1.37.0 — the MCP server is a new SURFACE (front-door); manifest checksum-identical to scan(), no field/shape change
+    assert LOGIC_VERSION == "1.20.0"  # UNCHANGED at v1.37.0 — the MCP server exposes the existing manifest/summary/schema; zero new observation (the v1.26 scan()/v1.28 --stdout front-door precedent)
 
 
 def test_legacy_scanner_import_warns():
