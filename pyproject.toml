@@ -47,7 +47,7 @@ msg = ["olefile"]
 security = ["purexml>=1.0.0"]   # v1.36: pure-stdlib, oracle-gated defusedxml replacement (a 2.0 is a breaking-contract re-review)
 pdf = ["pypdf", "cryptography"]   # v1.8: object-stream page_count/Info (tier 1; stdlib fallback if absent). v1.12: cryptography required by pypdf for AES-256/V5 owner-locked PDFs (e.g. Caltrans 2025 specs)
 watch = ["watchfiles"]   # v1.11: --watch FS-event backend (measured vs watchdog; watchfiles won 1:1 delivery + 43ms latency)
-mcp = ["mcp"]   # v1.37: MCP server (agent-native front-door) — the official MCP Python SDK; optional, runtime stays zero-required-dep
+mcp = ["mcp>=1.0"]   # v1.37: MCP server (agent-native front-door) — the official MCP Python SDK; optional, runtime stays zero-required-dep
 # v1.28.1: one-line full coverage — the union of every RUNTIME extra (NOT dev). Self-references
 # the others so it can't drift (a new extra is picked up automatically). The drift-guard test
 # `test_all_extra_covers_every_runtime_extra` fails CI if a runtime extra is ever omitted here.

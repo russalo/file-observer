@@ -212,7 +212,7 @@ Four read-only tools, built for an agent's context budget (progressive disclosur
 |---|---|
 | `scan_summary(path)` | **start here** — a compact overview: counts, types, and notable observations (chatlogs, MIME mismatches, polyglots, macros/JS, geotagged, at-risk formats). ~300 tokens on a big folder. |
 | `scan_file(path)` | the full observation record for one file — drill in after the summary flags something. |
-| `scan_directory(path, max_files)` | the full manifest (checksum-identical to a CLI scan); **guarded** — returns the summary instead if the tree exceeds `max_files`, so it can't overflow the context. |
+| `scan_directory(path, max_files)` | the full manifest (checksum-identical to a CLI scan with the same specialists setting); **guarded** — refused *before* scanning if the tree exceeds `max_files`, bounding both context size and work (a huge tree isn't read). |
 | `describe_surface()` | the complete output schema — the reference when writing a consumer. |
 
 It **observes and reports** — it never judges whether a file is safe; the agent interprets. `--root <dir>` restricts scans to a subtree (defense-in-depth). See [`examples/08-mcp-server/`](examples/08-mcp-server/).

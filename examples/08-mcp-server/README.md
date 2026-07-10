@@ -34,7 +34,7 @@ Lock scans to a subtree (defense-in-depth) with `"args": ["--root", "/path/you/a
 |---|---|---|
 | `scan_summary(path, specialists=false)` | compact overview: file counts, text/binary split, and notable observations (chatlogs, MIME-vs-extension mismatches, polyglots, macros/JavaScript, geotagged, at-risk formats, degraded files, duplicate clusters) | **start here** — ~300 tokens even on a big folder |
 | `scan_file(path, specialists=true)` | the full observation record for one file: identity, content-MIME, routing flags, safety flags, per-field provenance, format metadata | drill in after the summary flags something |
-| `scan_directory(path, specialists=false, max_files=200)` | the full manifest (checksum-identical to a CLI scan) — **guarded**: returns the summary instead if the tree exceeds `max_files` | the escape hatch for a full dump |
+| `scan_directory(path, specialists=false, max_files=200)` | the full manifest (checksum-identical to a CLI scan, same specialists setting) — **guarded**: refused before scanning if the tree exceeds `max_files` (bounds context + work) | the escape hatch for a full dump |
 | `describe_surface(format="md")` | the complete output schema — every field/specialist/vector/flag | the reference when writing a consumer |
 
 Everything is read-only and deterministic (same bytes → same result). The tools **observe and report**;

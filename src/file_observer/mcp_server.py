@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
+import tempfile
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
@@ -58,14 +60,34 @@ def _scan(source_dir: Path, specialists: bool):
     return Scanner(source_dir=source_dir, config=ScannerConfig(enable_specialists=specialists)).scan()
 
 
+def _count_files_bounded(d: Path, cap: int) -> int:
+    """Cheap file count (NO scanning) up to cap+1 — bounds the WORK before a full scan, so pointing a
+    tool at a huge tree (e.g. `/`) is refused BEFORE fo reads/hashes every file (leg-2/gem-pro DoS fix).
+    Returns the exact count if <= cap, else a value > cap (the exact overflow is irrelevant)."""
+    n = 0
+    for _root, _dirs, files in os.walk(d, followlinks=False):
+        n += len(files)
+        if n > cap:
+            return n
+    return n
+
+
 @mcp.tool()
-def scan_summary(path: str, specialists: bool = False) -> str:
+def scan_summary(path: str, specialists: bool = False, max_files: int = 1000) -> str:
     """Context-friendly overview of a directory: file counts, text/binary split, and NOTABLE
     observations (chatlogs, MIME-vs-extension mismatches, polyglots, at-risk formats, safety flags
     like macros/JavaScript/geotagged, degraded/error files, duplicate clusters). Read-only,
     deterministic — never opens or runs a file. START HERE. `specialists` (default off) enables
-    deeper per-format extraction; leave off for a fast overview."""
+    deeper per-format extraction; leave off for a fast overview. GUARDED by `max_files`: a tree
+    larger than that is refused before scanning (narrow the path) so it can't run away on a huge tree."""
     d = _resolve_in_root(path)
+    n = _count_files_bounded(d, max_files)
+    if n > max_files:
+        return json.dumps({
+            "guarded": True,
+            "reason": f"more than {max_files} files under {d}; refused before scanning to bound work",
+            "hint": "narrow the path, or call again with a higher max_files",
+        }, indent=2, ensure_ascii=False)
     m = _scan(d, specialists)
     q = m.quality
     out = {
@@ -84,7 +106,7 @@ def scan_summary(path: str, specialists: bool = False) -> str:
             "duplicate_clusters": len(q.duplicate_clusters or []),
         },
     }
-    return json.dumps(out, indent=2, ensure_ascii=False)
+    return json.dumps(out, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
@@ -96,32 +118,40 @@ def scan_file(path: str, specialists: bool = True) -> str:
     fp = _resolve_in_root(path)
     if not fp.is_file():
         raise ValueError(f"not a file (use scan_summary/scan_directory for a folder): {path}")
-    # fo scans a directory; scan the parent and return this file's record.
-    m = _scan(fp.parent, specialists)
-    for r in m.files:
-        if (fp.parent / r.path).resolve() == fp:
-            return json.dumps(asdict(r), indent=2, ensure_ascii=False, default=str)
-    raise ValueError(f"file not found in scan (excluded — e.g. a symlink out of tree?): {path}")
+    # fo scans a DIRECTORY, so to observe ONLY this file (not its siblings — leg-2/leg-1 fix) scan a
+    # temp dir containing just a hardlink to it (same inode → identical content/checksum; copy fallback
+    # cross-filesystem). Report the caller's real path, not the temp name.
+    with tempfile.TemporaryDirectory() as td:
+        link = Path(td) / fp.name
+        try:
+            os.link(fp, link)
+        except OSError:
+            shutil.copy2(fp, link)
+        m = _scan(Path(td), specialists)
+        for r in m.files:
+            if r.path == fp.name:
+                d = asdict(r)
+                d["path"] = str(fp)   # the caller's real path, not the temp basename
+                return json.dumps(d, indent=2, ensure_ascii=False, default=str)
+    raise ValueError(f"could not observe file (unreadable / excluded): {path}")
 
 
 @mcp.tool()
 def scan_directory(path: str, specialists: bool = False, max_files: int = 200) -> str:
     """The FULL manifest JSON for a directory — every FileRecord. GUARDED: if the tree has more than
-    `max_files` files, returns the compact summary + a note instead (a full manifest would overflow
-    the context) — narrow the path or raise max_files. Read-only, deterministic; the manifest is
-    byte-identical to the `file-observer` CLI."""
+    `max_files` files it is refused BEFORE scanning (returns a note) — both to avoid overflowing the
+    context AND to bound the work (a huge tree isn't read/hashed) — narrow the path or raise max_files.
+    Read-only, deterministic; the manifest is checksum-identical to a CLI scan run with the same
+    `specialists` setting (default: off, matching the CLI default)."""
     d = _resolve_in_root(path)
-    m = _scan(d, specialists)
-    n = m.stats.total_files
+    n = _count_files_bounded(d, max_files)   # bound WORK: refuse before the expensive scan (leg-2/gem-pro DoS fix)
     if n > max_files:
         return json.dumps({
             "guarded": True,
-            "reason": f"{n} files exceeds max_files={max_files}; a full manifest would overflow context",
-            "hint": "narrow the path, or call again with a higher max_files",
-            "summary": m.summary,
-            "stats": asdict(m.stats),
+            "reason": f"more than {max_files} files under {d}; a full manifest would overflow context",
+            "hint": "narrow the path, call scan_summary for an overview, or raise max_files",
         }, indent=2, ensure_ascii=False)
-    return manifest_to_json(m)
+    return manifest_to_json(_scan(d, specialists))
 
 
 @mcp.tool()

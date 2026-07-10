@@ -51,9 +51,30 @@ class TestTools:
         with pytest.raises(ValueError):
             mcp_server.scan_file(str(FIXTURES))
 
-    def test_scan_directory_guard_fires(self):
+    def test_scan_directory_guard_fires_before_scanning(self):
+        # the guard bounds WORK: it refuses BEFORE the expensive scan (leg-2/gem-pro DoS fix), so the
+        # response is a note (reason/hint), not a scanned summary.
         g = json.loads(mcp_server.scan_directory(str(FIXTURES), max_files=2))
-        assert g.get("guarded") is True and "summary" in g
+        assert g.get("guarded") is True and "reason" in g and "hint" in g
+
+    def test_scan_summary_guard_fires_before_scanning(self):
+        g = json.loads(mcp_server.scan_summary(str(FIXTURES), max_files=2))
+        assert g.get("guarded") is True and "reason" in g
+
+    def test_scan_file_observes_only_the_one_file(self, tmp_path):
+        # scan_file must NOT scan siblings (leg-1/leg-2 converged) — a temp-dir isolation returns exactly
+        # one record, with the caller's real path, and identical content to an in-place scan.
+        (tmp_path / "target.txt").write_text("hello world")
+        (tmp_path / "sibling_a.bin").write_bytes(b"\x00\x01\x02")
+        (tmp_path / "sibling_b.md").write_text("# not requested")
+        rec = json.loads(mcp_server.scan_file(str(tmp_path / "target.txt")))
+        assert rec["path"] == str((tmp_path / "target.txt").resolve())
+        assert rec["mime_type"].startswith("text/")
+        # its checksum matches an in-place scan of the same bytes (content-identical)
+        from file_observer.scanner import Scanner, ScannerConfig
+        m = Scanner(source_dir=tmp_path, config=ScannerConfig()).scan()
+        inplace = next(r for r in m.files if r.path == "target.txt")
+        assert rec["checksum_sha256"] == inplace.checksum_sha256
 
     def test_scan_directory_is_checksum_identical_to_scan(self):
         # the FRONT-DOOR contract: the MCP manifest IS scan()'s manifest (byte-identical modulo the
