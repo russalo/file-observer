@@ -57,7 +57,7 @@ These are **observations, not assessments**. The scanner reports what it sees. C
 
 | Version | Supported |
 |---|---|
-| 1.36.x | Yes (current) |
-| 1.35.x | Security fixes only |
-| 1.0–1.34.x | No (schema-stable but unsupported; please upgrade) |
+| 1.39.x | Yes (current) |
+| 1.38.x | Security fixes only |
+| 1.0–1.37.x | No (schema-stable but unsupported; please upgrade) |
 | < 1.0 | No |
