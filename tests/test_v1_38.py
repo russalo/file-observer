@@ -249,6 +249,6 @@ class TestDeterminism:
 
 class TestVersioning:
     def test_axes(self):
-        assert SCANNER_VERSION == "1.38.0"
+        assert SCANNER_VERSION == "1.38.1"
         assert LOGIC_VERSION == "1.21.0"     # new baseline derivation (values move on lexicon-supplied scans)
         assert SCHEMA_VERSION == "1.22"      # additive: namespace + vector + safety_flag + trigger
