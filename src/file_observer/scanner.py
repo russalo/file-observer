@@ -1287,10 +1287,12 @@ def parse_lexicon(raw: Any) -> dict[str, Any]:
             if len(t) > LEXICON_MAX_TERM_LEN:
                 raise ValueError(f"category {cat!r}: term exceeds {LEXICON_MAX_TERM_LEN} chars")
             toks = LEXICON_TOKEN_RE.findall(t.casefold())   # casefold (not lower) — matches the fingerprint marker; no-op for the ASCII tokenizer, correct if it ever broadens (leg-4/CodeRabbit)
+            # NEVER echo the term itself in the error — the lexicon is consumer-PRIVATE (this is the
+            # whole point of the feature), and main() prints these to stderr/CI logs (leg-4/CodeRabbit).
             if not toks:
-                raise ValueError(f"category {cat!r}: term {t!r} has no matchable tokens")
+                raise ValueError(f"category {cat!r}: a term has no matchable tokens")
             if len(toks) > LEXICON_MAX_TERM_TOKENS:
-                raise ValueError(f"category {cat!r}: term {t!r} exceeds {LEXICON_MAX_TERM_TOKENS} tokens")
+                raise ValueError(f"category {cat!r}: a term exceeds {LEXICON_MAX_TERM_TOKENS} tokens")
             normed.add(" ".join(toks))   # canonical: space-joined token sequence
         total += len(normed)
         if total > LEXICON_MAX_TOTAL_TERMS:

@@ -118,7 +118,7 @@ Supported specialist formats:
 - **Email** — `.msg`, `.eml`
 - **Chatlog** — `.jsonl` (content-detected)
 
-### 5 observation vectors with cryptographic identity
+### Observation vectors with cryptographic identity
 
 | Vector | What it finds |
 |---|---|
@@ -127,8 +127,9 @@ Supported specialist formats:
 | **author_aggregate** | Cross-format author normalization. Spots template defaults vs real humans. (WHO authored.) |
 | **provenance** | Production provenance — normalized `toolchains` (producer/creator via a closed table), `production_years`, and `digitization` (`born_digital` / `scanned` / `ocr_detected` / `unknown`). Cross-format: PDF + OOXML `app.xml`. (WHAT-TOOL / WHEN / digitization.) |
 | **filename_patterns** | Date prefixes, version markers, numbered revisions, template names, UUIDs, copy suffixes |
+| **lexicon** *(when a lexicon is supplied)* | Per-category counts of a **consumer-supplied** term lexicon (`--lexicon`) — an observation, never a verdict. Carries a content-hash `dictionary_id`; the terms are never emitted. (v1.38) |
 
-Each vector carries an identity digest (SHA-256). Same digest = same rules + same tuning = same output. Always. *(These are observation vectors — named, fingerprinted observations — not embedding vectors for a vector database.)*
+Plus `preservation`, `fact_block`, and `ai_session` — run `file-observer --schema` for the complete, always-accurate vector list. Each vector carries an identity digest (SHA-256). Same digest = same rules + same tuning = same output. Always. *(These are observation vectors — named, fingerprinted observations — not embedding vectors for a vector database.)*
 
 ### Safety and integrity
 

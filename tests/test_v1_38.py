@@ -213,6 +213,13 @@ class TestHostileLexicon:
         with pytest.raises(ValueError):
             parse_lexicon(bad)
 
+    def test_invalid_term_not_echoed_in_error(self):
+        # security (leg-4/CodeRabbit): a validation error must NOT leak the consumer-private term —
+        # main() prints these to stderr/CI logs. Report the category + reason only, never the term.
+        with pytest.raises(ValueError) as ei:
+            parse_lexicon({"lexicon_id": "x", "categories": {"c": ["sekrittoken " * 20]}})  # >16 tokens
+        assert "sekrittoken" not in str(ei.value)   # the term must not appear in the error
+
     def test_scanner_surfaces_bad_lexicon(self, tmp_path):
         (tmp_path / "a.txt").write_text("x")
         with pytest.raises(ValueError):
