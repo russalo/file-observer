@@ -159,6 +159,20 @@ def test_documented_serializers_are_exported():
     assert "manifest_to_markdown" in file_observer.__all__
 
 
+def test_cli_version_flag():
+    """v1.38.1 (#126): `--version`/`-V` prints `file-observer X.Y.Z` to stdout and exits 0 —
+    un-breaks downstream version probing (recall's doctor read the usage banner)."""
+    import subprocess
+    import sys
+    from file_observer.scanner import SCANNER_VERSION
+
+    for flag in ("--version", "-V"):
+        result = subprocess.run([sys.executable, "-m", "file_observer.scanner", flag],
+                                capture_output=True, text=True)
+        assert result.returncode == 0, f"{flag} exit {result.returncode}"
+        assert result.stdout.strip() == f"file-observer {SCANNER_VERSION}", f"{flag} → {result.stdout!r}"
+
+
 @pytest.mark.parametrize("module", ["file_observer.scanner", "scanner.scanner"])
 def test_module_cli_entrypoint(module):
     """`python -m <module>` runs the CLI (guards the legacy shim regression)."""
@@ -178,7 +192,7 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.38.0"
+    assert SCANNER_VERSION == "1.38.1"
     assert SCHEMA_VERSION == "1.22"  # v1.38.0 — additive: new provisional lexicon_match namespace + lexicon vector + lexicon_match safety_flag + lexicon_full_file trigger (bring-your-own-lexicon)
     assert LOGIC_VERSION == "1.21.0"  # v1.38.0 — new baseline derivation (per-category term counts); manifest_checksum moves only for lexicon-supplied scans (the v1.30 gated-feature precedent)
 
