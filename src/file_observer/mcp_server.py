@@ -35,9 +35,16 @@ from file_observer.scanner import (
     manifest_to_json,
     build_schema_document,
     schema_to_markdown,
+    parse_lexicon,
 )
 
 _ROOT: Path | None = None  # optional --root allowlist (defense-in-depth)
+# v1.39: optional bring-your-own-lexicon, configured at SERVER STARTUP (`--lexicon <path>`), NOT a
+# per-call tool arg. A tool argument is constructed by the calling LLM, so a terms-inline param would
+# put the (consumer-private) terms straight into the agent's context — backwards. The startup flag keeps
+# the terms in a config file the agent never sees; only the term-free results (counts + category names +
+# dictionary_id) ever cross the wire. Parsed/validated once in main().
+_LEXICON: dict | None = None
 
 mcp = FastMCP(
     name="file-observer",
@@ -62,8 +69,37 @@ def _resolve_in_root(path: str) -> Path:
     return rp
 
 
-def _scan(source_dir: Path, specialists: bool):
-    return Scanner(source_dir=source_dir, config=ScannerConfig(enable_specialists=specialists)).scan()
+def _scan(source_dir: Path, specialists: bool, previous_manifest: str | None = None):
+    # v1.39: thread the startup lexicon + an optional previous-manifest (delta) into the EXISTING config.
+    # The returned manifest is byte-identical to a CLI scan with the same settings (front-door contract).
+    return Scanner(source_dir=source_dir, config=ScannerConfig(
+        enable_specialists=specialists, lexicon=_LEXICON, previous_manifest=previous_manifest)).scan()
+
+
+def _resolve_previous_manifest(previous_manifest_path: str | None) -> str | None:
+    """v1.39: validate an optional prior-manifest path for a delta scan. HONORS `--root` when set
+    (leg-1): with a locked-down deployment, the delta path must not become an escape hatch to stat/probe
+    files outside the root (an existence oracle), so it goes through the same allowlist as a scan target.
+    With no --root (default), the agent already has fs scope, so any path is fine. Must be a file; a
+    non-manifest file degrades gracefully inside fo's delta code (never crashes)."""
+    if previous_manifest_path is None:
+        return None
+    p = _resolve_in_root(previous_manifest_path)   # raises if outside --root (when configured)
+    if not p.is_file():
+        raise ValueError(f"previous_manifest_path is not a file: {previous_manifest_path}")
+    return str(p)
+
+
+def _lexicon_notable(m) -> dict | None:
+    """v1.39: the per-category lexicon summary for scan_summary's `notable` (so the agent sees WHICH
+    categories hit, not just the aggregate `lexicon_match` safety_flag). Term-free — from the vector
+    summary (counts + category names + lexicon_id). None when no lexicon is configured."""
+    if _LEXICON is None:
+        return None
+    for v in m.vectors_collected:
+        if v.get("vector_id") == "lexicon":
+            return v.get("summary")
+    return None
 
 
 def _count_files_bounded(d: Path, cap: int) -> int:
@@ -79,16 +115,21 @@ def _count_files_bounded(d: Path, cap: int) -> int:
 
 
 @mcp.tool()
-def scan_summary(path: str, specialists: bool = False, max_files: int = 1000) -> str:
+def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
+                 previous_manifest_path: str | None = None) -> str:
     """Context-friendly overview of a directory: file counts, text/binary split, and NOTABLE
     observations (chatlogs, MIME-vs-extension mismatches, polyglots, at-risk formats, safety flags
     like macros/JavaScript/geotagged, degraded/error files, duplicate clusters). Read-only,
     deterministic — never opens or runs a file. START HERE. `specialists` (default off) enables
     deeper per-format extraction; leave off for a fast overview. GUARDED by `max_files`: a tree
-    larger than that is refused before scanning (narrow the path) so it can't run away on a huge tree."""
+    larger than that is refused before scanning (narrow the path) so it can't run away on a huge tree.
+    `previous_manifest_path` (optional): a path to a manifest saved from a prior scan — the response
+    then carries a `delta` (added/modified/removed/unchanged counts). If the server was started with
+    `--lexicon`, a `lexicon` block (per-category term counts) is included — an observation, never a verdict."""
     d = _resolve_in_root(path)
     if not d.is_dir():
         raise ValueError(f"not a directory (use scan_file for a single file): {path}")
+    prev = _resolve_previous_manifest(previous_manifest_path)
     n = _count_files_bounded(d, max_files)
     if n > max_files:
         return json.dumps({
@@ -96,25 +137,31 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000) ->
             "reason": f"more than {max_files} files under {d}; refused before scanning to bound work",
             "hint": "narrow the path, or call again with a higher max_files",
         }, indent=2, ensure_ascii=False)
-    m = _scan(d, specialists)
+    m = _scan(d, specialists, previous_manifest=prev)
     q = m.quality
-    out = {
+    notable = {
+        "degraded_files": q.degraded_files,
+        "error_files": q.error_files,
+        "mime_mismatches": q.mime_mismatches,
+        "polyglots_detected": q.polyglots_detected,
+        "specialist_failures": q.specialist_failures,
+        "chatlog_files": q.chatlog_files,
+        "safety_flags": q.safety_flags,
+        "duplicate_clusters": len(q.duplicate_clusters or []),
+    }
+    lex = _lexicon_notable(m)
+    if lex is not None:
+        notable["lexicon"] = lex
+    if m.delta is not None:
+        notable["delta"] = {k: len(getattr(m.delta, k)) for k in
+                            ("added", "modified", "removed", "unchanged", "rescan_candidates")}
+    return json.dumps({
         "path": str(d),
         "scanner_version": SCANNER_VERSION,
         "summary": m.summary,
         "stats": asdict(m.stats),
-        "notable": {
-            "degraded_files": q.degraded_files,
-            "error_files": q.error_files,
-            "mime_mismatches": q.mime_mismatches,
-            "polyglots_detected": q.polyglots_detected,
-            "specialist_failures": q.specialist_failures,
-            "chatlog_files": q.chatlog_files,
-            "safety_flags": q.safety_flags,
-            "duplicate_clusters": len(q.duplicate_clusters or []),
-        },
-    }
-    return json.dumps(out, indent=2, ensure_ascii=False, default=str)
+        "notable": notable,
+    }, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
@@ -145,15 +192,20 @@ def scan_file(path: str, specialists: bool = True) -> str:
 
 
 @mcp.tool()
-def scan_directory(path: str, specialists: bool = False, max_files: int = 200) -> str:
+def scan_directory(path: str, specialists: bool = False, max_files: int = 200,
+                   previous_manifest_path: str | None = None) -> str:
     """The FULL manifest JSON for a directory — every FileRecord. GUARDED: if the tree has more than
     `max_files` files it is refused BEFORE scanning (returns a note) — both to avoid overflowing the
     context AND to bound the work (a huge tree isn't read/hashed) — narrow the path or raise max_files.
     Read-only, deterministic; the manifest is checksum-identical to a CLI scan run with the same
-    `specialists` setting (default: off, matching the CLI default)."""
+    `specialists` setting (default: off, matching the CLI default). `previous_manifest_path` (optional):
+    a path to a manifest saved from a prior scan — the manifest's `delta` block is then populated
+    (added/modified/removed/unchanged/rescan_candidates). If the server was started with `--lexicon`,
+    each text file carries `specialist_metadata.lexicon_match` (per-category counts; observation, not verdict)."""
     d = _resolve_in_root(path)
     if not d.is_dir():
         raise ValueError(f"not a directory (use scan_file for a single file): {path}")
+    prev = _resolve_previous_manifest(previous_manifest_path)
     n = _count_files_bounded(d, max_files)   # bound WORK: refuse before the expensive scan (leg-2/gem-pro DoS fix)
     if n > max_files:
         return json.dumps({
@@ -161,7 +213,7 @@ def scan_directory(path: str, specialists: bool = False, max_files: int = 200) -
             "reason": f"more than {max_files} files under {d}; a full manifest would overflow context",
             "hint": "narrow the path, call scan_summary for an overview, or raise max_files",
         }, indent=2, ensure_ascii=False)
-    return manifest_to_json(_scan(d, specialists))
+    return manifest_to_json(_scan(d, specialists, previous_manifest=prev))
 
 
 @mcp.tool()
@@ -182,13 +234,23 @@ def main() -> None:
                                  description="file-observer MCP server (stdio) — read-only file observation for agents.")
     ap.add_argument("--root", metavar="DIR",
                     help="restrict all scans to this subtree (defense-in-depth; off by default).")
+    ap.add_argument("--lexicon", metavar="PATH",
+                    help="apply a consumer-supplied JSON lexicon {lexicon_id, categories:{cat:[terms]}} to "
+                         "every scan — per-category term counts + a lexicon_match flag (v1.38 guardrail "
+                         "pre-screen). Configured HERE at startup (not a tool arg) so the private terms "
+                         "never enter an agent's context; only term-free counts cross the wire. Off by default.")
     args = ap.parse_args()
-    global _ROOT
+    global _ROOT, _LEXICON
     if args.root:
         root = Path(args.root).expanduser().resolve()
         if not root.is_dir():   # fail fast at startup, not on every later tool call (leg-4/gemini)
             ap.error(f"--root is not a directory: {args.root}")
         _ROOT = root
+    if args.lexicon:
+        try:   # parse + validate ONCE at startup — a bad lexicon fails fast, not on every tool call
+            _LEXICON = parse_lexicon(json.loads(Path(args.lexicon).read_text(encoding="utf-8")))
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            ap.error(f"--lexicon could not be loaded: {exc}")
     mcp.run(transport="stdio")
 
 
