@@ -71,10 +71,15 @@ class TestSchemaSurface:
         assert schema_doc["logic_version"] == LOGIC_VERSION
         assert schema_doc["schema_version"] == SCHEMA_VERSION
 
-    def test_all_six_vectors_listed(self, schema_doc):
+    def test_all_vectors_listed(self, schema_doc):
+        # v1.38 (leg-4/Codex): this asserted the OLD six-vector set, which had silently ENSHRINED the
+        # drift — fact_block (v1.32) and ai_session (v1.33) were never added to build_schema_document's
+        # vector table, and this exact-set test locked in their absence. Corrected to the true set;
+        # `lexicon` (v1.38) joins too. (A registered vector that isn't in --schema is the drift Codex caught.)
         ids = {v["vector_id"] for v in schema_doc["vectors"]}
         assert ids == {"chatlog", "reference_tokens", "filename_patterns",
-                       "preservation", "author_aggregate", "provenance"}
+                       "preservation", "author_aggregate", "provenance",
+                       "fact_block", "ai_session", "lexicon"}
 
 
 class TestSchemaEnvelopeIsContractCommitted:
