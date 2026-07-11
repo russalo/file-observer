@@ -116,7 +116,7 @@ class TestDelta:
         # must not crash — returns a manifest (delta may be null/empty)
         out = mcp_server.scan_directory(str(tmp_path), max_files=1000,
                                         previous_manifest_path=str(tmp_path / "notamanifest.json"))
-        assert json.loads(out)["scanner_version" if False else "manifest_checksum"]
+        assert json.loads(out)["manifest_checksum"]   # produced a valid manifest, didn't crash
 
     def test_missing_previous_manifest_path_errors(self, tmp_path):
         (tmp_path / "a.txt").write_text("x")

@@ -8136,12 +8136,12 @@ def _referenced_dataclass_names(type_str: str) -> list[str]:
     (v1.13 leg-1 #3 — the COMPLETE claim must hold)."""
     import dataclasses as _dc
     import re as _re
-    # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use — READ-ONLY lookup of
-    # module-level names, filtered to `isinstance(obj, type) and is_dataclass`; no assignment, no exec.
+    # READ-ONLY lookup of module-level names, filtered to `isinstance(obj, type) and is_dataclass`; no
+    # assignment, no exec. (nosemgrep must sit on the flagged line itself to suppress — v1.39 leg-1/static.)
     g = globals()
     out = []
     for token in _re.findall(r"[A-Za-z_][A-Za-z0-9_]*", type_str):
-        obj = g.get(token)
+        obj = g.get(token)  # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
         if isinstance(obj, type) and _dc.is_dataclass(obj):
             out.append(token)
     return out
@@ -8165,9 +8165,8 @@ def _collect_manifest_dataclasses() -> dict[str, list[dict[str, str]]]:
         seen[name] = fields
         for f in fields:
             for ref in _referenced_dataclass_names(f["type"]):
-                # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use — READ-ONLY
-                # dataclass-name lookup for --schema introspection; filtered to is_dataclass, no assignment.
-                obj = globals().get(ref)
+                # READ-ONLY dataclass-name lookup for --schema introspection; filtered to is_dataclass.
+                obj = globals().get(ref)  # nosemgrep: python.lang.security.dangerous-globals-use.dangerous-globals-use
                 if isinstance(obj, type) and _dc.is_dataclass(obj) and ref not in seen:
                     queue.append(obj)
     return {k: seen[k] for k in sorted(seen)}

@@ -77,12 +77,14 @@ def _scan(source_dir: Path, specialists: bool, previous_manifest: str | None = N
 
 
 def _resolve_previous_manifest(previous_manifest_path: str | None) -> str | None:
-    """v1.39: validate an optional prior-manifest path for a delta scan. A path (not sensitive), NOT
-    --root-restricted (it's a read-only manifest input the agent names, not a scan tree). Must exist +
-    be a file; a non-manifest file degrades gracefully inside fo's delta code (never crashes)."""
+    """v1.39: validate an optional prior-manifest path for a delta scan. HONORS `--root` when set
+    (leg-1): with a locked-down deployment, the delta path must not become an escape hatch to stat/probe
+    files outside the root (an existence oracle), so it goes through the same allowlist as a scan target.
+    With no --root (default), the agent already has fs scope, so any path is fine. Must be a file; a
+    non-manifest file degrades gracefully inside fo's delta code (never crashes)."""
     if previous_manifest_path is None:
         return None
-    p = Path(previous_manifest_path).expanduser().resolve()
+    p = _resolve_in_root(previous_manifest_path)   # raises if outside --root (when configured)
     if not p.is_file():
         raise ValueError(f"previous_manifest_path is not a file: {previous_manifest_path}")
     return str(p)
