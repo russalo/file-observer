@@ -206,6 +206,13 @@ Four read-only tools, built for an agent's context budget (progressive disclosur
 **observe and report** — the agent interprets. This exposes the *same* manifest you get from the
 CLI (§3), through a protocol an agent can call directly.
 
+Two more scanner capabilities thread through the tools (v1.39): start the server with
+`--lexicon <path>` to apply a bring-your-own term lexicon (§ *content signals*) to every scan — the
+guardrail-risk **pre-screen**, so an agent can flag content that might trip *its own* content filter
+before ingesting it (the terms live in the config file, never in the agent's context; only per-category
+counts come back). And pass `previous_manifest_path` to `scan_directory`/`scan_summary` for a **delta**
+(what changed since a prior scan) — the agentic-loop version of §8's `--previous-manifest`.
+
 ## Where to go next
 
 - The [examples](../examples/) — runnable, one per concept (incl. [08 — the MCP server](../examples/08-mcp-server/)).

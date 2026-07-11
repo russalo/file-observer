@@ -192,7 +192,7 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.38.1"
+    assert SCANNER_VERSION == "1.39.0"
     assert SCHEMA_VERSION == "1.22"  # v1.38.0 — additive: new provisional lexicon_match namespace + lexicon vector + lexicon_match safety_flag + lexicon_full_file trigger (bring-your-own-lexicon)
     assert LOGIC_VERSION == "1.21.0"  # v1.38.0 — new baseline derivation (per-category term counts); manifest_checksum moves only for lexicon-supplied scans (the v1.30 gated-feature precedent)
 
