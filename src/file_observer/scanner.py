@@ -1299,15 +1299,17 @@ def parse_lexicon(raw: Any) -> dict[str, Any]:
     return {"lexicon_id": lid, "categories": out}
 
 
-def build_lexicon_index(lexicon: dict[str, Any]) -> dict[str, tuple]:
-    """First-token index for the linear document walk: first_token → tuple of (term_token_tuple, category).
-    Built ONCE per scan (Scanner.__init__), not per file."""
-    index: dict[str, list] = {}
+def build_lexicon_index(lexicon: dict[str, Any]) -> dict[int, dict[tuple, tuple]]:
+    """LENGTH-keyed index for a bounded streaming scan: {term_length: {token_tuple: (categories,)}}.
+    Per-document-position match work is then O(distinct term lengths × max length) — bounded by the
+    term-token cap (≤16), NOT by how many terms share a prefix (leg-4/CodeRabbit: a phrase-heavy lexicon
+    can't inflate per-token work). Built ONCE per scan (Scanner.__init__)."""
+    by_len: dict[int, dict[tuple, list]] = {}
     for cat in sorted(lexicon["categories"]):
         for term in lexicon["categories"][cat]:
-            toks = term.split(" ")   # list — compared directly to a doc-token list slice (no tuple alloc; leg-4/gemini)
-            index.setdefault(toks[0], []).append((toks, cat))
-    return {k: tuple(v) for k, v in index.items()}
+            toks = tuple(term.split(" "))
+            by_len.setdefault(len(toks), {}).setdefault(toks, []).append(cat)
+    return {L: {k: tuple(v) for k, v in d.items()} for L, d in by_len.items()}
 
 
 def lexicon_dictionary_id(lexicon: dict[str, Any]) -> str:
@@ -1343,6 +1345,7 @@ def lexicon_rules_fingerprint() -> str:
         f"max_total_terms={LEXICON_MAX_TOTAL_TERMS}",
         f"max_term_tokens={LEXICON_MAX_TERM_TOKENS}",
         f"max_term_len={LEXICON_MAX_TERM_LEN}",
+        f"max_id_len={LEXICON_MAX_ID_LEN}",   # a validation cap that gates acceptance → in the fingerprint (leg-4/CodeRabbit)
     ])
 
 
@@ -2429,7 +2432,7 @@ class Scanner:
         # so scan_file stays pure/parallelizable. A malformed lexicon fails LOUD (ValueError) at
         # construction — the CLI turns it into rc=2; the API surfaces it. Dormant when None.
         self._lexicon: dict[str, Any] | None = None
-        self._lexicon_index: dict[str, tuple] = {}
+        self._lexicon_index: dict[int, dict[tuple, tuple]] = {}
         self._lexicon_dictionary_id: str | None = None
         if self.config.lexicon is not None:
             self._lexicon = parse_lexicon(self.config.lexicon)
@@ -7473,25 +7476,32 @@ class Scanner:
     def _lexicon_scan(self, text: str) -> dict[str, Any]:
         """v1.38: count the consumer-supplied lexicon's terms in `text`, word-boundary (case-folded,
         literal token(-sequence) match — NOT substring, the measured 9.4x-FP decision). Returns
-        {categories:{cat:{count,density}}, total_hits, total_tokens}. Deterministic + linear: one
-        tokenizer pass + a first-token-indexed walk (candidate work bounded by the parsed lexicon).
-        The terms never enter the output — only counts. Called only when self._lexicon is set."""
-        tokens = LEXICON_TOKEN_RE.findall(text.lower())
-        total_tokens = len(tokens)
-        cats = self._lexicon["categories"]        # type: ignore[index]
+        {categories:{cat:{count,density}}, total_hits, total_tokens}. Deterministic and BOUNDED on an
+        untrusted document (leg-4/CodeRabbit): a STREAMING tokenizer (finditer — never materializes an
+        O(n) token list, so an adversarial 64 MiB of single-char tokens can't balloon memory) + a
+        bounded window of the last ≤max-term-length tokens matched against a LENGTH-keyed index
+        (per-position work is O(distinct lengths × max length), independent of term count). Overlapping
+        matches counted (a term ENDING at each position). The terms never enter the output — only counts.
+        Called only when self._lexicon is set."""
+        index = self._lexicon_index                 # {L: {token_tuple: (categories,)}}
+        lengths = sorted(index)                      # distinct term lengths, each ≤ LEXICON_MAX_TERM_TOKENS
+        max_len = lengths[-1] if lengths else 1
+        cats = self._lexicon["categories"]           # type: ignore[index]
         counts = {c: 0 for c in cats}
-        index = self._lexicon_index
-        n = total_tokens
-        for i, tok in enumerate(tokens):
-            bucket = index.get(tok)
-            if not bucket:
-                continue
-            for term_tokens, cat in bucket:
-                L = len(term_tokens)
-                if L == 1:
-                    counts[cat] += 1                       # single-token: token-set membership
-                elif i + L <= n and tokens[i:i + L] == term_tokens:
-                    counts[cat] += 1                       # phrase: contiguous token subsequence (list==list, no tuple alloc)
+        window: list[str] = []                       # bounded ring of the last ≤max_len tokens
+        total_tokens = 0
+        for m in LEXICON_TOKEN_RE.finditer(text.lower()):
+            window.append(m.group())
+            if len(window) > max_len:
+                del window[0]                        # keep the window bounded → O(max_len) memory
+            total_tokens += 1
+            w = len(window)
+            for L in lengths:                        # each L ≤ 16 → per-token work is bounded
+                if L <= w:
+                    hit = index[L].get(tuple(window[w - L:]))
+                    if hit:
+                        for cat in hit:
+                            counts[cat] += 1          # a term of length L ENDING at this position
         categories: dict[str, Any] = {}
         total_hits = 0
         for c in sorted(cats):

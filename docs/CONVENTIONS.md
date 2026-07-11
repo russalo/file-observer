@@ -59,9 +59,9 @@ The scanner has five distinct things that carry versions. They are independent �
 **What it is:** Identifier for a word list, pattern set, or configuration that drives a vector. **First real use: the v1.38 bring-your-own-lexicon term observer** — the consumer-supplied lexicon is the "customer dictionary."
 **Where it lives:** the `lexicon` vector's `dictionary_id` (SHA-256 over the canonical-JSON of `lexicon_id` + sorted categories/terms) and the `signal_provenance` `detail.dictionary_id` on the `lexicon_match` field. Feeds the vector `identity_digest` (v0.9 §2.4).
 **When it bumps:** Derived from the lexicon CONTENT, so it moves on any term/category change even when the consumer's `lexicon_id` label is unchanged — catching silent lexicon drift (dual-falsification). The terms themselves are never emitted; only the hash.
-**Format:** `{namespace}_{descriptor}_{period}` — e.g., `example_terms_2026_q2`
-**Current:** N/A
-**Internal rule:** Never edit a published dictionary in place. Always publish a new ID and let consumers opt in.
+**Format:** a 64-character lowercase SHA-256 hex digest of the canonical JSON of the supplied lexicon (`lexicon_id` + sorted categories/terms). Not a human-authored slug.
+**Current:** no default dictionary ships — each consumer-supplied lexicon produces its own digest at scan time.
+**Internal rule:** Editing a lexicon's terms is *automatically* a new ID (the content-derived digest moves) — so "never edit in place" is enforced by construction, not by convention. The consumer's own `lexicon_id` label is a human-readable name only; the digest is the identity.
 
 ### 1.6 Quick Reference
 
