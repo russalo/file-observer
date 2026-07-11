@@ -1286,7 +1286,7 @@ def parse_lexicon(raw: Any) -> dict[str, Any]:
                 raise ValueError(f"category {cat!r}: every term must be a string (got {type(t).__name__})")
             if len(t) > LEXICON_MAX_TERM_LEN:
                 raise ValueError(f"category {cat!r}: term exceeds {LEXICON_MAX_TERM_LEN} chars")
-            toks = LEXICON_TOKEN_RE.findall(t.lower())
+            toks = LEXICON_TOKEN_RE.findall(t.casefold())   # casefold (not lower) — matches the fingerprint marker; no-op for the ASCII tokenizer, correct if it ever broadens (leg-4/CodeRabbit)
             if not toks:
                 raise ValueError(f"category {cat!r}: term {t!r} has no matchable tokens")
             if len(toks) > LEXICON_MAX_TERM_TOKENS:
@@ -7490,7 +7490,7 @@ class Scanner:
         counts = {c: 0 for c in cats}
         window: list[str] = []                       # bounded ring of the last ≤max_len tokens
         total_tokens = 0
-        for m in LEXICON_TOKEN_RE.finditer(text.lower()):
+        for m in LEXICON_TOKEN_RE.finditer(text.casefold()):   # casefold, consistent with term normalization (parse_lexicon)
             window.append(m.group())
             if len(window) > max_len:
                 del window[0]                        # keep the window bounded → O(max_len) memory
