@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.39.0
+    Version:    1.40.0
     Schema:     1.22
     Python:     >= 3.12
-    Spec:       docs/v1.39.0_RFC_Specification.md (current)
+    Spec:       docs/v1.40.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -93,7 +93,7 @@ except ImportError:
 # output location (cwd/<this>) AND skipped during discovery (iter_files) so a re-scan of the
 # cwd never observes its own prior manifest/report — the leg-1 self-inclusion catch.
 DEFAULT_OUTPUT_DIRNAME = "file-observer-manifests"
-SCANNER_VERSION = "1.39.0"   # v1.39.0 — MCP front-door gains lexicon + delta: the v1.37 MCP server predated v1.38 lexicon, so the agent front-door couldn't run the guardrail pre-screen. v1.39 threads the v1.38 lexicon (server-startup `--lexicon` flag — terms never cross the MCP wire) + delta scanning (`previous_manifest_path` tool param) through the existing 4 tools. A front-door: manifest byte-identical to a CLI scan with the same settings → LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 precedent). Prior 1.38.1 (#126, patch, HISTORY-only) — add a `--version`/`-V` CLI flag (prints `file-observer X.Y.Z`, exit 0); un-breaks downstream version probing (recall doctor read the usage banner → false "below floor"). Runtime-only output, manifest UNCHANGED (the --workers/--watch precedent) → LOGIC/SCHEMA frozen. Prior 1.38.0 — bring-your-own-lexicon term observer: fo counts a CONSUMER-SUPPLIED, category-tagged lexicon's terms in a file's text and reports per-category counts + density (an OBSERVATION, never a verdict — the consumer thresholds). Values-neutral engine (built/tested with benign placeholder terms only); the sensitive lexicon is runtime config, never committed, never echoed into the manifest (only counts + category names + a content-hash dictionary_id). Motivated by knowing a file is a guardrail-trip risk BEFORE handing it to an AI (fo is not an AI → safe to read what an LLM couldn't). Word-boundary token(-sequence) match (measure-first: substring over-counts 9.4x on benign terms); full-file bounded read (64 MiB; a risk term can sit anywhere in a long log); gated on a lexicon → dormant otherwise (byte-identical). New provisional `lexicon_match` specialist namespace + `lexicon_match` safety_flag + `lexicon` vector (dictionary_id = sha256 of lexicon_id+sorted terms → dual-falsification). Prior 1.37.0 = MCP server (agent-native front-door).
+SCANNER_VERSION = "1.40.0"   # v1.40.0 — field trust classification + `--trusted-only` safe-mode projection + `--schema` trust annotation (#136). A first-class FIELD_TRUST registry tags every emitted field fo_derived (trusted — numbers/booleans/hashes/enums/flags, can't carry a text payload) vs file_derived (untrusted — verbatim free-text bytes from the input: path/filename/content_preview/tags/frontmatter/metadata strings, which an attacker controls and which ride into a downstream model). `--trusted-only` emits a PROJECTION that nulls the file_derived fields + adds a top-level `trusted_only: true` marker and a fo-derived `path_id = sha256(rel-posix path)` correlation handle — safe by construction for the guardrail-screen use case (the model only ever sees fo-generated signal). A projection, no new observation, no sanitization → the DEFAULT manifest is byte-identical, LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 front-door precedent); `schema_doc_version` bumps for the `--schema` trust annotation. Prior 1.39.0 — MCP front-door gains lexicon + delta: the v1.37 MCP server predated v1.38 lexicon, so the agent front-door couldn't run the guardrail pre-screen. v1.39 threads the v1.38 lexicon (server-startup `--lexicon` flag — terms never cross the MCP wire) + delta scanning (`previous_manifest_path` tool param) through the existing 4 tools. A front-door: manifest byte-identical to a CLI scan with the same settings → LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 precedent). Prior 1.38.1 (#126, patch, HISTORY-only) — add a `--version`/`-V` CLI flag (prints `file-observer X.Y.Z`, exit 0); un-breaks downstream version probing (recall doctor read the usage banner → false "below floor"). Runtime-only output, manifest UNCHANGED (the --workers/--watch precedent) → LOGIC/SCHEMA frozen. Prior 1.38.0 — bring-your-own-lexicon term observer: fo counts a CONSUMER-SUPPLIED, category-tagged lexicon's terms in a file's text and reports per-category counts + density (an OBSERVATION, never a verdict — the consumer thresholds). Values-neutral engine (built/tested with benign placeholder terms only); the sensitive lexicon is runtime config, never committed, never echoed into the manifest (only counts + category names + a content-hash dictionary_id). Motivated by knowing a file is a guardrail-trip risk BEFORE handing it to an AI (fo is not an AI → safe to read what an LLM couldn't). Word-boundary token(-sequence) match (measure-first: substring over-counts 9.4x on benign terms); full-file bounded read (64 MiB; a risk term can sit anywhere in a long log); gated on a lexicon → dormant otherwise (byte-identical). New provisional `lexicon_match` specialist namespace + `lexicon_match` safety_flag + `lexicon` vector (dictionary_id = sha256 of lexicon_id+sorted terms → dual-falsification). Prior 1.37.0 = MCP server (agent-native front-door).
 LOGIC_VERSION = "1.21.0"   # v1.38.0 — bring-your-own-lexicon term observer: a new baseline-tier content derivation (per-category term counts + density on a consumer-supplied lexicon). manifest_checksum moves ONLY for lexicon-supplied scans (the v1.30 gated-feature precedent) — no-lexicon scans are byte-identical, no routing flag flips. Prior 1.20.0 = v1.36.0 — defusedxml→purexml XML-dependency changeover: fo's XML hardening (OOXML/ODF specialists + structural XML-keys tier) moves from defusedxml to purexml (pure-stdlib, zero-dep, oracle-gated defusedxml replacement, MIT; capability-proven 2695/0 on fo's own corpus + 467/0 purexml's). fo OPTS INTO purexml's structural caps (RECOMMENDED_LIMITS: max_depth=1000/max_attributes=256/max_bytes=100 MiB) via `xml_fromstring` on the purexml path — so fo now REJECTS a pathologically-deep/attribute-flooded/oversized XML that defusedxml dutifully parsed (a catchable LimitExceeded⊂ValueError → the field degrades to null/error, never a crash). PARSE OUTPUT BYTE-IDENTICAL on real files (2695/0); output changes ONLY on pathological XML inputs → LOGIC bump (the v1.30.2 bounded-observation "output changes only on pathological input" precedent); no routing flag flips. Separately, ScanContext.dependencies records purexml (name+version+the applied limits) in place of defusedxml → manifest_checksum moves for EVERY manifest (the dep-record is in every ScanContext — Pillar 1: ScanContext explains environment variance; the same as any dep version bump). The stdlib fallback (no-purexml) stays unhardened + un-capped (LIMITATIONS). Prior 1.19.0 = v1.35.0 — AI-session per-model usage attribution (increment 3): a new provisional `ai_session.usage_by_model` — a deterministic list (real models sorted, null bucket last) of per-model token-usage SUMS, keyed on the model CO-LOCATED with each usage dict (Claude Code message.model / OpenAI response.model / Gemini modelVersion — all measured 100% co-located). INVARIANT: `usage` == elementwise sum of `usage_by_model` (the tested v1.33 session path untouched → session `usage` byte-identical). Model verbatim incl. markers (`<synthetic>`); model-less usage-turns + a hostile-cardinality overflow beyond AI_SESSION_MAX_MODELS → the null bucket (sums stay complete). NEVER priced (the bright line). ai_session method_version 1→2 (per-model grouping is a new block rule → feeds the ai_session rules_hash). VALUES move manifest_checksum on ai_session corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.18.0 = v1.34.0 — chatlog session axes (recall#62): the chatlog specialist emits three new FLAT top-level scalars — first_timestamp/last_timestamp (min/max turn timestamp, recognized-key set {timestamp,created_date,create_time,created_at}, parsed ISO-string-or-epoch → canonical ISO-8601 UTC `…Z`/ms, null-when-untimestamped) + cwd (first-seen top-level cwd, verbatim/bounded, null-when-absent). Deterministic pure function of the file (observe, don't derive); values move manifest_checksum on timestamped/cwd-bearing chatlog corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips, is_chatlog unchanged. chatlog method_version 10→11 (new signals + recognized-key set/normalization feed the chatlog rules_hash). Prior 1.17.0 = v1.33.0 — AI-session observation increment 1: a new provisional `ai_session` namespace on is_chatlog-detected AI session logs (Claude Code / OpenAI / Gemini), carrying token-usage SUMS (canonical fo names, null-per-absent, vendor raw keys preserved) + a producer-schema fingerprint (vendor/surface/models/id_prefix/object_types/schema_mismatch) anchored on id-prefix+object-type (NOT the usage-key vocab — OpenAI Responses collides with Anthropic on input_tokens; measure_ai_session_2026-07-05). Observe-only: SUMS never priced. VALUES move manifest_checksum on AI-session corpora (the v1.29 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.16.0 = v1.32.0 — new content-detection routing: the generic kv-fact-block specialist (FR #114). A text file whose BODY (frontmatter stripped) is a `key: value` block now carries `is_fact_block` + a `fact_block` specialist dispatch (content-shape, any text body; the sentence-value veto keeps it off dialogue). Additive: `is_fact_block` False→True only; no file's prior routing flips away. The v1.2/v1.29 detection-LOGIC precedent. Prior 1.15.3 = v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.22"   # v1.38.0 — additive: new provisional `lexicon_match` specialist namespace (lexicon_id/categories/total_hits) + new `lexicon_match` safety_flag + new `lexicon` vector + new `lexicon_full_file` provenance trigger, for the bring-your-own-lexicon term observer. A new namespace/vector/flag = contract-shape change (the v1.24/v1.32/v1.33 precedent), all provisional. Prior 1.21 = v1.35.0 — new provisional `ai_session.usage_by_model` field (per-model token-usage attribution); a new field in an existing namespace = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.20 = v1.34.0 — three new provisional fields in the `chatlog` namespace (first_timestamp/last_timestamp/cwd) for the recall#62 session time+project axes; new fields = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.19 = v1.33.0 — new `ai_session` namespace (vendor/surface/models/id_prefix/object_types/schema_mismatch/usage) for AI-session observation increment 1; a new namespace = contract-shape change (the v1.24/v1.25/v1.32 precedent), all fields provisional. Prior 1.18 = v1.32.0 — new `fact_block` namespace (pair_count/pairs/duplicate_keys) for the generic kv-fact-block specialist (FR #114); a new namespace = contract-shape change (the v1.24/v1.25 precedent), new fields provisional. Prior 1.17 = v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
@@ -829,6 +829,144 @@ SPECIALIST_FIELDS: dict[str, list[str]] = {
     "ai_session": ["vendor", "surface", "models", "id_prefix", "object_types", "schema_mismatch", "usage", "usage_by_model"],  # v1.33; usage_by_model v1.35
     "lexicon_match": ["lexicon_id", "categories", "total_hits", "total_tokens"],  # v1.38 bring-your-own-lexicon (only when a lexicon is supplied)
 }
+
+
+# v1.40 (#136): FIELD TRUST CLASSIFICATION — the single source of truth for both the
+# `--trusted-only` safe-mode projection AND the `--schema` trust annotation. The axis
+# is FREE-TEXT PAYLOAD CAPACITY (RFC §2): a field is `file_derived` (untrusted /
+# attacker-controllable) if it IS, or directly contains, verbatim free-text bytes from
+# the input — an attacker who controls a filename or a metadata string can place a
+# prompt there that rides into a downstream model through the manifest. Everything else
+# — numbers, booleans, hashes, timestamps, sizes, closed-vocabulary enums/flags, fo's
+# own verdicts — is `fo_derived` (trusted; cannot carry a payload even when the value is
+# sourced from the file, e.g. page_count/width). FAIL-SAFE (RFC D4): when unsure,
+# classify file_derived — a false "untrusted" only over-suppresses in safe mode; a false
+# "trusted" leaks a payload. A completeness guard (test_v1_40) asserts every FileRecord
+# field is classified so this can't silently drift as fields are added.
+TRUST_FO_DERIVED = "fo_derived"
+TRUST_FILE_DERIVED = "file_derived"
+TRUST_MIXED = "mixed"   # `specialist_metadata` only — classified per leaf (see the projector)
+
+FIELD_TRUST: dict[str, str] = {
+    # fo_derived (trusted — KEPT in --trusted-only)
+    "checksum_sha256": TRUST_FO_DERIVED,
+    "size_bytes": TRUST_FO_DERIVED,
+    "created_at": TRUST_FO_DERIVED,
+    "modified_at": TRUST_FO_DERIVED,
+    "directory_depth": TRUST_FO_DERIVED,
+    "encoding": TRUST_FO_DERIVED,
+    "mime_type": TRUST_FO_DERIVED,
+    "file_signature": TRUST_FO_DERIVED,
+    "format_signatures": TRUST_FO_DERIVED,
+    "is_binary": TRUST_FO_DERIVED,
+    "is_chatlog": TRUST_FO_DERIVED,
+    "is_fact_block": TRUST_FO_DERIVED,
+    "is_polyglot": TRUST_FO_DERIVED,
+    "requires_specialist_tool": TRUST_FO_DERIVED,
+    "requires_vision": TRUST_FO_DERIVED,
+    "sidecar_exists": TRUST_FO_DERIVED,
+    "safety_flags": TRUST_FO_DERIVED,
+    "preservation": TRUST_FO_DERIVED,
+    "filename_patterns": TRUST_FO_DERIVED,
+    "specialist_tool": TRUST_FO_DERIVED,
+    # file_derived (untrusted / attacker-controllable — NULLED in --trusted-only)
+    "path": TRUST_FILE_DERIVED,
+    "filename": TRUST_FILE_DERIVED,
+    "extension": TRUST_FILE_DERIVED,
+    "stage_folder": TRUST_FILE_DERIVED,
+    "content_preview": TRUST_FILE_DERIVED,
+    "tags": TRUST_FILE_DERIVED,
+    "frontmatter": TRUST_FILE_DERIVED,
+    "structural": TRUST_FILE_DERIVED,
+    "reference_tokens": TRUST_FILE_DERIVED,   # counts, but pinned file_derived per D4 (RFC §7 — over-suppress, never leak)
+    "asset_matches": TRUST_FILE_DERIVED,
+    "mime_analysis": TRUST_FILE_DERIVED,      # D4: can embed the file's extension
+    "signal_provenance": TRUST_FILE_DERIVED,  # D4: an error `detail`/`inputs` can name a file
+    "errors": TRUST_FILE_DERIVED,             # D4: ErrorRecord.detail can echo file content
+    # mixed — classified per leaf by the projector
+    "specialist_metadata": TRUST_MIXED,
+}
+
+# The fo-derived correlation handle added ONLY in the projection (never in the default
+# manifest), plus the top-level projection marker — recorded so the completeness guard
+# and --schema know they exist. path_id = sha256(<relative-posix path>): carries no free
+# text, lets a consumer map back to a path it hashed out-of-band (the shared identity
+# primitive with the #133 receipt/bridge id).
+TRUST_PROJECTION_ONLY: dict[str, str] = {"path_id": TRUST_FO_DERIVED, "trusted_only": TRUST_FO_DERIVED}
+
+# The allowlist of fo-known dict keys inside `specialist_metadata`. In --trusted-only the
+# projector drops any dict entry whose KEY is not in this set — because a dict KEY can be
+# attacker-controlled free text (chatlog `speaker_turn_counts` is keyed by the speaker
+# LABEL: {"<attacker-controlled label>": 3}), which nulling string VALUES alone would NOT
+# catch. Dropping unknown keys guarantees no attacker string survives as a key; it
+# conservatively over-drops legitimate-but-unenumerated fo count keys (acceptable per D4).
+_NESTED_TRUSTED_METADATA_KEYS: frozenset[str] = frozenset({
+    # reference_tokens subcategory counts (chatlog.reference_tokens / per-file shape)
+    "at_mentions", "wiki_links", "code_fence_blocks", "url_count",
+    "email_mentions", "path_references", "numeric_id_patterns",
+    # ai_session.usage canonical token-count keys (never the vendor `raw_keys` — those drop)
+    "turns_with_usage", "input", "output", "cache_read", "cache_creation",
+    "reasoning", "total", "truncated",
+    # ai_session.usage_by_model / fact_block.pairs entry structure (string values still null)
+    "model", "usage", "key", "value",
+    # content_shape (chatlog) numeric sub-signals
+    "utterance_ratio", "density",
+})
+TRUSTED_METADATA_KEYS: frozenset[str] = frozenset(
+    set(SPECIALIST_FIELDS.keys())                                       # namespaces (pdf/image/…/lexicon_match)
+    | {f for fields in SPECIALIST_FIELDS.values() for f in fields}      # all fo field names
+    | _NESTED_TRUSTED_METADATA_KEYS
+)
+
+
+def _project_metadata_trusted_only(val: Any) -> Any:
+    """Recursively project a `specialist_metadata` value for --trusted-only: null every
+    string LEAF (verbatim file bytes) and drop every dict entry whose KEY is not an
+    fo-known key (a free-text key would otherwise leak). Numbers/booleans/None pass
+    through. Fail-safe: an unknown type is dropped (returns None)."""
+    if isinstance(val, str):
+        return None
+    if val is None or isinstance(val, bool) or isinstance(val, (int, float)):
+        return val
+    if isinstance(val, list):
+        return [_project_metadata_trusted_only(v) for v in val]
+    if isinstance(val, dict):
+        return {
+            k: _project_metadata_trusted_only(v)
+            for k, v in val.items()
+            if isinstance(k, str) and k in TRUSTED_METADATA_KEYS
+        }
+    return None
+
+
+def _project_file_record_trusted_only(fr: dict[str, Any]) -> dict[str, Any]:
+    """Project one FileRecord dict (from asdict) for --trusted-only: keep fo_derived
+    fields verbatim, null file_derived ones (shape-stable — keys stay, values → null),
+    project `specialist_metadata` per leaf, and append the fo-derived `path_id`."""
+    path_val = fr.get("path")
+    out: dict[str, Any] = {}
+    for key, val in fr.items():
+        trust = FIELD_TRUST.get(key)
+        if trust == TRUST_MIXED:
+            out[key] = _project_metadata_trusted_only(val)
+        elif trust == TRUST_FO_DERIVED:
+            out[key] = val
+        else:
+            # file_derived OR unclassified (fail-safe D4) → null it
+            out[key] = None
+    out["path_id"] = (
+        sha256(path_val.encode("utf-8")).hexdigest() if isinstance(path_val, str) else None
+    )
+    return out
+
+
+def _project_manifest_trusted_only(d: dict[str, Any]) -> dict[str, Any]:
+    """Project a whole manifest dict (from asdict) for --trusted-only: project every
+    file record and stamp the top-level `trusted_only: true` marker. Idempotent — a
+    re-projection nulls already-null fields to null and re-stamps the marker."""
+    d["files"] = [_project_file_record_trusted_only(fr) for fr in (d.get("files") or [])]
+    d["trusted_only"] = True
+    return d
 
 
 # v1.14: the PROVISIONAL surface — everything else enumerable in `--schema` is
@@ -1837,6 +1975,12 @@ class ScannerConfig:
                                     # meta.config (like signing_key; the vector's rules_hash +
                                     # dictionary_id are the manifest-visible fingerprint, not the terms).
                                     # None → the mechanism is dormant (manifest byte-identical).
+    trusted_only: bool = False       # v1.40: safe-mode projection — emit ONLY fo-derived
+                                    # (trusted) fields, null the file-derived (attacker-controllable)
+                                    # ones + add a top-level `trusted_only: true` marker and a
+                                    # fo-derived path_id. A PROJECTION (no new observation, no
+                                    # sanitization) → the DEFAULT (False) manifest is byte-identical
+                                    # (front-door precedent). Runtime-only — EXCLUDED from meta.config.
 
     def effective_for(self, extension: str) -> dict[str, Any]:
         """Resolve effective config values for a given extension."""
@@ -2577,7 +2721,7 @@ class Scanner:
             scan_id=str(uuid.uuid4()),
             generated_at=self.now_iso(),
             source_dir=str(self.source_dir),
-            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress", "watch", "watch_debounce_ms", "watch_include_files", "skip_output_dir", "lexicon")},
+            config={k: v for k, v in asdict(self.config).items() if k not in ("signing_key", "signing_key_id", "workers", "progress", "watch", "watch_debounce_ms", "watch_include_files", "skip_output_dir", "lexicon", "trusted_only")},
         )
         stats = self._compute_stats(records)
         quality = self._compute_quality(records)
@@ -2600,7 +2744,10 @@ class Scanner:
             summary="",
         )
         manifest.summary = self._build_summary(manifest)
-        manifest.manifest_checksum = compute_manifest_checksum(manifest)
+        # v1.40: in --trusted-only the checksum is computed over the PROJECTED manifest so
+        # the safe-mode output is self-verifiable (the serializers project to match).
+        manifest.manifest_checksum = compute_manifest_checksum(
+            manifest, trusted_only=self.config.trusted_only)
         # Optional HMAC signing
         if self.config.signing_key:
             import hmac
@@ -7947,14 +8094,20 @@ def _dc_encoder(obj: Any) -> Any:
     raise TypeError(f"Unsupported type: {type(obj)!r}")
 
 
-def compute_manifest_checksum(manifest: ScanManifest) -> str:
-    """Compute SHA-256 of the manifest content, excluding volatile fields."""
+def compute_manifest_checksum(manifest: ScanManifest, trusted_only: bool = False) -> str:
+    """Compute SHA-256 of the manifest content, excluding volatile fields.
+
+    v1.40: when ``trusted_only`` the checksum is computed over the PROJECTED manifest
+    (file-derived fields nulled + marker + path_id) so the safe-mode output is
+    self-verifiable. Default (False) is byte-identical to pre-v1.40."""
     d = asdict(manifest)
     d["manifest_checksum"] = ""
     d["manifest_signature"] = None  # signature depends on checksum, excluded
     # Exclude volatile fields from deterministic checksum per RFC §Deterministic serialization
     d["meta"]["scan_id"] = ""
     d["meta"]["generated_at"] = ""
+    if trusted_only:
+        d = _project_manifest_trusted_only(d)
     canonical = json.dumps(d, sort_keys=True, ensure_ascii=False)
     return sha256(canonical.encode("utf-8")).hexdigest()
 
@@ -8102,7 +8255,13 @@ def manifest_json_schema_str() -> str:
     return json.dumps(manifest_json_schema(), indent=2, sort_keys=True, ensure_ascii=False)
 
 
-def manifest_to_json(manifest: ScanManifest) -> str:
+def manifest_to_json(manifest: ScanManifest, trusted_only: bool = False) -> str:
+    # v1.40: the default (trusted_only=False) path is UNCHANGED — byte-identical to
+    # pre-v1.40 (front-door contract). The trusted-only path projects via asdict (the
+    # same dict shape the checksum is computed over → the two stay consistent).
+    if trusted_only:
+        d = _project_manifest_trusted_only(asdict(manifest))
+        return json.dumps(d, indent=2, ensure_ascii=False)
     return json.dumps(manifest, default=_dc_encoder, indent=2, ensure_ascii=False)
 
 
@@ -8124,7 +8283,14 @@ def _dataclass_field_map(cls: type) -> list[dict[str, str]]:
     for f in _dc.fields(cls):
         t = f.type if isinstance(f.type, str) else getattr(f.type, "__name__", str(f.type))
         stability = "provisional" if (cls.__name__, f.name) in PROVISIONAL_MANIFEST_FIELDS else "stable"
-        out.append({"name": f.name, "type": str(t), "stability": stability})
+        desc: dict[str, str] = {"name": f.name, "type": str(t), "stability": stability}
+        # v1.40 (#136): the per-field trust annotation, sourced from the FIELD_TRUST
+        # registry — so a consumer can programmatically tell fo-derived (trusted) from
+        # file-derived (attacker-controllable) fields BEFORE templating them into a prompt.
+        # Only FileRecord fields carry free-text-payload risk, so only they are annotated.
+        if cls is FileRecord:
+            desc["trust"] = FIELD_TRUST.get(f.name, TRUST_FILE_DERIVED)  # fail-safe: unclassified → file_derived
+        out.append(desc)
     return out
 
 
@@ -8200,7 +8366,7 @@ def build_schema_document() -> dict[str, Any]:
         preservation[tier].sort()
 
     return {
-        "schema_doc_version": 2,   # v1.14: specialists.fields is now list[{name, stability}] (was list[str]); + stability on vectors/manifest fields
+        "schema_doc_version": 3,   # v1.40: FileRecord field descriptors gain a `trust` attribute (fo_derived|file_derived|mixed) from FIELD_TRUST. v1.14: specialists.fields is now list[{name, stability}] (was list[str]); + stability on vectors/manifest fields
         "scanner_version": SCANNER_VERSION,
         "logic_version": LOGIC_VERSION,
         "schema_version": SCHEMA_VERSION,
@@ -8254,10 +8420,12 @@ def schema_to_markdown(doc: dict[str, Any]) -> str:
     for cls_name, fields in doc["manifest"].items():
         L.append(f"### `{cls_name}`")
         L.append("")
-        L.append("| field | type | stability |")
-        L.append("|---|---|---|")
+        L.append("| field | type | stability | trust |")
+        L.append("|---|---|---|---|")
         for f in fields:
-            L.append(f"| `{_cell(f['name'])}` | `{_cell(f['type'])}` | {f.get('stability', 'stable')} |")
+            # v1.40: `trust` (fo_derived|file_derived|mixed) is present only on FileRecord
+            # fields (the free-text-payload surface); other blocks show `—`.
+            L.append(f"| `{_cell(f['name'])}` | `{_cell(f['type'])}` | {f.get('stability', 'stable')} | {f.get('trust', '—')} |")
         L.append("")
     L.append("## Specialists")
     L.append("")
@@ -8402,7 +8570,7 @@ def schema_to_summary(doc: dict[str, Any]) -> str:
     return "\n".join(L)
 
 
-def manifest_to_jsonl(manifest: ScanManifest) -> str:
+def manifest_to_jsonl(manifest: ScanManifest, trusted_only: bool = False) -> str:
     lines: list[str] = []
     # Header line with schema_version, context, meta, stats, routing_summary, delta, manifest_checksum, vectors_collected
     header: dict[str, Any] = {
@@ -8418,10 +8586,15 @@ def manifest_to_jsonl(manifest: ScanManifest) -> str:
         "vectors_collected": manifest.vectors_collected,
         "summary": manifest.summary,
     }
+    if trusted_only:  # v1.40: mark the header stream + project each record below
+        header["trusted_only"] = True
     lines.append(json.dumps(header, ensure_ascii=False))
-    # One line per file record
+    # One line per file record (projected in --trusted-only)
     for record in manifest.files:
-        lines.append(json.dumps(asdict(record), ensure_ascii=False))
+        rec = asdict(record)
+        if trusted_only:
+            rec = _project_file_record_trusted_only(rec)
+        lines.append(json.dumps(rec, ensure_ascii=False))
     return "\n".join(lines) + "\n"
 
 
@@ -8612,6 +8785,7 @@ def main() -> None:
     parser.add_argument("-o", "--output", default=None, help="Output directory for the manifest + report (default: ./file-observer-manifests/ in the cwd; --stdout for no file)")
     parser.add_argument("--stdout", action="store_true", help="Write the manifest to stdout (no file, no report) — pipe-friendly for Docker/pipelines, e.g. `file-observer . --stdout | jq`. Respects --format json|jsonl. Incompatible with --output and --watch. (v1.28)")
     parser.add_argument("--specialists", action="store_true", help="Enable specialist tier probes")
+    parser.add_argument("--trusted-only", action="store_true", help="Safe-mode projection: emit ONLY fo-derived (trusted) fields — counts, types, hashes, flags — and null the file-derived (attacker-controllable) strings (path/filename/content_preview/tags/frontmatter/metadata strings). Adds a top-level `trusted_only: true` marker and a per-file `path_id` (sha256 of the relative path) as a safe correlation handle. Safe by construction for feeding a model (it never sees the scanned file's bytes). A projection of existing observation — the default manifest is byte-identical. (v1.40)")
     parser.add_argument("--exclude-hidden", action="store_true", help="Exclude hidden files and directories")
     parser.add_argument("--preview-max", type=int, default=1000, help="Max characters for content preview (default: 1000)")
     parser.add_argument("--format", choices=["json", "jsonl"], default="json", help="Output format (default: json)")
@@ -8735,6 +8909,7 @@ def main() -> None:
         watch_debounce_ms=args.watch_debounce_ms,
         watch_include_files=args.watch_include_files,
         lexicon=lexicon_cfg,
+        trusted_only=args.trusted_only,
     )
 
     # v1.28: --stdout writes the manifest to stdout (no file, no report). Mutually
@@ -8772,10 +8947,10 @@ def main() -> None:
     manifest = scanner.scan()
 
     if config.format == "jsonl":
-        output = manifest_to_jsonl(manifest)
+        output = manifest_to_jsonl(manifest, trusted_only=config.trusted_only)
         ext = "jsonl"
     else:
-        output = manifest_to_json(manifest)
+        output = manifest_to_json(manifest, trusted_only=config.trusted_only)
         ext = "json"
 
     # v1.28: --stdout — emit the manifest to stdout and write NOTHING to disk (no file, no

@@ -36,9 +36,16 @@ from file_observer.scanner import (
     build_schema_document,
     schema_to_markdown,
     parse_lexicon,
+    _project_file_record_trusted_only,
 )
 
 _ROOT: Path | None = None  # optional --root allowlist (defense-in-depth)
+# v1.40: optional server-wide safe mode (`--trusted-only`) — forces the trusted-only
+# projection ON for EVERY tool call, so a locked-down deployment can guarantee the agent
+# never sees a scanned file's bytes (only fo-derived signal). A per-call `trusted_only`
+# tool param can additionally opt in on a specific call; the two OR together (the server
+# flag can only tighten, never loosen).
+_TRUSTED_ONLY: bool = False
 # v1.39: optional bring-your-own-lexicon, configured at SERVER STARTUP (`--lexicon <path>`), NOT a
 # per-call tool arg. A tool argument is constructed by the calling LLM, so a terms-inline param would
 # put the (consumer-private) terms straight into the agent's context — backwards. The startup flag keeps
@@ -58,6 +65,12 @@ mcp = FastMCP(
         "(guarded by file count); `describe_surface` for the complete output schema."
     ),
 )
+
+
+def _eff_trusted_only(param: bool) -> bool:
+    """v1.40: the server-wide `--trusted-only` flag can only TIGHTEN — it forces the
+    projection on; a per-call param can additionally opt in. They OR together."""
+    return bool(_TRUSTED_ONLY or param)
 
 
 def _resolve_in_root(path: str) -> Path:
@@ -116,7 +129,7 @@ def _count_files_bounded(d: Path, cap: int) -> int:
 
 @mcp.tool()
 def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
-                 previous_manifest_path: str | None = None) -> str:
+                 previous_manifest_path: str | None = None, trusted_only: bool = False) -> str:
     """Context-friendly overview of a directory: file counts, text/binary split, and NOTABLE
     observations (chatlogs, MIME-vs-extension mismatches, polyglots, at-risk formats, safety flags
     like macros/JavaScript/geotagged, degraded/error files, duplicate clusters). Read-only,
@@ -155,24 +168,36 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
     if m.delta is not None:
         notable["delta"] = {k: len(getattr(m.delta, k)) for k in
                             ("added", "modified", "removed", "unchanged", "rescan_candidates")}
-    return json.dumps({
+    # v1.40: in trusted-only, drop the human `summary` prose — it can name file-derived
+    # strings (top authors, capture make/model). `notable` is all counts + fo-enum flag
+    # names + consumer-config category names → safe. The echoed `path` is the agent's own
+    # input, not attacker file content.
+    eff = _eff_trusted_only(trusted_only)
+    out = {
         "path": str(d),
         "scanner_version": SCANNER_VERSION,
-        "summary": m.summary,
+        "summary": None if eff else m.summary,
         "stats": asdict(m.stats),
         "notable": notable,
-    }, indent=2, ensure_ascii=False, default=str)
+    }
+    if eff:
+        out["trusted_only"] = True
+    return json.dumps(out, indent=2, ensure_ascii=False, default=str)
 
 
 @mcp.tool()
-def scan_file(path: str, specialists: bool = True) -> str:
+def scan_file(path: str, specialists: bool = True, trusted_only: bool = False) -> str:
     """The full observation record for ONE file: identity, content-detected MIME (+ whether it
     matches the extension), routing flags, safety flags, per-field signal provenance, and — with
     specialists — format-specific metadata. Read-only, deterministic. Use after `scan_summary`
-    flags a specific file."""
+    flags a specific file. `trusted_only` (default off): safe-mode projection — return ONLY the
+    fo-derived (trusted) fields and null the file-derived (attacker-controllable) strings, so the
+    record is safe to feed to a model (it never sees the file's bytes); a fo-derived `path_id`
+    replaces the path as a correlation handle."""
     fp = _resolve_in_root(path)
     if not fp.is_file():
         raise ValueError(f"not a file (use scan_summary/scan_directory for a folder): {path}")
+    eff = _eff_trusted_only(trusted_only)
     # fo scans a DIRECTORY, so to observe ONLY this file (not its siblings — leg-1/leg-2 fix) scan a
     # temp dir containing a COPY of it. A COPY (not a hardlink): `os.link` would bump the target inode's
     # link-count + ctime, MUTATING a file fo promises never to touch (leg-4/Codex P1). `copy2` only READS
@@ -187,13 +212,17 @@ def scan_file(path: str, specialists: bool = True) -> str:
             if r.path == fp.name:
                 d = asdict(r)
                 d["path"] = str(fp)   # the caller's real path, not the temp basename
+                if eff:
+                    # project AFTER stamping the real path so path_id = sha256(real path); the
+                    # projection then nulls path/filename and drops every file-derived string.
+                    d = _project_file_record_trusted_only(d)
                 return json.dumps(d, indent=2, ensure_ascii=False, default=str)
     raise ValueError(f"could not observe file (unreadable / excluded): {path}")
 
 
 @mcp.tool()
 def scan_directory(path: str, specialists: bool = False, max_files: int = 200,
-                   previous_manifest_path: str | None = None) -> str:
+                   previous_manifest_path: str | None = None, trusted_only: bool = False) -> str:
     """The FULL manifest JSON for a directory — every FileRecord. GUARDED: if the tree has more than
     `max_files` files it is refused BEFORE scanning (returns a note) — both to avoid overflowing the
     context AND to bound the work (a huge tree isn't read/hashed) — narrow the path or raise max_files.
@@ -213,7 +242,8 @@ def scan_directory(path: str, specialists: bool = False, max_files: int = 200,
             "reason": f"more than {max_files} files under {d}; a full manifest would overflow context",
             "hint": "narrow the path, call scan_summary for an overview, or raise max_files",
         }, indent=2, ensure_ascii=False)
-    return manifest_to_json(_scan(d, specialists, previous_manifest=prev))
+    return manifest_to_json(_scan(d, specialists, previous_manifest=prev),
+                            trusted_only=_eff_trusted_only(trusted_only))
 
 
 @mcp.tool()
@@ -239,8 +269,14 @@ def main() -> None:
                          "every scan — per-category term counts + a lexicon_match flag (v1.38 guardrail "
                          "pre-screen). Configured HERE at startup (not a tool arg) so the private terms "
                          "never enter an agent's context; only term-free counts cross the wire. Off by default.")
+    ap.add_argument("--trusted-only", action="store_true",
+                    help="force SAFE MODE for every tool call — return only fo-derived (trusted) fields, "
+                         "null the file-derived (attacker-controllable) strings. For a locked-down deployment "
+                         "where the agent must never see a scanned file's bytes. Off by default (a per-call "
+                         "`trusted_only` param can still opt in); this flag can only tighten, never loosen. (v1.40)")
     args = ap.parse_args()
-    global _ROOT, _LEXICON
+    global _ROOT, _LEXICON, _TRUSTED_ONLY
+    _TRUSTED_ONLY = bool(args.trusted_only)
     if args.root:
         root = Path(args.root).expanduser().resolve()
         if not root.is_dir():   # fail fast at startup, not on every later tool call (leg-4/gemini)
