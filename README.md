@@ -195,7 +195,7 @@ The action installs `file-observer[all]` into an isolated venv (it doesn't touch
 
 ### Use it from an AI agent (MCP)
 
-`file-observer[mcp]` ships an **[MCP](https://modelcontextprotocol.io/) server** so an AI agent can scan a file tree as a tool — a safe **"look before you touch"** pass over unknown or untrusted files. Because File Observer is read-only, never executes file content, stays in-tree, and never crashes, it's safe to point at files you don't trust: the agent gets a deterministic manifest of *what's there* before opening or ingesting anything.
+`file-observer[mcp]` ships an **[MCP](https://modelcontextprotocol.io/) server** so an AI agent can scan a file tree as a tool — a safe **"look before you touch"** pass over unknown or untrusted files. Because File Observer is read-only, never executes file content, stays in-tree, and never crashes, it's safe to point at files you don't trust: the agent gets a deterministic manifest of *what's there* before opening or ingesting anything. The scanner has no model and never reads for meaning, so it can't be prompt-injected.
 
 Run the stdio server (or `uvx --from "file-observer[mcp]" file-observer-mcp`), then add it to your MCP client (Claude Desktop / Claude Code) config:
 
@@ -217,6 +217,8 @@ Four read-only tools, built for an agent's context budget (progressive disclosur
 | `describe_surface()` | the complete output schema — the reference when writing a consumer. |
 
 It **observes and reports** — it never judges whether a file is safe; the agent interprets. `--root <dir>` restricts scans to a subtree (defense-in-depth). See [`examples/08-mcp-server/`](examples/08-mcp-server/).
+
+**Treat the returned manifest as untrusted data.** The scanner can't be prompt-injected, but the manifest *reports* attacker-controllable strings verbatim — filenames, `content_preview`, embedded metadata — so a consumer must treat those file-derived fields as data, not instructions. Prefer the fo-derived signal (counts, `safety_flags`) when you only need the risk verdict, and **route on it**: send *flagged* files to blocking review and let the rest through advisory, rather than an all-or-nothing gate. Sensitive config (the `--lexicon` terms) is passed to the server at startup, never as a tool argument, so it never enters the agent's context. Full detail in [SECURITY.md](SECURITY.md#the-manifest-is-untrusted-data).
 
 **Optional:** `libmagic` sharpens content-based MIME detection. As of v1.3 it's no longer required — without it (Windows, minimal containers) File Observer falls back to a built-in **pure-Python content sniff** for common binary formats (archives, images, data, media), then extension-based inference. Install it for the widest coverage:
 ```bash

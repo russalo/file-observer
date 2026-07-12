@@ -53,6 +53,21 @@ The scanner detects structural indicators that may represent security concerns:
 
 These are **observations, not assessments**. The scanner reports what it sees. Consumers apply their own threat model.
 
+## The manifest is untrusted data
+
+File Observer never executes or interprets file content, so the **scanner** cannot be prompt-injected — a malicious instruction inside a file is just bytes to count. But the **manifest it emits is a report *about* untrusted input, and it inherits that untrust.** Several fields echo attacker-controllable bytes verbatim, so a downstream consumer (especially an LLM agent) must treat the manifest as data, never as instructions.
+
+Two classes of field:
+
+- **fo-derived (trusted):** counts, MIME/types, `safety_flags`, hashes, versions, structural booleans, lexicon per-category counts. File Observer generates these; they are safe to summarize.
+- **file-derived (untrusted / attacker-controllable):** `path` / filenames, `content_preview`, every `specialist_metadata` string value (EXIF make/model, PDF producer/title/author, email subject/from, …), `tags`, chatlog speaker labels, `fact_block` pairs, `reference_tokens`, frontmatter. These are quoted bytes from the input. An attacker who controls a filename or a metadata field can place text there that rides back into a model through the manifest — even though the file body was never opened for meaning.
+
+**File Observer does not sanitize these fields, by design** — rewriting a value would corrupt the faithful record, and there is no safe universal sanitizer for "text a model might act on." The correct posture is on the consumer: treat file-derived fields as untrusted data (the same way you would treat the file body), and do not template them into a prompt as trusted input. When you only need the risk signal, prefer the fo-derived fields (counts, flags) over the verbatim strings.
+
+## MCP: never pass secrets as tool arguments
+
+An MCP tool's arguments are **constructed by the calling LLM**, so anything passed as a tool argument is, by definition, in the agent's context. Sensitive input must therefore never be a tool parameter. File Observer supplies the consumer lexicon via a **server-startup `--lexicon <path>` flag**, not a per-call argument, so the private terms never cross the wire — only term-free counts do. The same rule generalizes to any secret (API keys, credentials): verify it server-side, and let the agent see only already-scoped, secret-free results.
+
 ## Supported Versions
 
 | Version | Supported |
