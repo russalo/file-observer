@@ -8487,7 +8487,10 @@ def _receipt_id(manifest_checksum: str, rel_path: str, checksum_sha256: str) -> 
 def _file_receipt(fr: dict[str, Any], manifest_checksum: str) -> dict[str, Any]:
     """v1.42: compact per-file receipt — fo-derived audit fields + the bridge receipt_id. Safe by
     construction: the raw `path` is NOT emitted (file-derived); `path_id` correlates instead."""
-    path = fr.get("path") or ""
+    # Normalize to POSIX so path_id/receipt_id are platform-independent (leg-4/gemini) — a
+    # FileRecord.path is already `as_posix()`, so this is idempotent on the CLI path; it also
+    # guarantees the property for any caller (e.g. an MCP single-file scan).
+    path = (fr.get("path") or "").replace("\\", "/")
     checksum = fr.get("checksum_sha256") or ""
     receipt: dict[str, Any] = {
         "receipt_id": _receipt_id(manifest_checksum, path, checksum),
@@ -8513,7 +8516,9 @@ def manifest_to_receipt(manifest: ScanManifest) -> str:
     """v1.42: the screening-receipt projection (#133). A compact envelope (versions, manifest
     checksum + signature, scan id, dictionary_id) + a per-file receipt list — safe to persist as an
     audit record AND to feed a model. LOGIC/SCHEMA frozen; the default manifest is byte-identical."""
-    files = asdict(manifest).get("files", [])
+    # asdict each FileRecord (leg-4/gemini) — NOT asdict(manifest), which would deep-copy the whole
+    # envelope (context/stats/quality/vectors) just to reach files[].
+    files = [asdict(f) for f in manifest.files]
     mc = manifest.manifest_checksum
     lexvec = next((v for v in manifest.vectors_collected if v.get("vector_id") == LEXICON_VECTOR_ID), None)
     envelope = {

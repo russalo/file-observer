@@ -225,6 +225,9 @@ def scan_file(path: str, specialists: bool = True, trusted_only: bool = False, r
                 if receipt:
                     # v1.42: the screening receipt for this one file (audit record + bridge id).
                     # Its own projection (safe / fo-derived), so it takes precedence over trusted_only.
+                    # Bind the receipt to the CALLER's path reference (posix, stable/portable) — NOT the
+                    # resolved absolute str(fp), which is machine-dependent (leg-4/gemini HIGH + Codex P2).
+                    drec = {**d, "path": Path(path).as_posix()}
                     return json.dumps({
                         "receipt_doc_version": RECEIPT_DOC_VERSION,
                         "scanner_version": m.context.scanner_version,
@@ -233,7 +236,7 @@ def scan_file(path: str, specialists: bool = True, trusted_only: bool = False, r
                         "manifest_checksum": m.manifest_checksum,
                         "scan_id": m.meta.scan_id,
                         "generated_at": m.meta.generated_at,
-                        "receipts": [_file_receipt(d, m.manifest_checksum)],
+                        "receipts": [_file_receipt(drec, m.manifest_checksum)],
                     }, indent=2, ensure_ascii=False, default=str)
                 if eff:
                     # project AFTER stamping the real path so path_id = sha256(real path); the

@@ -134,6 +134,26 @@ def test_mcp_receipt(tree: Path):
     assert len(one["receipts"]) == 1 and len(one["receipts"][0]["receipt_id"]) == 64
 
 
+# --- leg-4 PR-bot findings -------------------------------------------------------------
+def test_receipt_path_posix_normalized():
+    """leg-4/gemini: path_id/receipt_id use a POSIX path — a backslash path normalizes so the id is
+    platform-independent (a Windows FileRecord.path is already as_posix, but this guarantees it)."""
+    from file_observer.scanner import _file_receipt
+    mc = "0" * 64
+    win = _file_receipt({"path": "sub\\dir\\f.md", "checksum_sha256": "a" * 64}, mc)
+    posix = _file_receipt({"path": "sub/dir/f.md", "checksum_sha256": "a" * 64}, mc)
+    assert win["receipt_id"] == posix["receipt_id"] and win["path_id"] == posix["path_id"]
+
+
+def test_mcp_scan_file_receipt_binds_callers_path(tree: Path):
+    """leg-4/gemini HIGH + Codex: the MCP scan_file receipt binds to the caller's path reference
+    (posix), NOT the resolved absolute str(fp) — so receipt_ids are stable/portable."""
+    mcp = pytest.importorskip("file_observer.mcp_server")
+    p = str(tree / "alpha.md")
+    out = json.loads(mcp.scan_file(p, specialists=True, receipt=True))
+    assert out["receipts"][0]["path_id"] == sha256(Path(p).as_posix().encode()).hexdigest()
+
+
 # --- 10. version axes -----------------------------------------------------------------
 def test_version_axes():
     assert SCANNER_VERSION == "1.42.0"
