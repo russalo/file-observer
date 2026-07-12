@@ -136,6 +136,7 @@ class TestProvisionalRegistryMatchesContract:
             # v1.38: the new lexicon_match namespace — provisional on arrival (bring-your-own-lexicon)
             ("lexicon_match", "lexicon_id"), ("lexicon_match", "categories"),
             ("lexicon_match", "total_hits"), ("lexicon_match", "total_tokens"),
+            ("lexicon_match", "metadata"),   # v1.41: file-derived metadata self-sweep sub-block — provisional on arrival
         })
         # v1.38: the fact_block (v1.32), ai_session (v1.33), and lexicon (v1.38) file-scoped vectors are
         # provisional — surfaced in --schema from v1.38 when the vector-table drift that omitted them was

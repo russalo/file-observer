@@ -136,5 +136,5 @@ class TestVersioning:
     def test_axes(self):
         def _v(s): return tuple(int(p) for p in s.split("."))
         assert _v(SCANNER_VERSION) >= (1, 39, 0)
-        assert _v(LOGIC_VERSION) == (1, 21, 0)   # UNCHANGED — front-door, no new observation
-        assert SCHEMA_VERSION == "1.22"           # UNCHANGED
+        assert _v(LOGIC_VERSION) >= (1, 21, 0)   # front-door froze it at 1.21.0; v1.41 bumped past (floor)
+        assert _v(SCHEMA_VERSION) >= (1, 22)      # floor (v1.41 → 1.23)
