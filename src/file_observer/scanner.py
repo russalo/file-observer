@@ -7750,11 +7750,14 @@ class Scanner:
         """v1.41: gather the file-derived metadata strings to self-sweep with the lexicon. Targets
         (RFC §7-D2, the file_derived-per-FIELD_TRUST set minus the body): the `filename` (NOT the full
         path — the dir tree is the operator's, not the file's metadata), `tags`, `frontmatter`,
-        `structural` (title/headings/keys), and the string leaves + dict KEYS inside `specialist_metadata`
+        `structural` (title/headings/keys), and the string VALUES inside `specialist_metadata`
         (image.make/model, pdf.producer/title/author, document.title/author, email.subject/from, …),
-        EXCLUDING the fo-generated `lexicon_match` namespace. `content_preview` is NOT included — it's a
-        body slice already covered by the v1.38 body scan (dedup). Recurses str leaves + dict keys and
-        joins with spaces for the tokenizer (mirrors the measure-first collector)."""
+        EXCLUDING the fo-generated `lexicon_match` namespace. Dict KEYS are NOT swept — they are fo's
+        own schema field names (`make`/`model`/`producer`/…), not file content, and sweeping them
+        false-positived 82% of files on a schema-key-word lexicon (leg-1). `content_preview` is NOT
+        included — it's a body slice already covered by the v1.38 body scan (dedup). Recurses string
+        leaves (+ list items, so the file's own JSON/YAML keys and chatlog speaker labels — which arrive
+        as LIST values — are still swept) and joins with spaces for the tokenizer."""
         out: list[str] = []
 
         def collect(v: Any) -> None:
@@ -7764,9 +7767,12 @@ class Scanner:
                 for x in v:
                     collect(x)
             elif isinstance(v, dict):
-                for k, x in v.items():
-                    if isinstance(k, str):
-                        out.append(k)
+                # VALUES only — a dict KEY here is an fo-SCHEMA field name (`make`/`model`/
+                # `producer`/`title`/`author`/`subject`/…), fo's own vocabulary, NOT file content.
+                # Sweeping keys false-positived 82% of files on a lexicon containing schema-key
+                # words (leg-1 self-review). The file's OWN keys (JSON/YAML key names, chatlog
+                # speaker labels) arrive as LIST values elsewhere (structural.keys, chatlog.speaker_labels).
+                for x in v.values():
                     collect(x)
 
         out.append(filename)

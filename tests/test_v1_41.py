@@ -132,6 +132,20 @@ def test_metadata_text_bounded(tmp_path: Path):
     assert lx["metadata"]["total_tokens"] <= LEXICON_METADATA_MAX_CHARS
 
 
+# --- 5b. FP hygiene: fo-schema dict KEYS must NOT be swept (leg-1 finding) -------------
+def test_schema_keys_not_swept(tmp_path: Path):
+    """A dict KEY in specialist_metadata is an fo SCHEMA field name (`width`/`make`/`producer`/…),
+    fo's own vocabulary — not file content. It must NOT be counted, or a lexicon containing a
+    schema word (`make`, `title`, `author`) would false-positive on nearly every file. The image
+    metadata keys are `width`/`height`/`bit_depth` with INT values, so a lexicon of those words can
+    only hit via the (excluded) keys."""
+    _png(tmp_path / "pic.png", 3, 3)
+    key_lex = {"lexicon_id": "k", "categories": {"schema": ["width", "height", "bit_depth"]}}
+    m = _scan(tmp_path, lexicon=key_lex)
+    lx = _lex(next(f for f in m.files if f.filename == "pic.png"))
+    assert lx is not None and lx["metadata"]["total_hits"] == 0, "fo-schema keys must not be swept"
+
+
 # --- 6. determinism: workers 1 vs 2 byte-identical -------------------------------------
 def test_determinism_across_workers(tree: Path):
     assert compute_manifest_checksum(_scan(tree, workers=1)) == compute_manifest_checksum(_scan(tree, workers=2))
