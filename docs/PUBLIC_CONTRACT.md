@@ -210,14 +210,14 @@ previously failed. Stable as part of the `delta` object.
 `file-observer --schema --format json` emits a deterministic description of the
 build's complete output surface and exits without scanning (introduced at schema
 1.8 / v1.13; see §3). **Its envelope shape is a committed build-time interface**,
-versioned by `schema_doc_version` (currently `2`):
+versioned by `schema_doc_version` (currently `3`):
 
 - The document is a JSON object carrying `scanner_version`, `logic_version`,
   `schema_version`, `schema_doc_version`, the structural sections (`manifest`,
   `specialists`, `vectors`), and the enumeration sections (`safety_flags`,
   `error_codes`, `provenance_triggers`, `format_signatures`, `preservation_tiers`,
   `mime_tiers`, `reference_tokens_subcategories`, `filename_patterns_subcategories`).
-- `manifest` is `{RecordName: [{"name": str, "type": str, "stability": "stable"|"provisional"}, …]}`.
+- `manifest` is `{RecordName: [{"name": str, "type": str, "stability": "stable"|"provisional"}, …]}`; **`FileRecord`** field descriptors additionally carry `"trust": "fo_derived"|"file_derived"|"mixed"` (added at `schema_doc_version` 3 / v1.40 — see §1.13).
 - A **backward-incompatible change to this shape** (renaming/removing an envelope
   key, changing the field-object key set, re-nesting `manifest`) **bumps
   `schema_doc_version`** — a consumer's re-snapshot signal.
@@ -233,6 +233,55 @@ stable fields** off `--schema` is exactly as safe as consuming the manifest.
 per §2.2 — `--schema` describes the current surface, it does not freeze those.
 
 Committed 2026-06-17 (v1.21.2), once `--schema` gained a real consumer.
+
+---
+
+### 1.13 Field trust classification and safe mode (`--trusted-only`)
+
+Introduced v1.40. Every manifest field is classified by whether it can carry
+**attacker-controlled free text** into a consumer:
+
+- **`fo_derived` (trusted):** values file-observer computed — numbers, booleans,
+  hashes, MIME types, closed-vocabulary enums/labels, `safety_flags`, timestamps,
+  sizes. Safe to summarize even when the value was read from the file (a `page_count`
+  can't carry a payload).
+- **`file_derived` (untrusted):** verbatim bytes from the input — `path`/`filename`,
+  `content_preview`, `tags`, frontmatter, `structural`, `reference_tokens`, and the
+  string values inside `specialist_metadata` (extracted author / title / producer /
+  EXIF make+model / email subject / chatlog speaker label). An attacker who controls
+  a filename or a metadata field can place text here that rides into a downstream model.
+
+**Committed:**
+
+- Each `FileRecord` field descriptor in `--schema` carries a **`trust`** attribute
+  (`fo_derived` / `file_derived` / `mixed`) — a consumer can read it to build its own
+  projection. The classification is **fail-safe: an unclassified/uncertain field is
+  reported `file_derived`**, so it can only over-suppress, never under-report.
+- **`--trusted-only`** (CLI, `ScannerConfig(trusted_only=True)`, the MCP `trusted_only`
+  tool param, or a server-wide `--trusted-only`) emits a **projection** of the manifest
+  that (a) nulls every `file_derived` value across the WHOLE manifest — per-`FileRecord`
+  fields AND the manifest-level blocks (`meta.source_dir`, the human `summary`, `delta`
+  path lists, `quality.duplicate_clusters[].paths`, `quality.per_directory_summary[].directory`,
+  `vectors_collected[].summary`), in both JSON and JSONL; (b) adds a per-file **`path_id`**
+  = `sha256(<relative-posix path>)` (a fo-derived correlation handle carrying no free text)
+  and a top-level **`trusted_only: true`** marker; and (c) recomputes `manifest_checksum`
+  over the projected content, so the safe-mode output is self-verifiable.
+- **The DEFAULT manifest is byte-identical** to a pre-v1.40 scan — safe mode is a separate,
+  opt-in output; `LOGIC_VERSION` / `SCHEMA_VERSION` are unchanged (the front-door precedent).
+
+**Not committed / caveats:**
+
+- Safe mode is a **projection, not a sanitizer** — it drops untrusted fields, it never
+  rewrites a value to make it "safe."
+- `--trusted-only` output is a derived VIEW and does **not** validate against the committed
+  `docs/manifest.schema.json` (which models the DEFAULT manifest: the nulled fields are
+  non-nullable there, and `path_id` is not present). A projection-aware or separate
+  trusted-only schema is a planned follow-up.
+- It over-suppresses by design (fail-safe): it also drops fo-derived but free-text-*shaped*
+  values it can't prove safe (the human `summary`, corpus vector summaries, enum strings
+  inside `specialist_metadata`). Use the default manifest when you need those.
+
+Committed 2026-07-12 (v1.40.0).
 
 ---
 

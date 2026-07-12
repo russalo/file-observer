@@ -246,6 +246,16 @@ fo ./project --profile deep_extract --format jsonl
 fo ./project --previous-manifest ./last.json --signing-key-file ./key
 ```
 
+### Safe mode — feed untrusted files to a model
+
+A manifest is a report *about* untrusted files, so it echoes attacker-controllable strings (filenames, `content_preview`, extracted metadata) — pasting a raw manifest into an LLM's context is a prompt-injection vector. `--trusted-only` projects the manifest down to **only what File Observer computed** — counts, types, hashes, `safety_flags` — nulling every file-derived string and adding a per-file `path_id` correlation handle. Safe by construction to feed a model:
+
+```bash
+fo ./untrusted-uploads --trusted-only --stdout | your-llm-pipeline
+```
+
+Every field is labeled `fo_derived` (trusted) vs `file_derived` (attacker-controllable) in `fo --schema`, so you can also build your own projection. See [`examples/09-trusted-only/`](examples/09-trusted-only/) and the [tutorial](docs/TUTORIAL.md#11-safe-mode-feeding-untrusted-files-to-a-model).
+
 ### Use in code
 
 ```python
