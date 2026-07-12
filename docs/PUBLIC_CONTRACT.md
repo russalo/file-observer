@@ -259,10 +259,11 @@ Introduced v1.40. Every manifest field is classified by whether it can carry
   reported `file_derived`**, so it can only over-suppress, never under-report.
 - **`--trusted-only`** (CLI, `ScannerConfig(trusted_only=True)`, the MCP `trusted_only`
   tool param, or a server-wide `--trusted-only`) emits a **projection** of the manifest
-  that (a) nulls every `file_derived` value across the WHOLE manifest — per-`FileRecord`
-  fields AND the manifest-level blocks (`meta.source_dir`, the human `summary`, `delta`
-  path lists, `quality.duplicate_clusters[].paths`, `quality.per_directory_summary[].directory`,
-  `vectors_collected[].summary`), in both JSON and JSONL; (b) adds a per-file **`path_id`**
+  that (a) scrubs every `file_derived` value across the WHOLE manifest — per-`FileRecord`
+  fields AND the manifest-level blocks: **nulling** `meta.source_dir`, the human `summary`,
+  and `quality.per_directory_summary[].directory`; **emptying to `[]`** the `delta` path lists
+  and `quality.duplicate_clusters[].paths`; and **emptying to `{}`** `vectors_collected[].summary`
+  (so a consumer must handle `[]`/`{}`, not only `null`) — in both JSON and JSONL; (b) adds a per-file **`path_id`**
   = `sha256(<relative-posix path>)` (a fo-derived correlation handle carrying no free text)
   and a top-level **`trusted_only: true`** marker; and (c) recomputes `manifest_checksum`
   over the projected content, so the safe-mode output is self-verifiable.

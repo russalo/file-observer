@@ -217,14 +217,14 @@ counts come back). And pass `previous_manifest_path` to `scan_directory`/`scan_s
 
 → [Example 09](../examples/09-trusted-only/)
 
-file-observer never executes file content, so the **scanner** can't be prompt-injected. But the **manifest is a report *about* untrusted input** — it echoes attacker-controllable strings verbatim: `path`/`filename`, `content_preview`, `tags`, frontmatter, and extracted metadata (a PDF/doc author, an EXIF make/model, an email subject, a chatlog speaker label). A file named `ignore-previous-instructions.txt` puts that string straight into the manifest — paste a raw manifest into a model's context and you've handed it whatever an attacker wrote.
+file-observer never executes file content, so the **scanner** can't be prompt-injected. But the **manifest is a report *about* untrusted input** — it echoes attacker-controllable strings verbatim: `path`/`filename`, `content_preview`, `tags`, frontmatter, and extracted metadata (a PDF/doc author, an EXIF make/model, an email subject, a chatlog speaker label). A file named `ignore_previous_instructions.md` (like the one in example 09) puts that string straight into the manifest — paste a raw manifest into a model's context and you've handed it whatever an attacker wrote.
 
 Every field is classified on one axis — **can it carry attacker-controlled free text?**
 
 - **`fo_derived` (trusted):** numbers, booleans, hashes, MIME types, enums, `safety_flags`, timestamps, sizes — things file-observer *computed*. A `page_count` of `5` can't be a prompt, even though it came from the file.
 - **`file_derived` (untrusted):** the verbatim bytes above.
 
-`--trusted-only` emits a **projection** that keeps only the `fo_derived` fields and nulls every `file_derived` string — across the *whole* manifest (per-file fields, the `summary` prose, `meta.source_dir`, duplicate-cluster and delta paths, per-directory names, vector summaries), in JSON and JSONL:
+`--trusted-only` emits a **projection** that keeps only the `fo_derived` fields and strips every `file_derived` value (string fields go `null`; path lists and vector summaries go `[]`/`{}`) — across the *whole* manifest (per-file fields, the `summary` prose, `meta.source_dir`, duplicate-cluster and delta paths, per-directory names, vector summaries), in JSON and JSONL:
 
 ```bash
 file-observer ./untrusted-uploads --trusted-only --stdout | your-llm-pipeline

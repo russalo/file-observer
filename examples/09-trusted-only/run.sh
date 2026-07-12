@@ -18,7 +18,7 @@ echo "Wrote out/normal.json and out/trusted-only.json."
 echo
 python3 -c "
 import json
-n = json.load(open('out/normal.json')); t = json.load(open('out/trusted-only.json'))
+n = json.load(open('out/normal.json', 'rb')); t = json.load(open('out/trusted-only.json', 'rb'))  # 'rb': json auto-detects UTF, robust on non-UTF-8 default platforms (Windows CP1252)
 nf = n['files'][0];   tf = t['files'][0]
 print('normal manifest:')
 print('  path                :', repr(nf['path']))
