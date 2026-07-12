@@ -30,6 +30,8 @@ from file_observer.scanner import (
     build_schema_document,
     compute_manifest_checksum,
     manifest_to_json,
+    manifest_to_jsonl,
+    scan_to_json,
 )
 
 # --- canaries: benign tokens standing in for attacker-controlled free text -----------
@@ -344,6 +346,72 @@ def test_no_delta_path_leaks_into_trusted_only(tmp_path: Path):
     # non-vacuous: the added path IS present without --trusted-only
     m3 = Scanner(root, ScannerConfig(enable_specialists=True, previous_manifest=str(prev))).scan()
     assert DELTA_CANARY in manifest_to_json(m3)
+
+
+# --- 11. sibling serialization surfaces (leg-4 PR-bot findings) ----------------------
+# The manifest-level fix covered manifest_to_json's object path; the PR bots caught the
+# SIBLING serialization surfaces that project separately: the JSONL header (built from the
+# raw manifest, Codex P1), scan_to_json (didn't thread trusted_only, Codex P1), and the
+# projected manifest_checksum (stale when projected at serialize-time, Codex P2).
+
+def test_jsonl_trusted_only_no_manifest_level_leak(manifest_level_tree: Path):
+    """--trusted-only --format jsonl: the HEADER line (meta/summary/quality/delta/vectors)
+    must be projected too, not just the per-file record lines."""
+    m = _scan(manifest_level_tree, trusted_only=True)
+    out = manifest_to_jsonl(m, trusted_only=True)
+    for c in ML_CANARIES + ALL_CANARIES:
+        assert c not in out, f"{c} leaked into --trusted-only JSONL output"
+    header = json.loads(out.splitlines()[0])
+    assert header["trusted_only"] is True
+    assert header["meta"]["source_dir"] is None
+    assert header["summary"] is None
+    for cl in header["quality"]["duplicate_clusters"]:
+        assert cl["paths"] == []
+    for v in header["vectors_collected"]:
+        assert v["summary"] == {}
+    # projected checksum in the header is self-consistent
+    assert header["manifest_checksum"] == compute_manifest_checksum(m, trusted_only=True)
+
+
+def test_scan_to_json_trusted_only_projects(planted_tree: Path):
+    """scan_to_json(path, trusted_only=True) must emit the PROJECTED JSON, not scan safe-mode
+    then serialize the raw manifest (Codex P1)."""
+    out = scan_to_json(planted_tree, specialists=True, trusted_only=True)
+    for c in ALL_CANARIES:
+        assert c not in out, f"{c} leaked via scan_to_json(trusted_only=True)"
+    doc = json.loads(out)
+    assert doc["trusted_only"] is True
+    for fr in doc["files"]:
+        assert fr["path"] is None and isinstance(fr["path_id"], str)
+    # and the normal one-shot still echoes them (non-vacuous)
+    assert any(c in scan_to_json(planted_tree, specialists=True) for c in ALL_CANARIES)
+
+
+def test_projected_checksum_consistent_when_projected_at_serialize(manifest_level_tree: Path):
+    """Codex P2: a manifest scanned NORMALLY then projected only at serialization (the MCP
+    scan_directory path) must still embed the PROJECTED checksum, not the unprojected one."""
+    m = _scan(manifest_level_tree, trusted_only=False)   # config.trusted_only is False
+    normal_checksum = m.manifest_checksum
+    doc = json.loads(manifest_to_json(m, trusted_only=True))
+    assert doc["manifest_checksum"] == compute_manifest_checksum(m, trusted_only=True)
+    assert doc["manifest_checksum"] != normal_checksum   # projection changed the content
+    # JSONL header path is consistent the same way
+    jheader = json.loads(manifest_to_jsonl(m, trusted_only=True).splitlines()[0])
+    assert jheader["manifest_checksum"] == compute_manifest_checksum(m, trusted_only=True)
+
+
+def test_mcp_guard_trusted_only_no_path_leak(manifest_level_tree: Path):
+    """Codex P2: the MCP max_files guard fires BEFORE the scan and returned the resolved
+    directory path in its message — in trusted-only that re-exposes a file-derived path."""
+    mcp = pytest.importorskip("file_observer.mcp_server")
+    summ = mcp.scan_summary(str(manifest_level_tree), specialists=True, max_files=1, trusted_only=True)
+    doc = json.loads(summ)
+    assert doc.get("guarded") is True and doc.get("trusted_only") is True
+    assert SRC_CANARY not in summ, "scan_summary guard leaked the scan-root path in trusted-only"
+    direc = mcp.scan_directory(str(manifest_level_tree), specialists=True, max_files=1, trusted_only=True)
+    assert SRC_CANARY not in direc, "scan_directory guard leaked the scan-root path in trusted-only"
+    # non-vacuous: without trusted_only the guard DOES name the path
+    assert SRC_CANARY in mcp.scan_summary(str(manifest_level_tree), specialists=True, max_files=1)
 
 
 # --- 9. version axes -----------------------------------------------------------------

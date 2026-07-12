@@ -67,7 +67,7 @@ The scanner has five distinct things that carry versions. They are independent â
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.39.0 | Internal |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.40.0 | Internal |
 | Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.21.0 | Internal* |
 | Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.22 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |

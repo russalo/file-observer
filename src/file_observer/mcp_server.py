@@ -143,12 +143,18 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
     if not d.is_dir():
         raise ValueError(f"not a directory (use scan_file for a single file): {path}")
     prev = _resolve_previous_manifest(previous_manifest_path)
+    eff = _eff_trusted_only(trusted_only)
     n = _count_files_bounded(d, max_files)
     if n > max_files:
+        # Codex P2: the guard fires BEFORE the scan, but its message must still honor
+        # trusted-only — don't echo the resolved directory path in safe mode.
         return json.dumps({
             "guarded": True,
-            "reason": f"more than {max_files} files under {d}; refused before scanning to bound work",
+            "reason": (f"more than {max_files} files under the requested directory" if eff
+                       else f"more than {max_files} files under {d}")
+                      + "; refused before scanning to bound work",
             "hint": "narrow the path, or call again with a higher max_files",
+            **({"trusted_only": True} if eff else {}),
         }, indent=2, ensure_ascii=False)
     m = _scan(d, specialists, previous_manifest=prev)
     q = m.quality
@@ -173,8 +179,7 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
     # nulled for consistency with meta.source_dir in the full-manifest projection so safe
     # mode is uniformly free of file-derived path strings (even though `path` is the agent's
     # own input). `notable`/`stats` are all counts + fo-enum flag names + consumer-config
-    # category names → fo/operator-derived, kept.
-    eff = _eff_trusted_only(trusted_only)
+    # category names → fo/operator-derived, kept. (`eff` computed above, before the guard.)
     out = {
         "path": None if eff else str(d),
         "scanner_version": SCANNER_VERSION,
@@ -237,15 +242,19 @@ def scan_directory(path: str, specialists: bool = False, max_files: int = 200,
     if not d.is_dir():
         raise ValueError(f"not a directory (use scan_file for a single file): {path}")
     prev = _resolve_previous_manifest(previous_manifest_path)
+    eff = _eff_trusted_only(trusted_only)
     n = _count_files_bounded(d, max_files)   # bound WORK: refuse before the expensive scan (leg-2/gem-pro DoS fix)
     if n > max_files:
+        # Codex P2: the pre-scan guard message must honor trusted-only — don't echo the path.
         return json.dumps({
             "guarded": True,
-            "reason": f"more than {max_files} files under {d}; a full manifest would overflow context",
+            "reason": (f"more than {max_files} files under the requested directory" if eff
+                       else f"more than {max_files} files under {d}")
+                      + "; a full manifest would overflow context",
             "hint": "narrow the path, call scan_summary for an overview, or raise max_files",
+            **({"trusted_only": True} if eff else {}),
         }, indent=2, ensure_ascii=False)
-    return manifest_to_json(_scan(d, specialists, previous_manifest=prev),
-                            trusted_only=_eff_trusted_only(trusted_only))
+    return manifest_to_json(_scan(d, specialists, previous_manifest=prev), trusted_only=eff)
 
 
 @mcp.tool()

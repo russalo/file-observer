@@ -137,6 +137,11 @@ def test_contract_docs_version_references_current():
     # CONVENTIONS §1.1 current-version stamp must match the constant
     assert f"**Current:** `{SCANNER_VERSION}`" in conventions, \
         f"CONVENTIONS §1.1 SCANNER current stamp is stale (want {SCANNER_VERSION})"
+    # CONVENTIONS §1.6 Quick Reference table row must ALSO carry the current version
+    # (leg-4/CodeRabbit v1.40: §1.6 drifted to 1.39.0 while §1.1 was current — this row
+    # was unguarded; guard it so the two can't diverge again).
+    assert f"`SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | {SCANNER_VERSION} |" in conventions, \
+        f"CONVENTIONS §1.6 Quick Reference SCANNER row is stale (want {SCANNER_VERSION})"
 
 
 def test_canonical_top_level_api():

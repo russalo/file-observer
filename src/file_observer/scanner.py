@@ -960,6 +960,35 @@ def _project_file_record_trusted_only(fr: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+def _scrub_manifest_level_trusted_only(d: dict[str, Any]) -> dict[str, Any]:
+    """Null every file-derived string in the manifest-LEVEL blocks — everything except
+    files[] (projected per-record elsewhere). SHARED by the full-manifest projection AND
+    the JSONL header builder so both serialization surfaces get the IDENTICAL scrub with
+    no drift. Operates on any dict carrying the meta/quality/delta/vectors_collected/summary
+    keys (the full manifest dict OR the JSONL header dict)."""
+    meta = d.get("meta")
+    if isinstance(meta, dict):
+        meta["source_dir"] = None            # a filesystem path
+    d["summary"] = None                      # prose: names authors / capture devices / paths
+    delta = d.get("delta")
+    if isinstance(delta, dict):
+        for key in ("added", "modified", "unchanged", "removed", "rescan_candidates"):
+            if isinstance(delta.get(key), list):
+                delta[key] = []              # file-path lists
+    quality = d.get("quality")
+    if isinstance(quality, dict):
+        for cluster in quality.get("duplicate_clusters") or []:
+            if isinstance(cluster, dict) and isinstance(cluster.get("paths"), list):
+                cluster["paths"] = []        # file paths (checksum/size/count kept)
+        for entry in quality.get("per_directory_summary") or []:
+            if isinstance(entry, dict) and "directory" in entry:
+                entry["directory"] = None    # a subdir path (counts kept)
+    for vector in d.get("vectors_collected") or []:
+        if isinstance(vector, dict):
+            vector["summary"] = {}           # corpus rollups laced with author/producer names
+    return d
+
+
 def _project_manifest_trusted_only(d: dict[str, Any]) -> dict[str, Any]:
     """Project a whole manifest dict (from asdict) for --trusted-only so the ENTIRE
     manifest — not just files[] — is safe to feed a model. Nulls every file-derived
@@ -989,33 +1018,7 @@ def _project_manifest_trusted_only(d: dict[str, Any]) -> dict[str, Any]:
     vector's id/method_version/rules_hash/tuning/dictionary/identity_digest/applied_to_count.
     """
     d["files"] = [_project_file_record_trusted_only(fr) for fr in (d.get("files") or [])]
-
-    meta = d.get("meta")
-    if isinstance(meta, dict):
-        meta["source_dir"] = None
-
-    # The human-readable prose names authors, capture devices and paths verbatim.
-    d["summary"] = None
-
-    delta = d.get("delta")
-    if isinstance(delta, dict):
-        for key in ("added", "modified", "unchanged", "removed", "rescan_candidates"):
-            if isinstance(delta.get(key), list):
-                delta[key] = []
-
-    quality = d.get("quality")
-    if isinstance(quality, dict):
-        for cluster in quality.get("duplicate_clusters") or []:
-            if isinstance(cluster, dict) and isinstance(cluster.get("paths"), list):
-                cluster["paths"] = []
-        for entry in quality.get("per_directory_summary") or []:
-            if isinstance(entry, dict) and "directory" in entry:
-                entry["directory"] = None
-
-    for vector in d.get("vectors_collected") or []:
-        if isinstance(vector, dict):
-            vector["summary"] = {}
-
+    _scrub_manifest_level_trusted_only(d)
     d["trusted_only"] = True
     return d
 
@@ -8188,8 +8191,12 @@ def scan(path: str | Path, *, specialists: bool = False, workers: int = 1,
 
 
 def scan_to_json(path: str | Path, **kwargs: Any) -> str:
-    """v1.26: one call to a JSON manifest string — ``manifest_to_json(scan(path, **kwargs))``."""
-    return manifest_to_json(scan(path, **kwargs))
+    """v1.26: one call to a JSON manifest string — ``manifest_to_json(scan(path, **kwargs))``.
+    v1.40: ``trusted_only=True`` threads through to the SERIALIZER too (Codex P1) — otherwise
+    the safe-mode one-shot would scan in safe mode but emit the UNprojected JSON, leaking the
+    very file-derived strings it must null."""
+    return manifest_to_json(scan(path, **kwargs),
+                            trusted_only=bool(kwargs.get("trusted_only", False)))
 
 
 # v1.27: namespace-/release-keyed dicts whose KEYS vary by specialist/version — kept OPEN
@@ -8312,6 +8319,14 @@ def manifest_to_json(manifest: ScanManifest, trusted_only: bool = False) -> str:
     # same dict shape the checksum is computed over → the two stay consistent).
     if trusted_only:
         d = _project_manifest_trusted_only(asdict(manifest))
+        # The emitted checksum must describe the PROJECTED content (Codex P2): when the
+        # manifest was scanned normally and projected only at serialization (e.g. MCP
+        # scan_directory, which passes trusted_only here but not to ScannerConfig), the
+        # stored checksum still describes the UNprojected manifest.
+        proj = compute_manifest_checksum(manifest, trusted_only=True)
+        if proj != manifest.manifest_checksum:
+            d["manifest_signature"] = None   # signed the unprojected checksum → now stale
+        d["manifest_checksum"] = proj
         return json.dumps(d, indent=2, ensure_ascii=False)
     return json.dumps(manifest, default=_dc_encoder, indent=2, ensure_ascii=False)
 
@@ -8637,7 +8652,15 @@ def manifest_to_jsonl(manifest: ScanManifest, trusted_only: bool = False) -> str
         "vectors_collected": manifest.vectors_collected,
         "summary": manifest.summary,
     }
-    if trusted_only:  # v1.40: mark the header stream + project each record below
+    if trusted_only:  # v1.40: project the manifest-level header blocks (Codex P1: the
+        # header carries meta.source_dir / summary / duplicate_clusters paths / delta /
+        # vector summaries — file-derived, must be scrubbed too, not just per-record) +
+        # the projected checksum (P2), then mark the stream.
+        _scrub_manifest_level_trusted_only(header)
+        proj = compute_manifest_checksum(manifest, trusted_only=True)
+        if proj != manifest.manifest_checksum:
+            header["manifest_signature"] = None
+        header["manifest_checksum"] = proj
         header["trusted_only"] = True
     lines.append(json.dumps(header, ensure_ascii=False))
     # One line per file record (projected in --trusted-only)
