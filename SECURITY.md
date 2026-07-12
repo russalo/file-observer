@@ -64,6 +64,8 @@ Two classes of field:
 
 **File Observer does not sanitize these fields, by design** — rewriting a value would corrupt the faithful record, and there is no safe universal sanitizer for "text a model might act on." The correct posture is on the consumer: treat file-derived fields as untrusted data (the same way you would treat the file body), and do not template them into a prompt as trusted input. When you only need the risk signal, prefer the fo-derived fields (counts, flags) over the verbatim strings.
 
+**Safe mode (v1.40, `--trusted-only`).** When you need a manifest safe to hand straight to a model, `--trusted-only` (CLI, `ScannerConfig(trusted_only=True)`, or the MCP `trusted_only` tool param / server flag) emits a **projection** that nulls EVERY file-derived string across the whole manifest — the per-file fields **and** the manifest-level blocks (`meta.source_dir`, the `summary` prose, the `delta` / `duplicate_clusters` path lists, `per_directory_summary` directories, and the `vectors_collected` summaries) — keeping only fo-derived signal (counts, flags, hashes, enums) plus a fo-derived `path_id = sha256(<relative path>)` correlation handle and a top-level `trusted_only: true` marker. It **over-suppresses by design** (fail-safe: when a field's trust is uncertain it is dropped) and **never sanitizes**. The DEFAULT manifest is unchanged (byte-identical); safe mode is a separate, opt-in output. The `--schema` output annotates every field's `trust` (`fo_derived` / `file_derived`) so a consumer can build its own projection.
+
 ## MCP: never pass secrets as tool arguments
 
 An MCP tool's arguments are **constructed by the calling LLM**, so anything passed as a tool argument is, by definition, in the agent's context. Sensitive input must therefore never be a tool parameter. File Observer supplies the consumer lexicon via a **server-startup `--lexicon <path>` flag**, not a per-call argument, so the lexicon *term list* never crosses the wire — only term-free derived results do (per-category counts, densities, the category names, and the content-hash `dictionary_id`). This scopes the guarantee to the lexicon *config*: a term that happens to appear in a scanned file's own content will still surface in file-derived fields like `content_preview`, exactly as any other content would — treat those as untrusted per the section above. The same rule generalizes to any secret (API keys, credentials): verify it server-side, and let the agent see only already-scoped, secret-free results.
@@ -72,7 +74,7 @@ An MCP tool's arguments are **constructed by the calling LLM**, so anything pass
 
 | Version | Supported |
 |---|---|
-| 1.39.x | Yes (current) |
-| 1.38.x | Security fixes only |
-| 1.0–1.37.x | No (schema-stable but unsupported; please upgrade) |
+| 1.40.x | Yes (current) |
+| 1.39.x | Security fixes only |
+| 1.0–1.38.x | No (schema-stable but unsupported; please upgrade) |
 | < 1.0 | No |

@@ -22,6 +22,19 @@ case-folded (l33t/homoglyph/embedded variants are out of scope in this release).
 The lexicon is **your** runtime input; fo ships no term list. The mapping from
 "category X matched N times" to "risky / block / review" is yours to define.
 
+**Safe mode over-suppresses by design (v1.40, `--trusted-only`).** `--trusted-only`
+emits a projection that keeps only fo-derived signal and nulls every file-derived
+(attacker-controllable) string across the whole manifest. It is **fail-safe**:
+when a field's trust is uncertain it is dropped, so it deliberately withholds more
+than the strict minimum — the human `summary` prose, the `vectors_collected[]`
+summary payloads (author/provenance/lexicon corpus rollups), and the `delta` /
+`duplicate_clusters` / `per_directory_summary` path strings are all cleared, and
+even fo-enum strings inside `specialist_metadata` (`codec`, `format`, `xref_type`)
+are over-suppressed. Use the **default** manifest when you need those values; use
+`--trusted-only` only for the guardrail-screen case where the output goes straight
+to a model. It is a projection, **not** a sanitizer — it never rewrites a value to
+make it "safe," it only drops the untrusted ones.
+
 ## It observes within bounds — null means "not seen here," not "not present"
 
 Observation is bounded by design:

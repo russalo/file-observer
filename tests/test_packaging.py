@@ -137,6 +137,11 @@ def test_contract_docs_version_references_current():
     # CONVENTIONS §1.1 current-version stamp must match the constant
     assert f"**Current:** `{SCANNER_VERSION}`" in conventions, \
         f"CONVENTIONS §1.1 SCANNER current stamp is stale (want {SCANNER_VERSION})"
+    # CONVENTIONS §1.6 Quick Reference table row must ALSO carry the current version
+    # (leg-4/CodeRabbit v1.40: §1.6 drifted to 1.39.0 while §1.1 was current — this row
+    # was unguarded; guard it so the two can't diverge again).
+    assert f"`SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | {SCANNER_VERSION} |" in conventions, \
+        f"CONVENTIONS §1.6 Quick Reference SCANNER row is stale (want {SCANNER_VERSION})"
 
 
 def test_canonical_top_level_api():
@@ -192,9 +197,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.39.0"
-    assert SCHEMA_VERSION == "1.22"  # v1.38.0 — additive: new provisional lexicon_match namespace + lexicon vector + lexicon_match safety_flag + lexicon_full_file trigger (bring-your-own-lexicon)
-    assert LOGIC_VERSION == "1.21.0"  # v1.38.0 — new baseline derivation (per-category term counts); manifest_checksum moves only for lexicon-supplied scans (the v1.30 gated-feature precedent)
+    assert SCANNER_VERSION == "1.40.0"
+    assert SCHEMA_VERSION == "1.22"  # v1.40.0 — SCHEMA unchanged: --trusted-only is a projection of existing observation (front-door); default manifest byte-identical
+    assert LOGIC_VERSION == "1.21.0"  # v1.40.0 — LOGIC unchanged: no new observation/routing; trust classification surfaces only through --schema + safe mode
 
 
 def test_legacy_scanner_import_warns():
