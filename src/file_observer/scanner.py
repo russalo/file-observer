@@ -961,10 +961,61 @@ def _project_file_record_trusted_only(fr: dict[str, Any]) -> dict[str, Any]:
 
 
 def _project_manifest_trusted_only(d: dict[str, Any]) -> dict[str, Any]:
-    """Project a whole manifest dict (from asdict) for --trusted-only: project every
-    file record and stamp the top-level `trusted_only: true` marker. Idempotent — a
-    re-projection nulls already-null fields to null and re-stamps the marker."""
+    """Project a whole manifest dict (from asdict) for --trusted-only so the ENTIRE
+    manifest — not just files[] — is safe to feed a model. Nulls every file-derived
+    (attacker-controllable) string wherever it rides in the manifest, keeping only
+    fo/operator-derived data (counts, hashes, enums, versions, dependency records),
+    and stamps the top-level `trusted_only: true` marker. Idempotent — a re-projection
+    re-nulls already-null values and re-stamps the marker.
+
+    files[] is projected per-record above. The manifest-LEVEL blocks that also echo
+    verbatim input bytes must be scrubbed here too (the v1.40.0 self-review caught the
+    original files[]-only projection leaking through them):
+      - meta.source_dir                          → null (a filesystem path)
+      - summary (the human prose)                → null (interpolates authors / capture
+                                                    devices / file paths)
+      - delta.{added,modified,unchanged,         → [] (lists of file paths)
+               removed,rescan_candidates}
+      - quality.duplicate_clusters[].paths       → [] (lists of file paths; the fo-derived
+                                                    checksum_sha256/size_bytes/count stay)
+      - quality.per_directory_summary[].directory → null (a subdirectory path; counts stay)
+      - vectors_collected[].summary              → {} (corpus rollups laced with author /
+                                                    producer / toolchain names as values AND
+                                                    file-extension dict-keys; per D4 fail-safe
+                                                    drop the whole payload, keep the vector's
+                                                    fo-derived envelope — id/digests/count)
+    Kept intact (no attacker free text): schema_version, context, stats, routing_summary,
+    manifest_checksum, manifest_signature, meta.{scan_id,generated_at,config}, and every
+    vector's id/method_version/rules_hash/tuning/dictionary/identity_digest/applied_to_count.
+    """
     d["files"] = [_project_file_record_trusted_only(fr) for fr in (d.get("files") or [])]
+
+    meta = d.get("meta")
+    if isinstance(meta, dict):
+        meta["source_dir"] = None
+
+    # The human-readable prose names authors, capture devices and paths verbatim.
+    d["summary"] = None
+
+    delta = d.get("delta")
+    if isinstance(delta, dict):
+        for key in ("added", "modified", "unchanged", "removed", "rescan_candidates"):
+            if isinstance(delta.get(key), list):
+                delta[key] = []
+
+    quality = d.get("quality")
+    if isinstance(quality, dict):
+        for cluster in quality.get("duplicate_clusters") or []:
+            if isinstance(cluster, dict) and isinstance(cluster.get("paths"), list):
+                cluster["paths"] = []
+        for entry in quality.get("per_directory_summary") or []:
+            if isinstance(entry, dict) and "directory" in entry:
+                entry["directory"] = None
+
+    for vector in d.get("vectors_collected") or []:
+        if isinstance(vector, dict):
+            vector["summary"] = {}
+
     d["trusted_only"] = True
     return d
 

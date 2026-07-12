@@ -233,6 +233,102 @@ def test_mcp_scan_file_trusted_only(planted_tree: Path):
     assert FM_CANARY not in t
 
 
+# --- 10. manifest-LEVEL leak falsification (the v1.40.0 post-commit self-review catch) ---
+# The first cut projected files[] ONLY; attacker strings still leaked through the
+# manifest-LEVEL blocks (a real file path survived via quality.duplicate_clusters on the
+# examples/ tree). These canaries surface ONLY at the manifest level — duplicate clusters,
+# per-directory summary, the scan-root path, the author vector summary + the summary prose,
+# and the delta path lists — so they are silent to the files[]-only projection.
+DUP_CANARY = "Zinjdupfile"        # duplicate-file name → quality.duplicate_clusters[].paths
+DIR_CANARY = "Zinjsubdir"         # subdirectory name  → quality.per_directory_summary[].directory
+SRC_CANARY = "Zinjsrcroot"        # scan-root dir name  → meta.source_dir
+AUTHOR_CANARY = "Zinjrtfauthor"   # RTF author → author_aggregate vector summary + summary prose
+DELTA_CANARY = "Zinjdeltafile"    # added-file name → delta.added
+ML_CANARIES = (DUP_CANARY, DIR_CANARY, SRC_CANARY, AUTHOR_CANARY)
+
+
+@pytest.fixture
+def manifest_level_tree(tmp_path: Path) -> Path:
+    """A canary-named scan root that TRIGGERS the manifest-level blocks: a subdir, two
+    identical-content files (a duplicate cluster), and an RTF with a canary author."""
+    root = tmp_path / SRC_CANARY
+    sub = root / f"{DIR_CANARY}_docs"
+    sub.mkdir(parents=True)
+    dup = "identical body for duplicate clustering\n"
+    (sub / f"{DUP_CANARY}_a.txt").write_text(dup, encoding="utf-8")
+    (sub / f"{DUP_CANARY}_b.txt").write_text(dup, encoding="utf-8")   # same checksum → cluster
+    (sub / "doc.rtf").write_text(
+        r"{\rtf1\ansi\deff0{\info{\author " + AUTHOR_CANARY + r"}{\title Doc}}\f0 Body text.}",
+        encoding="utf-8",
+    )
+    return root
+
+
+def test_manifest_level_canaries_present_in_normal(manifest_level_tree: Path):
+    """Non-vacuous guard: each manifest-level canary really surfaces in the NORMAL manifest
+    (otherwise the leak test below is meaningless). Fix the fixture, never this assertion."""
+    m = _scan(manifest_level_tree, trusted_only=False)
+    out = manifest_to_json(m)
+    for c in ML_CANARIES:
+        assert c in out, f"fixture did not surface manifest-level canary {c}"
+
+
+def test_no_manifest_level_canary_leaks_into_trusted_only(manifest_level_tree: Path):
+    """THE manifest-level falsification: no attacker string reaches --trusted-only through
+    ANY manifest-level block — duplicate_clusters paths, per_directory directory,
+    meta.source_dir, the author vector summary, or the summary prose."""
+    m = _scan(manifest_level_tree, trusted_only=True)
+    out = manifest_to_json(m, trusted_only=True)
+    for c in ML_CANARIES:
+        assert c not in out, f"{c} leaked into --trusted-only through a manifest-level block"
+
+
+def test_manifest_level_blocks_shape_stable_in_trusted_only(manifest_level_tree: Path):
+    """Scrubbed blocks keep their fo-derived scalars (shape-stable, D1) — only the
+    file-derived strings go null/empty; the vector envelope survives, its summary drops."""
+    m = _scan(manifest_level_tree, trusted_only=True)
+    doc = json.loads(manifest_to_json(m, trusted_only=True))
+    assert doc["meta"]["source_dir"] is None
+    assert doc["summary"] is None
+    clusters = doc["quality"]["duplicate_clusters"]
+    assert clusters, "expected a duplicate cluster in the fixture"
+    for c in clusters:
+        assert c["paths"] == []                                      # path list scrubbed
+        assert isinstance(c["count"], int) and c["count"] >= 2       # fo count kept
+        assert isinstance(c["checksum_sha256"], str) and len(c["checksum_sha256"]) == 64
+    for entry in doc["quality"]["per_directory_summary"]:
+        assert entry["directory"] is None                            # dir path scrubbed
+        assert isinstance(entry["total_files"], int)                 # counts kept
+    assert doc["vectors_collected"], "expected at least one vector (author_aggregate)"
+    for v in doc["vectors_collected"]:
+        assert v["summary"] == {}                                    # free-text payload dropped
+        assert isinstance(v["vector_id"], str)                       # envelope kept
+        assert isinstance(v["applied_to_count"], int)
+
+
+def test_no_delta_path_leaks_into_trusted_only(tmp_path: Path):
+    """delta.{added,modified,unchanged,removed,rescan_candidates} are file-path lists — a
+    canary-named added file must NOT reach --trusted-only, and the lists project to []."""
+    root = tmp_path / "deltaroot"
+    root.mkdir()
+    (root / "stable.txt").write_text("unchanged across scans\n", encoding="utf-8")
+    m1 = Scanner(root, ScannerConfig(enable_specialists=True)).scan()
+    prev = tmp_path / "prev.json"
+    prev.write_text(manifest_to_json(m1), encoding="utf-8")
+    (root / f"{DELTA_CANARY}.txt").write_text("brand new file\n", encoding="utf-8")
+    cfg = ScannerConfig(enable_specialists=True, previous_manifest=str(prev), trusted_only=True)
+    m2 = Scanner(root, cfg).scan()
+    out = manifest_to_json(m2, trusted_only=True)
+    doc = json.loads(out)
+    assert doc["delta"] is not None                                  # delta actually ran
+    for key in ("added", "modified", "unchanged", "removed", "rescan_candidates"):
+        assert doc["delta"][key] == [], f"delta.{key} path list not scrubbed"
+    assert DELTA_CANARY not in out
+    # non-vacuous: the added path IS present without --trusted-only
+    m3 = Scanner(root, ScannerConfig(enable_specialists=True, previous_manifest=str(prev))).scan()
+    assert DELTA_CANARY in manifest_to_json(m3)
+
+
 # --- 9. version axes -----------------------------------------------------------------
 def test_version_axes():
     assert SCANNER_VERSION == "1.40.0"
