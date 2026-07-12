@@ -35,6 +35,8 @@ are over-suppressed. Use the **default** manifest when you need those values; us
 to a model. It is a projection, **not** a sanitizer — it never rewrites a value to
 make it "safe," it only drops the untrusted ones.
 
+**The screening receipt records what fo saw, never what you did (v1.42, `--receipt`).** The `--receipt` projection emits a compact, tamper-evident audit record + a per-file `receipt_id` (the join key a downstream read/skip log references). fo makes its observation trivially correlatable with your decision, but it **does not — and will not — record the read/skip decision itself.** fo observes the file; the orchestrator owns what happens next. The receipt is an observation, not a verdict.
+
 ## It observes within bounds — null means "not seen here," not "not present"
 
 Observation is bounded by design:
