@@ -45,8 +45,8 @@ That's the human-readable summary. The full manifest is structured JSON — here
 
 ```json
 {
-  "schema_version": "1.22",
-  "context": { "scanner_version": "1.40.0", "logic_version": "1.21.0", "...": "…" },
+  "schema_version": "1.23",
+  "context": { "scanner_version": "1.41.0", "logic_version": "1.22.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -78,8 +78,8 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.40.0` |
-| **Schema** | `1.22` |
+| **Version** | `1.41.0` |
+| **Schema** | `1.23` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
 | **Tests** | 1000+ (run `pytest` for the exact count) + a 49,879-file / 13-tree shakedown — ran clean (zero fatal errors), see "Validated at scale" below |
@@ -372,7 +372,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.40.0 RFC Specification](docs/v1.40.0_RFC_Specification.md) | Current release spec — **Field trust classification + `--trusted-only` safe mode.** Every manifest field is classified `fo_derived` (trusted — counts, types, hashes, flags) vs `file_derived` (untrusted / attacker-controllable — filenames, `content_preview`, extracted metadata strings). `--schema` now annotates each field with its `trust`, and `--trusted-only` emits a projection that keeps only the trusted fields (nulling the attacker-controllable strings, adding a `path_id` correlation handle) — safe by construction to feed a model. A projection of existing observation: the default manifest is byte-identical, so `LOGIC_VERSION`/`SCHEMA_VERSION` are UNCHANGED (1.21.0 / 1.22; `schema_doc_version` bumps for the annotation). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.41.0 RFC Specification](docs/v1.41.0_RFC_Specification.md) | Current release spec — **Lexicon self-sweep over file-derived metadata.** The v1.38 lexicon scans a file's body; a risk term can hide in metadata the body scan never sees (a filename, an EXIF make/model, a PDF producer, an office application string). v1.41 reuses the same matcher over the file-derived metadata strings and reports a new provisional `lexicon_match.metadata` sub-block — kept separate from the body so a consumer sees *where*. The `lexicon_match` safety_flag now fires on a body or metadata hit. Dormant without a lexicon (existing manifests byte-identical); `LOGIC_VERSION` 1.21.0→1.22.0 (values move on lexicon scans only), SCHEMA 1.22→1.23 (additive, provisional). Phase 2 (detection) of the r/mcp consumption-safety plan. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.40.0 RFC Specification](docs/v1.40.0_RFC_Specification.md) | Prior release spec — **Field trust classification + `--trusted-only` safe mode.** Every manifest field is classified `fo_derived` (trusted — counts, types, hashes, flags) vs `file_derived` (untrusted / attacker-controllable — filenames, `content_preview`, extracted metadata strings). `--schema` now annotates each field with its `trust`, and `--trusted-only` emits a projection that keeps only the trusted fields (nulling the attacker-controllable strings, adding a `path_id` correlation handle) — safe by construction to feed a model. A projection of existing observation: the default manifest is byte-identical, so `LOGIC_VERSION`/`SCHEMA_VERSION` are UNCHANGED (1.21.0 / 1.22; `schema_doc_version` bumps for the annotation). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.39.0 RFC Specification](docs/v1.39.0_RFC_Specification.md) | Prior release spec — **MCP front-door: lexicon + delta.** The v1.37 MCP server predated v1.38 lexicon, so the agent front-door couldn’t run the guardrail pre-screen. v1.39 threads the lexicon (server-startup `--lexicon` flag — terms never cross the MCP wire) + delta scanning (`previous_manifest_path` tool param) through the existing tools. Front-door: manifest byte-identical to a CLI scan with the same settings, so `LOGIC_VERSION`/`SCHEMA_VERSION` are UNCHANGED (1.21.0 / 1.22). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.38.0 RFC Specification](docs/v1.38.0_RFC_Specification.md) | Prior release spec — **Bring-your-own-lexicon term observer.** When a consumer supplies a category-tagged lexicon (`--lexicon` / `ScannerConfig(lexicon=…)`), fo counts each category's terms (word-boundary, literal) in every text file over a full-file bounded read and reports per-category counts + density — an **observation, never a verdict** (the consumer thresholds) — plus a `lexicon_match` safety_flag on any hit. Values-neutral engine: the terms are consumer-private runtime config, **never echoed into the manifest** (only counts + a content-hash `dictionary_id`). Dormant when no lexicon is supplied (existing manifests byte-identical). New provisional `lexicon_match` namespace + `lexicon` vector. `LOGIC_VERSION` 1.20.0→1.21.0 (moves only for lexicon-supplied scans); SCHEMA 1.21→1.22 (additive). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.37.0 RFC Specification](docs/v1.37.0_RFC_Specification.md) | Prior release spec — **MCP server (agent-native front-door).** A new `file-observer-mcp` stdio server + `[mcp]` extra exposes fo's existing manifest/summary/schema through the Model Context Protocol — read-only, deterministic, 4 tools with progressive disclosure (`scan_summary`/`scan_file`/`scan_directory`/`describe_surface`). A safe "look before you touch" primitive for agents facing untrusted files. A NEW SURFACE: the manifest is checksum-identical to `scan()`, so `LOGIC_VERSION`/`SCHEMA_VERSION` are UNCHANGED (the v1.26 `scan()` / v1.28 `--stdout` front-door precedent). v1.0.0 RFC remains the binding schema-freeze contract. |

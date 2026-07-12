@@ -251,5 +251,6 @@ class TestVersioning:
     def test_axes(self):
         # >= so later releases don't break this (v1.38 introduced these; LOGIC/SCHEMA held since)
         assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 38, 0)
-        assert LOGIC_VERSION == "1.21.0"     # new baseline derivation (values move on lexicon-supplied scans)
-        assert SCHEMA_VERSION == "1.22"      # additive: namespace + vector + safety_flag + trigger
+        # >= floors (v1.38 established these; v1.41 legitimately bumped past them — see HISTORY)
+        assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 21, 0)   # new baseline derivation
+        assert tuple(int(p) for p in SCHEMA_VERSION.split(".")) >= (1, 22)      # additive: namespace + vector + flag + trigger

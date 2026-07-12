@@ -432,6 +432,8 @@ def test_mcp_guard_trusted_only_no_path_leak(manifest_level_tree: Path):
 
 # --- 9. version axes -----------------------------------------------------------------
 def test_version_axes():
-    assert SCANNER_VERSION == "1.40.0"
-    assert LOGIC_VERSION == "1.21.0"   # projection = front-door, LOGIC frozen
-    assert SCHEMA_VERSION == "1.22"    # manifest contract frozen
+    # >= floors (v1.40 froze LOGIC/SCHEMA as a front-door; v1.41 legitimately bumped past — see HISTORY)
+    _v = lambda s: tuple(int(p) for p in s.split("."))
+    assert _v(SCANNER_VERSION) >= (1, 40, 0)
+    assert _v(LOGIC_VERSION) >= (1, 21, 0)   # projection = front-door, LOGIC frozen at v1.40
+    assert _v(SCHEMA_VERSION) >= (1, 22)     # manifest contract frozen at v1.40
