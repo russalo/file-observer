@@ -13,6 +13,7 @@ from .scanner import (
     scan,
     scan_to_json,
     manifest_to_json,
+    manifest_to_receipt,
     manifest_to_jsonl,
     manifest_to_markdown,
 )
@@ -27,6 +28,7 @@ __all__ = [
     "scan",
     "scan_to_json",
     "manifest_to_json",
+    "manifest_to_receipt",
     "manifest_to_jsonl",
     "manifest_to_markdown",
     "__version__",

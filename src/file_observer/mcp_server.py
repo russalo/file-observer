@@ -33,6 +33,9 @@ from file_observer.scanner import (
     ScannerConfig,
     SCANNER_VERSION,
     manifest_to_json,
+    manifest_to_receipt,
+    _file_receipt,
+    RECEIPT_DOC_VERSION,
     build_schema_document,
     schema_to_markdown,
     parse_lexicon,
@@ -193,7 +196,7 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
 
 
 @mcp.tool()
-def scan_file(path: str, specialists: bool = True, trusted_only: bool = False) -> str:
+def scan_file(path: str, specialists: bool = True, trusted_only: bool = False, receipt: bool = False) -> str:
     """The full observation record for ONE file: identity, content-detected MIME (+ whether it
     matches the extension), routing flags, safety flags, per-field signal provenance, and — with
     specialists — format-specific metadata. Read-only, deterministic. Use after `scan_summary`
@@ -219,6 +222,19 @@ def scan_file(path: str, specialists: bool = True, trusted_only: bool = False) -
             if r.path == fp.name:
                 d = asdict(r)
                 d["path"] = str(fp)   # the caller's real path, not the temp basename
+                if receipt:
+                    # v1.42: the screening receipt for this one file (audit record + bridge id).
+                    # Its own projection (safe / fo-derived), so it takes precedence over trusted_only.
+                    return json.dumps({
+                        "receipt_doc_version": RECEIPT_DOC_VERSION,
+                        "scanner_version": m.context.scanner_version,
+                        "logic_version": m.context.logic_version,
+                        "schema_version": m.schema_version,
+                        "manifest_checksum": m.manifest_checksum,
+                        "scan_id": m.meta.scan_id,
+                        "generated_at": m.meta.generated_at,
+                        "receipts": [_file_receipt(d, m.manifest_checksum)],
+                    }, indent=2, ensure_ascii=False, default=str)
                 if eff:
                     # project AFTER stamping the real path so path_id = sha256(real path); the
                     # projection then nulls path/filename and drops every file-derived string.
@@ -229,7 +245,8 @@ def scan_file(path: str, specialists: bool = True, trusted_only: bool = False) -
 
 @mcp.tool()
 def scan_directory(path: str, specialists: bool = False, max_files: int = 200,
-                   previous_manifest_path: str | None = None, trusted_only: bool = False) -> str:
+                   previous_manifest_path: str | None = None, trusted_only: bool = False,
+                   receipt: bool = False) -> str:
     """The FULL manifest JSON for a directory — every FileRecord. GUARDED: if the tree has more than
     `max_files` files it is refused BEFORE scanning (returns a note) — both to avoid overflowing the
     context AND to bound the work (a huge tree isn't read/hashed) — narrow the path or raise max_files.
@@ -254,7 +271,10 @@ def scan_directory(path: str, specialists: bool = False, max_files: int = 200,
             "hint": "narrow the path, call scan_summary for an overview, or raise max_files",
             **({"trusted_only": True} if eff else {}),
         }, indent=2, ensure_ascii=False)
-    return manifest_to_json(_scan(d, specialists, previous_manifest=prev), trusted_only=eff)
+    m = _scan(d, specialists, previous_manifest=prev)
+    if receipt:   # v1.42: the compact screening-receipt projection (takes precedence over trusted_only)
+        return manifest_to_receipt(m)
+    return manifest_to_json(m, trusted_only=eff)
 
 
 @mcp.tool()
