@@ -168,13 +168,15 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
     if m.delta is not None:
         notable["delta"] = {k: len(getattr(m.delta, k)) for k in
                             ("added", "modified", "removed", "unchanged", "rescan_candidates")}
-    # v1.40: in trusted-only, drop the human `summary` prose — it can name file-derived
-    # strings (top authors, capture make/model). `notable` is all counts + fo-enum flag
-    # names + consumer-config category names → safe. The echoed `path` is the agent's own
-    # input, not attacker file content.
+    # v1.40: in trusted-only, emit ONLY fo-derived signal. Drop the human `summary` prose
+    # (it names authors / capture make+model) AND null `path` — a directory-path string,
+    # nulled for consistency with meta.source_dir in the full-manifest projection so safe
+    # mode is uniformly free of file-derived path strings (even though `path` is the agent's
+    # own input). `notable`/`stats` are all counts + fo-enum flag names + consumer-config
+    # category names → fo/operator-derived, kept.
     eff = _eff_trusted_only(trusted_only)
     out = {
-        "path": str(d),
+        "path": None if eff else str(d),
         "scanner_version": SCANNER_VERSION,
         "summary": None if eff else m.summary,
         "stats": asdict(m.stats),

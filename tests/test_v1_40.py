@@ -233,6 +233,23 @@ def test_mcp_scan_file_trusted_only(planted_tree: Path):
     assert FM_CANARY not in t
 
 
+def test_mcp_scan_summary_trusted_only_nulls_path_and_summary(planted_tree: Path):
+    """scan_summary builds a custom dict (not via the manifest projection); in trusted-only
+    it must still null the directory `path` (consistency with meta.source_dir) and the
+    `summary` prose, keeping only counts + fo/operator-derived signal."""
+    mcp = pytest.importorskip("file_observer.mcp_server")
+    out = json.loads(mcp.scan_summary(str(planted_tree), specialists=True, trusted_only=True))
+    assert out["trusted_only"] is True
+    assert out["path"] is None            # directory-path string nulled
+    assert out["summary"] is None         # prose dropped
+    assert isinstance(out["stats"], dict) and isinstance(out["notable"], dict)  # counts kept
+    for c in ALL_CANARIES:
+        assert c not in json.dumps(out), f"{c} leaked via MCP scan_summary --trusted-only"
+    # non-vacuous: without trusted_only the directory path IS echoed
+    normal = json.loads(mcp.scan_summary(str(planted_tree), specialists=True))
+    assert normal["path"] == str(planted_tree)
+
+
 # --- 10. manifest-LEVEL leak falsification (the v1.40.0 post-commit self-review catch) ---
 # The first cut projected files[] ONLY; attacker strings still leaked through the
 # manifest-LEVEL blocks (a real file path survived via quality.duplicate_clusters on the
