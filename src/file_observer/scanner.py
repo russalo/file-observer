@@ -408,6 +408,7 @@ PROVENANCE_TRIGGERS: dict[str, dict[str, str]] = {
     "ai_session_full_file":      {"layer": "derived", "method": "_extract_ai_session", "description": "ai_session usage sums + producer-schema fingerprint extracted via a full-file bounded-deviation read (session logs exceed the baseline window; reason=ai_session_full_file_required)"},
     "lexicon_full_file":         {"layer": "derived", "method": "_lexicon_scan", "description": "consumer-lexicon per-category term counts + density extracted via a full-file bounded-deviation read (a risk term can sit anywhere in a long log; v1.38, 64 MiB cap)"},
     "lexicon_metadata_sweep":    {"layer": "derived", "method": "_lexicon_scan", "description": "consumer-lexicon per-category term counts + density over the file-derived metadata strings (filename/tags/frontmatter/structural/specialist_metadata string leaves, minus content_preview and the lexicon_match namespace; v1.41, bounded by LEXICON_METADATA_MAX_CHARS) — catches a term hiding in metadata the body scan never sees"},
+    "lexicon_no_body":           {"layer": "derived", "method": "_lexicon_scan", "description": "the lexicon_match body counts are a synthesized zero (v1.41): a binary/never-body-scanned file with a metadata hit gets the namespace created with a zero body block; only the metadata sweep ran"},
     # baseline text eligibility
     "text_eligible":            {"layer": "derived", "method": "_extract_reference_tokens", "description": "file routed into the baseline text-analysis tier"},
     # structural extraction
@@ -2764,9 +2765,15 @@ class Scanner:
             _lxm = (rec.specialist_metadata or {}).get(LEXICON_NAMESPACE)
             if _lxm is not None:
                 self._lexicon_applied_count += 1
-                if _lxm.get("total_hits", 0) >= 1:
+                _lxmd = _lxm.get("metadata") or {}
+                # v1.41 (leg-4/Codex): a file counts as matched, and its category counts aggregate,
+                # on a BODY or a METADATA hit — else the corpus vector misses exactly the
+                # metadata-only matches v1.41 adds.
+                if _lxm.get("total_hits", 0) >= 1 or _lxmd.get("total_hits", 0) >= 1:
                     self._lexicon_files_matched += 1
                 for cat, d in _lxm.get("categories", {}).items():
+                    self._lexicon_category_sums[cat] = self._lexicon_category_sums.get(cat, 0) + d.get("count", 0)
+                for cat, d in _lxmd.get("categories", {}).items():
                     self._lexicon_category_sums[cat] = self._lexicon_category_sums.get(cat, 0) + d.get("count", 0)
 
         # Register file-scoped vectors from accumulated state
@@ -4558,6 +4565,17 @@ class Scanner:
                     "total_tokens": zero_body["total_tokens"],
                 }
                 specialist_metadata[LEXICON_NAMESPACE] = lex_ns
+                # v1.41 (leg-4/Codex): the synthesized zero body block needs an audit trail — a
+                # text file gets `lexicon_full_file` provenance from the body scan, but a binary
+                # file's body was never scanned, so record that these body counts are a synthesized zero.
+                provenance[f"specialist_metadata.{LEXICON_NAMESPACE}"] = asdict(ProvenanceEntry(
+                    layer="derived", method="_lexicon_scan", trigger="lexicon_no_body",
+                    detail={"tool": LEXICON_TOOL,
+                            "lexicon_id": self._lexicon["lexicon_id"],
+                            "dictionary_id": self._lexicon_dictionary_id,
+                            "reason": "no body text scanned (binary / never-body-scanned file); "
+                                      "body counts are a synthesized zero, only the metadata sweep ran"},
+                ))
             lex_ns["metadata"] = {
                 "categories": md_result["categories"],
                 "total_hits": md_result["total_hits"],
@@ -7774,15 +7792,19 @@ class Scanner:
                 # speaker labels) arrive as LIST values elsewhere (structural.keys, chatlog.speaker_labels).
                 for x in v.values():
                     collect(x)
+            elif hasattr(v, "__dataclass_fields__"):
+                # Recurse dataclass FIELD VALUES directly via getattr — no `asdict()` deep-copy per
+                # file (leg-4/gemini: asdict churns CPU + allocates on 50k-file trees). Field NAMES
+                # are fo schema, so they're skipped (same values-only discipline as the dict branch).
+                for _fname in v.__dataclass_fields__:
+                    collect(getattr(v, _fname))
 
         out.append(filename)
         collect(tags)
-        # frontmatter/structural are dataclasses → convert to plain dicts so `collect` recurses their
-        # string leaves + keys, exactly as the measure-first collector did over the asdict'd record.
         if frontmatter is not None:
-            collect(asdict(frontmatter))
+            collect(frontmatter)
         if structural is not None:
-            collect(asdict(structural))
+            collect(structural)
         if specialist_metadata:
             for ns, val in specialist_metadata.items():
                 if ns == LEXICON_NAMESPACE:   # fo-generated (body counts), not attacker metadata

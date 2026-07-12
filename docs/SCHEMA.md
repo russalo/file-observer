@@ -277,6 +277,7 @@
 | `known_binary_mime` | derived | `detect_binary` | binary: a known-binary MIME type |
 | `lexicon_full_file` | derived | `_lexicon_scan` | consumer-lexicon per-category term counts + density extracted via a full-file bounded-deviation read (a risk term can sit anywhere in a long log; v1.38, 64 MiB cap) |
 | `lexicon_metadata_sweep` | derived | `_lexicon_scan` | consumer-lexicon per-category term counts + density over the file-derived metadata strings (filename/tags/frontmatter/structural/specialist_metadata string leaves, minus content_preview and the lexicon_match namespace; v1.41, bounded by LEXICON_METADATA_MAX_CHARS) — catches a term hiding in metadata the body scan never sees |
+| `lexicon_no_body` | derived | `_lexicon_scan` | the lexicon_match body counts are a synthesized zero (v1.41): a binary/never-body-scanned file with a metadata hit gets the namespace created with a zero body block; only the metadata sweep ran |
 | `libmagic` | raw | `detect_mime` | MIME from libmagic (primary tier) |
 | `magic_signature_fallback` | derived | `detect_mime` | MIME from the pure-Python magic-signature sniff (libmagic absent/null) |
 | `markdown_h1` | derived | `extract_md_title` | title from a Markdown H1 |

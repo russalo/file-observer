@@ -151,6 +151,29 @@ def test_determinism_across_workers(tree: Path):
     assert compute_manifest_checksum(_scan(tree, workers=1)) == compute_manifest_checksum(_scan(tree, workers=2))
 
 
+# --- leg-4 PR-bot findings -------------------------------------------------------------
+def test_vector_aggregates_metadata_hits(tree: Path):
+    """leg-4/Codex: the corpus `lexicon` vector must count metadata-only matches, not just body —
+    else a consumer reading the vector summary misses exactly what v1.41 adds."""
+    m = _scan(tree)
+    lexvec = next(v for v in m.vectors_collected if v["vector_id"] == "lexicon")
+    s = lexvec["summary"]
+    # banana_notes.md (filename fruit, metadata-only) + cherry_pic.png (filename fruit) both count
+    assert s["files_matched"] >= 2
+    assert s["category_hits"].get("fruit", 0) >= 2          # metadata fruit hits aggregated in
+
+
+def test_binary_zero_body_has_provenance(tree: Path):
+    """leg-4/Codex: a binary file's synthesized zero body block needs an audit trail (a text file
+    gets it from the body scan; a binary file's body was never scanned)."""
+    m = _scan(tree)
+    png = next(f for f in m.files if f.filename == "cherry_pic.png")
+    prov = png.signal_provenance or {}
+    assert "specialist_metadata.lexicon_match" in prov, "synthesized zero body needs provenance"
+    assert prov["specialist_metadata.lexicon_match"]["trigger"] == "lexicon_no_body"
+    assert "specialist_metadata.lexicon_match.metadata" in prov   # the metadata sweep provenance too
+
+
 # --- 7. version axes ------------------------------------------------------------------
 def test_version_axes():
     assert SCANNER_VERSION == "1.41.0"
