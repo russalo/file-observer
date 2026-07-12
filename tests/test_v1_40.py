@@ -400,6 +400,22 @@ def test_projected_checksum_consistent_when_projected_at_serialize(manifest_leve
     assert jheader["manifest_checksum"] == compute_manifest_checksum(m, trusted_only=True)
 
 
+def test_trusted_only_serialization_does_not_mutate_manifest(manifest_level_tree: Path):
+    """CodeRabbit re-review: the JSONL header aliased manifest.vectors_collected and scrubbed
+    summaries in place, MUTATING the source manifest → a later default serialization lost its
+    vector summaries. Projecting for safe mode must leave the manifest untouched."""
+    m = _scan(manifest_level_tree, trusted_only=False)
+    default_json_before = manifest_to_json(m)
+    default_jsonl_before = manifest_to_jsonl(m)
+    assert any(v.get("summary") for v in m.vectors_collected), "fixture needs a non-empty vector summary"
+    # project both formats (the mutation risk) — then the manifest must be unchanged
+    _ = manifest_to_jsonl(m, trusted_only=True)
+    _ = manifest_to_json(m, trusted_only=True)
+    assert manifest_to_json(m) == default_json_before, "manifest_to_json mutated the manifest"
+    assert manifest_to_jsonl(m) == default_jsonl_before, "manifest_to_jsonl mutated the manifest"
+    assert any(v.get("summary") for v in m.vectors_collected), "vector summaries were wiped in place"
+
+
 def test_mcp_guard_trusted_only_no_path_leak(manifest_level_tree: Path):
     """Codex P2: the MCP max_files guard fires BEFORE the scan and returned the resolved
     directory path in its message — in trusted-only that re-exposes a file-derived path."""

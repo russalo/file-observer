@@ -29,6 +29,7 @@ from fnmatch import fnmatch
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Iterable
+import copy
 import json
 import mimetypes
 import os
@@ -8656,6 +8657,11 @@ def manifest_to_jsonl(manifest: ScanManifest, trusted_only: bool = False) -> str
         # header carries meta.source_dir / summary / duplicate_clusters paths / delta /
         # vector summaries — file-derived, must be scrubbed too, not just per-record) +
         # the projected checksum (P2), then mark the stream.
+        # meta/quality/delta are already asdict() COPIES above, but vectors_collected is a
+        # direct alias of manifest.vectors_collected (a list of dicts) — deep-copy it first
+        # so scrubbing summaries in place does NOT mutate the source manifest (CodeRabbit:
+        # else a later default serialization of the same manifest loses its vector summaries).
+        header["vectors_collected"] = copy.deepcopy(manifest.vectors_collected)
         _scrub_manifest_level_trusted_only(header)
         proj = compute_manifest_checksum(manifest, trusted_only=True)
         if proj != manifest.manifest_checksum:
