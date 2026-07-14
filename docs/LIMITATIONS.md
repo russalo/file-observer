@@ -79,6 +79,16 @@ best-effort basis within their budget. File Observer does not guarantee:
 When a specialist cannot extract a field within bounds, the field is null and
 (where relevant) a non-fatal error is recorded; the scan continues.
 
+**Known extraction-fidelity gap — OOXML `_xHHHH_` escaping.** ISO/IEC 29500 encodes
+XML-invalid control characters inside string property values (e.g. `docProps` `application`,
+core `title`/`creator`) as `_xHHHH_` (the four-hex-digit code point). File Observer reads these
+values verbatim and does **not** un-escape them, so a value that contained such a character
+surfaces with the literal `_x000D_`-style token rather than the original character. A spec-audit
+against Microsoft Learn (2026-07-14) measured this at **0 of 52 real OOXML files** — application
+names and real titles are clean text, so it effectively never occurs. Recorded as a known
+boundary rather than fixed (fixing a zero-occurrence gap would be over-engineering); revisit only
+if a real corpus surfaces it.
+
 ### Specialist maturity tiers
 
 Not all specialists are equally reliable — some read a deterministic binary
