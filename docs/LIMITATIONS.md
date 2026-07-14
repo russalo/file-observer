@@ -35,13 +35,18 @@ emits a projection that keeps only fo-derived signal and nulls every file-derive
 (attacker-controllable) string across the whole manifest. It is **fail-safe**:
 when a field's trust is uncertain it is dropped, so it deliberately withholds more
 than the strict minimum — the human `summary` prose, the `vectors_collected[]`
-summary payloads (author/provenance/lexicon corpus rollups), and the `delta` /
+summary payloads (author/provenance corpus rollups), and the `delta` /
 `duplicate_clusters` / `per_directory_summary` path strings are all cleared, and
 even fo-enum strings inside `specialist_metadata` (`codec`, `format`, `xref_type`)
 are over-suppressed. Use the **default** manifest when you need those values; use
 `--trusted-only` only for the guardrail-screen case where the output goes straight
 to a model. It is a projection, **not** a sanitizer — it never rewrites a value to
-make it "safe," it only drops the untrusted ones.
+make it "safe," it only drops the untrusted ones. **One deliberate exception
+(v1.44):** the lexicon per-category breakdown (`lexicon_match.categories` + the
+corpus `lexicon` vector `category_hits`) **is preserved** in safe mode — it's counts
+keyed by *consumer-config* category names (never bytes from a scanned file), so a
+consumer can route *by category* on the model-safe manifest. The relaxation is scoped
+to the `lexicon_match` namespace only; every other namespace's dynamic keys still drop.
 
 **The screening receipt records what fo saw, never what you did (v1.42, `--receipt`).** The `--receipt` projection emits a compact, tamper-evident audit record + a per-file `receipt_id` (the join key a downstream read/skip log references). fo makes its observation trivially correlatable with your decision, but it **does not — and will not — record the read/skip decision itself.** fo observes the file; the orchestrator owns what happens next. The receipt is an observation, not a verdict.
 
