@@ -263,7 +263,8 @@ Introduced v1.40. Every manifest field is classified by whether it can carry
   fields AND the manifest-level blocks: **nulling** `meta.source_dir`, the human `summary`,
   and `quality.per_directory_summary[].directory`; **emptying to `[]`** the `delta` path lists
   and `quality.duplicate_clusters[].paths`; and **emptying to `{}`** `vectors_collected[].summary`
-  (so a consumer must handle `[]`/`{}`, not only `null`) — in both JSON and JSONL; (b) adds a per-file **`path_id`**
+  (so a consumer must handle `[]`/`{}`, not only `null`) — **except the `lexicon` vector summary, kept
+  since v1.44** (§1.13.1) — in both JSON and JSONL; (b) adds a per-file **`path_id`**
   = `sha256(<relative-posix path>)` (a fo-derived correlation handle carrying no free text)
   and a top-level **`trusted_only: true`** marker; and (c) recomputes `manifest_checksum`
   over the projected content, so the safe-mode output is self-verifiable.
@@ -279,10 +280,25 @@ Introduced v1.40. Every manifest field is classified by whether it can carry
   non-nullable there, and `path_id` is not present). A projection-aware or separate
   trusted-only schema is a planned follow-up.
 - It over-suppresses by design (fail-safe): it also drops fo-derived but free-text-*shaped*
-  values it can't prove safe (the human `summary`, corpus vector summaries, enum strings
-  inside `specialist_metadata`). Use the default manifest when you need those.
+  values it can't prove safe (the human `summary`, corpus vector summaries — **except the
+  `lexicon` vector, see §1.13.1** — enum strings inside `specialist_metadata`). Use the default
+  manifest when you need those.
 
 Committed 2026-07-12 (v1.40.0).
+
+#### 1.13.1 Lexicon exception (v1.44)
+
+The one deliberate exception to the blanket vector-summary / `specialist_metadata`-key scrub: the
+**lexicon per-category breakdown survives `--trusted-only`** — the per-file
+`specialist_metadata.lexicon_match.categories` (category names + `{count, density}`) and `lexicon_id`,
+and the corpus `lexicon` vector `summary` (`lexicon_id` / `files_matched` / `category_hits`). These are
+counts (`fo_derived`) keyed by category names / a `lexicon_id` that are **`consumer_config`** — a third
+trust class: a string that originates from the consumer's own runtime configuration (the supplied
+lexicon), **never from a scanned file**. So a safe-mode consumer can route *by category* on a
+model-safe manifest. The relaxation is scoped to the `lexicon_match` namespace and the `lexicon` vector
+**only** — every other namespace's dynamic keys and every other vector summary are still scrubbed, and
+any non-enumerated `lexicon_match` leaf still falls through to the generic nulling projector. Committed
+2026-07-14 (v1.44.0, #146).
 
 ---
 
