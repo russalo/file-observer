@@ -5,10 +5,10 @@ Observation layer for document pipelines. Recursively discovers files,
 extracts metadata and signals, emits a deterministic JSON manifest.
 
     Package:    file_observer
-    Version:    1.42.0
+    Version:    1.43.0
     Schema:     1.23
     Python:     >= 3.12
-    Spec:       docs/v1.42.0_RFC_Specification.md (current)
+    Spec:       docs/v1.43.0_RFC_Specification.md (current)
     Repository: https://github.com/russalo/file-observer
 
 Design pillars:
@@ -94,7 +94,7 @@ except ImportError:
 # output location (cwd/<this>) AND skipped during discovery (iter_files) so a re-scan of the
 # cwd never observes its own prior manifest/report — the leg-1 self-inclusion catch.
 DEFAULT_OUTPUT_DIRNAME = "file-observer-manifests"
-SCANNER_VERSION = "1.42.0"   # v1.42.0 — screening receipt + bridge id (`--receipt`, #133 Phase 3): a compact audit-record PROJECTION of the built manifest (envelope: versions/manifest_checksum/signature/scan_id/dictionary_id + a per-file receipt: receipt_id/path_id/checksum/size/mime/safety_flags/lexicon-hit-summary). The `receipt_id` is a tamper-evident sha256 over a length-prefixed preimage of (manifest_checksum + rel_path + file-hash) — the explicit join key a downstream read/skip log references (blah_mad's bridge). A projection runs AFTER manifest_checksum exists (no circularity) → LOGIC/SCHEMA FROZEN (1.22.0/1.23), default manifest byte-identical (the v1.26/v1.28/v1.37/v1.40 front-door precedent); new `receipt_doc_version` versions the envelope. Safe by construction (no raw path — path_id correlates). fo NEVER records the read/skip decision (the charter boundary). Prior 1.41.0 — lexicon self-sweep over file-derived metadata (#136 detection half, Phase 2 of the r/mcp consumption-safety plan). The v1.38 lexicon counts terms in a file's BODY text; a risk term can hide where the body scan structurally never looks — a filename, an EXIF make/model, a PDF producer/title/author, an office application string. v1.41 reuses the pure `_lexicon_scan` matcher over the COLLECTED file-derived metadata strings (filename [not the full path] + tags + frontmatter + structural + the string leaves in specialist_metadata, minus the fo-generated lexicon_match namespace; content_preview EXCLUDED — body-covered) and reports the result in a new provisional `lexicon_match.metadata` sub-block ({categories:{cat:{count,density}}, total_hits, total_tokens}). Binary files (images/PDFs/office) get NO body scan but DO have metadata hits, so the sweep CREATES the lexicon_match namespace (with a zero body block) when it isn't already present, keeping the body+metadata shape consistent. The existing `lexicon_match` safety_flag now fires on a body OR metadata hit (a hit is a hit; presence, not verdict). Metadata text capped at LEXICON_METADATA_MAX_CHARS (a hostile PDF could carry a huge producer). Dormant without a lexicon → existing manifests byte-identical (the v1.38/v1.30 gated pattern). Measure-first (307 real files, benign lexicon): 19% metadata-ONLY hits — the coverage gap this fills. LOGIC 1.21.0→1.22.0 (values-move only on lexicon scans), SCHEMA 1.22→1.23 (additive provisional field), lexicon method_version 1→2. Prior 1.40.0 — field trust classification + `--trusted-only` safe-mode projection + `--schema` trust annotation (#136). A first-class FIELD_TRUST registry tags every emitted field fo_derived (trusted — numbers/booleans/hashes/enums/flags, can't carry a text payload) vs file_derived (untrusted — verbatim free-text bytes from the input: path/filename/content_preview/tags/frontmatter/metadata strings, which an attacker controls and which ride into a downstream model). `--trusted-only` emits a PROJECTION that nulls the file_derived fields + adds a top-level `trusted_only: true` marker and a fo-derived `path_id = sha256(rel-posix path)` correlation handle — safe by construction for the guardrail-screen use case (the model only ever sees fo-generated signal). A projection, no new observation, no sanitization → the DEFAULT manifest is byte-identical, LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 front-door precedent); `schema_doc_version` bumps for the `--schema` trust annotation. Prior 1.39.0 — MCP front-door gains lexicon + delta: the v1.37 MCP server predated v1.38 lexicon, so the agent front-door couldn't run the guardrail pre-screen. v1.39 threads the v1.38 lexicon (server-startup `--lexicon` flag — terms never cross the MCP wire) + delta scanning (`previous_manifest_path` tool param) through the existing 4 tools. A front-door: manifest byte-identical to a CLI scan with the same settings → LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 precedent). Prior 1.38.1 (#126, patch, HISTORY-only) — add a `--version`/`-V` CLI flag (prints `file-observer X.Y.Z`, exit 0); un-breaks downstream version probing (recall doctor read the usage banner → false "below floor"). Runtime-only output, manifest UNCHANGED (the --workers/--watch precedent) → LOGIC/SCHEMA frozen. Prior 1.38.0 — bring-your-own-lexicon term observer: fo counts a CONSUMER-SUPPLIED, category-tagged lexicon's terms in a file's text and reports per-category counts + density (an OBSERVATION, never a verdict — the consumer thresholds). Values-neutral engine (built/tested with benign placeholder terms only); the sensitive lexicon is runtime config, never committed, never echoed into the manifest (only counts + category names + a content-hash dictionary_id). Motivated by knowing a file is a guardrail-trip risk BEFORE handing it to an AI (fo is not an AI → safe to read what an LLM couldn't). Word-boundary token(-sequence) match (measure-first: substring over-counts 9.4x on benign terms); full-file bounded read (64 MiB; a risk term can sit anywhere in a long log); gated on a lexicon → dormant otherwise (byte-identical). New provisional `lexicon_match` specialist namespace + `lexicon_match` safety_flag + `lexicon` vector (dictionary_id = sha256 of lexicon_id+sorted terms → dual-falsification). Prior 1.37.0 = MCP server (agent-native front-door).
+SCANNER_VERSION = "1.43.0"   # v1.43.0 — lexicon source loader (distribution format + composition): the bring-your-own-lexicon observer (v1.38/v1.41) loaded exactly ONE flat JSON file; v1.43 lets a consumer SOURCE a lexicon the way risk/blocklist term lists are actually distributed (uBlock/EasyList/hosts). Two accepted formats normalize to the SAME internal {lexicon_id, categories:{cat:[terms]}}: JSON (canonical, extended with OPTIONAL load-time-only header keys version/source/license/description) + an EasyList-style TEXT format (`! Title:`/`! Version:` header, `[category]` sections, one-term-per-line, `!`/`#` comments; literal terms only → ReDoS-safe). Composition: repeatable `--lexicon` flags (union + dedup, ORDER-INDEPENDENT) + a `--lexicon-index` subscription file (JSON {sources:[...]} or a text path list, members resolved relative to the index dir); `--lexicon-id` overrides the composed id. `!#include` deferred (traversal/cycle surface). Source PROVENANCE stays load-time-only (stderr summary) and NEVER enters the manifest — a list's title can itself signal intent, so only the composed lexicon_id + dictionary_id cross, exactly as v1.38–v1.42. dictionary_id stays CONTENT-anchored (a version bump with an identical term set → the same id; a term change moves it); a declared header `count` that disagrees with the parsed total → a stderr WARNING, never a failure; `expires` never enforced (no clock behavior — determinism). fo composes LOCAL files; it never fetches (the offline-deterministic charter — distribution's fetch/update half stays a subscription tool's job). A LOADER upgrade: the resolved lexicon + dictionary_id are behavior-identical for an equivalent term set → a scan resolving to the same terms is byte-identical with the same dictionary_id; the existing single flat JSON loads identically → LOGIC/SCHEMA FROZEN (1.22.0/1.23), SCANNER 1.42.0→1.43.0 (the v1.26/v1.39 loader-ergonomics/front-door precedent). The new text/index parsers earn the v1.8.1 bounded/never-crash/values-neutral bar (LEXICON_MAX_SOURCES/MAX_LINE_LEN caps, strict UTF-8, fail-loud). Prior 1.42.0 — screening receipt + bridge id (`--receipt`, #133 Phase 3): a compact audit-record PROJECTION of the built manifest (envelope: versions/manifest_checksum/signature/scan_id/dictionary_id + a per-file receipt: receipt_id/path_id/checksum/size/mime/safety_flags/lexicon-hit-summary). The `receipt_id` is a tamper-evident sha256 over a length-prefixed preimage of (manifest_checksum + rel_path + file-hash) — the explicit join key a downstream read/skip log references (blah_mad's bridge). A projection runs AFTER manifest_checksum exists (no circularity) → LOGIC/SCHEMA FROZEN (1.22.0/1.23), default manifest byte-identical (the v1.26/v1.28/v1.37/v1.40 front-door precedent); new `receipt_doc_version` versions the envelope. Safe by construction (no raw path — path_id correlates). fo NEVER records the read/skip decision (the charter boundary). Prior 1.41.0 — lexicon self-sweep over file-derived metadata (#136 detection half, Phase 2 of the r/mcp consumption-safety plan). The v1.38 lexicon counts terms in a file's BODY text; a risk term can hide where the body scan structurally never looks — a filename, an EXIF make/model, a PDF producer/title/author, an office application string. v1.41 reuses the pure `_lexicon_scan` matcher over the COLLECTED file-derived metadata strings (filename [not the full path] + tags + frontmatter + structural + the string leaves in specialist_metadata, minus the fo-generated lexicon_match namespace; content_preview EXCLUDED — body-covered) and reports the result in a new provisional `lexicon_match.metadata` sub-block ({categories:{cat:{count,density}}, total_hits, total_tokens}). Binary files (images/PDFs/office) get NO body scan but DO have metadata hits, so the sweep CREATES the lexicon_match namespace (with a zero body block) when it isn't already present, keeping the body+metadata shape consistent. The existing `lexicon_match` safety_flag now fires on a body OR metadata hit (a hit is a hit; presence, not verdict). Metadata text capped at LEXICON_METADATA_MAX_CHARS (a hostile PDF could carry a huge producer). Dormant without a lexicon → existing manifests byte-identical (the v1.38/v1.30 gated pattern). Measure-first (307 real files, benign lexicon): 19% metadata-ONLY hits — the coverage gap this fills. LOGIC 1.21.0→1.22.0 (values-move only on lexicon scans), SCHEMA 1.22→1.23 (additive provisional field), lexicon method_version 1→2. Prior 1.40.0 — field trust classification + `--trusted-only` safe-mode projection + `--schema` trust annotation (#136). A first-class FIELD_TRUST registry tags every emitted field fo_derived (trusted — numbers/booleans/hashes/enums/flags, can't carry a text payload) vs file_derived (untrusted — verbatim free-text bytes from the input: path/filename/content_preview/tags/frontmatter/metadata strings, which an attacker controls and which ride into a downstream model). `--trusted-only` emits a PROJECTION that nulls the file_derived fields + adds a top-level `trusted_only: true` marker and a fo-derived `path_id = sha256(rel-posix path)` correlation handle — safe by construction for the guardrail-screen use case (the model only ever sees fo-generated signal). A projection, no new observation, no sanitization → the DEFAULT manifest is byte-identical, LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 front-door precedent); `schema_doc_version` bumps for the `--schema` trust annotation. Prior 1.39.0 — MCP front-door gains lexicon + delta: the v1.37 MCP server predated v1.38 lexicon, so the agent front-door couldn't run the guardrail pre-screen. v1.39 threads the v1.38 lexicon (server-startup `--lexicon` flag — terms never cross the MCP wire) + delta scanning (`previous_manifest_path` tool param) through the existing 4 tools. A front-door: manifest byte-identical to a CLI scan with the same settings → LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 precedent). Prior 1.38.1 (#126, patch, HISTORY-only) — add a `--version`/`-V` CLI flag (prints `file-observer X.Y.Z`, exit 0); un-breaks downstream version probing (recall doctor read the usage banner → false "below floor"). Runtime-only output, manifest UNCHANGED (the --workers/--watch precedent) → LOGIC/SCHEMA frozen. Prior 1.38.0 — bring-your-own-lexicon term observer: fo counts a CONSUMER-SUPPLIED, category-tagged lexicon's terms in a file's text and reports per-category counts + density (an OBSERVATION, never a verdict — the consumer thresholds). Values-neutral engine (built/tested with benign placeholder terms only); the sensitive lexicon is runtime config, never committed, never echoed into the manifest (only counts + category names + a content-hash dictionary_id). Motivated by knowing a file is a guardrail-trip risk BEFORE handing it to an AI (fo is not an AI → safe to read what an LLM couldn't). Word-boundary token(-sequence) match (measure-first: substring over-counts 9.4x on benign terms); full-file bounded read (64 MiB; a risk term can sit anywhere in a long log); gated on a lexicon → dormant otherwise (byte-identical). New provisional `lexicon_match` specialist namespace + `lexicon_match` safety_flag + `lexicon` vector (dictionary_id = sha256 of lexicon_id+sorted terms → dual-falsification). Prior 1.37.0 = MCP server (agent-native front-door). (`--receipt`, #133 Phase 3): a compact audit-record PROJECTION of the built manifest (envelope: versions/manifest_checksum/signature/scan_id/dictionary_id + a per-file receipt: receipt_id/path_id/checksum/size/mime/safety_flags/lexicon-hit-summary). The `receipt_id` is a tamper-evident sha256 over a length-prefixed preimage of (manifest_checksum + rel_path + file-hash) — the explicit join key a downstream read/skip log references (blah_mad's bridge). A projection runs AFTER manifest_checksum exists (no circularity) → LOGIC/SCHEMA FROZEN (1.22.0/1.23), default manifest byte-identical (the v1.26/v1.28/v1.37/v1.40 front-door precedent); new `receipt_doc_version` versions the envelope. Safe by construction (no raw path — path_id correlates). fo NEVER records the read/skip decision (the charter boundary). Prior 1.41.0 — lexicon self-sweep over file-derived metadata (#136 detection half, Phase 2 of the r/mcp consumption-safety plan). The v1.38 lexicon counts terms in a file's BODY text; a risk term can hide where the body scan structurally never looks — a filename, an EXIF make/model, a PDF producer/title/author, an office application string. v1.41 reuses the pure `_lexicon_scan` matcher over the COLLECTED file-derived metadata strings (filename [not the full path] + tags + frontmatter + structural + the string leaves in specialist_metadata, minus the fo-generated lexicon_match namespace; content_preview EXCLUDED — body-covered) and reports the result in a new provisional `lexicon_match.metadata` sub-block ({categories:{cat:{count,density}}, total_hits, total_tokens}). Binary files (images/PDFs/office) get NO body scan but DO have metadata hits, so the sweep CREATES the lexicon_match namespace (with a zero body block) when it isn't already present, keeping the body+metadata shape consistent. The existing `lexicon_match` safety_flag now fires on a body OR metadata hit (a hit is a hit; presence, not verdict). Metadata text capped at LEXICON_METADATA_MAX_CHARS (a hostile PDF could carry a huge producer). Dormant without a lexicon → existing manifests byte-identical (the v1.38/v1.30 gated pattern). Measure-first (307 real files, benign lexicon): 19% metadata-ONLY hits — the coverage gap this fills. LOGIC 1.21.0→1.22.0 (values-move only on lexicon scans), SCHEMA 1.22→1.23 (additive provisional field), lexicon method_version 1→2. Prior 1.40.0 — field trust classification + `--trusted-only` safe-mode projection + `--schema` trust annotation (#136). A first-class FIELD_TRUST registry tags every emitted field fo_derived (trusted — numbers/booleans/hashes/enums/flags, can't carry a text payload) vs file_derived (untrusted — verbatim free-text bytes from the input: path/filename/content_preview/tags/frontmatter/metadata strings, which an attacker controls and which ride into a downstream model). `--trusted-only` emits a PROJECTION that nulls the file_derived fields + adds a top-level `trusted_only: true` marker and a fo-derived `path_id = sha256(rel-posix path)` correlation handle — safe by construction for the guardrail-screen use case (the model only ever sees fo-generated signal). A projection, no new observation, no sanitization → the DEFAULT manifest is byte-identical, LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 front-door precedent); `schema_doc_version` bumps for the `--schema` trust annotation. Prior 1.39.0 — MCP front-door gains lexicon + delta: the v1.37 MCP server predated v1.38 lexicon, so the agent front-door couldn't run the guardrail pre-screen. v1.39 threads the v1.38 lexicon (server-startup `--lexicon` flag — terms never cross the MCP wire) + delta scanning (`previous_manifest_path` tool param) through the existing 4 tools. A front-door: manifest byte-identical to a CLI scan with the same settings → LOGIC/SCHEMA UNCHANGED (the v1.26/v1.28/v1.37 precedent). Prior 1.38.1 (#126, patch, HISTORY-only) — add a `--version`/`-V` CLI flag (prints `file-observer X.Y.Z`, exit 0); un-breaks downstream version probing (recall doctor read the usage banner → false "below floor"). Runtime-only output, manifest UNCHANGED (the --workers/--watch precedent) → LOGIC/SCHEMA frozen. Prior 1.38.0 — bring-your-own-lexicon term observer: fo counts a CONSUMER-SUPPLIED, category-tagged lexicon's terms in a file's text and reports per-category counts + density (an OBSERVATION, never a verdict — the consumer thresholds). Values-neutral engine (built/tested with benign placeholder terms only); the sensitive lexicon is runtime config, never committed, never echoed into the manifest (only counts + category names + a content-hash dictionary_id). Motivated by knowing a file is a guardrail-trip risk BEFORE handing it to an AI (fo is not an AI → safe to read what an LLM couldn't). Word-boundary token(-sequence) match (measure-first: substring over-counts 9.4x on benign terms); full-file bounded read (64 MiB; a risk term can sit anywhere in a long log); gated on a lexicon → dormant otherwise (byte-identical). New provisional `lexicon_match` specialist namespace + `lexicon_match` safety_flag + `lexicon` vector (dictionary_id = sha256 of lexicon_id+sorted terms → dual-falsification). Prior 1.37.0 = MCP server (agent-native front-door).
 LOGIC_VERSION = "1.22.0"   # v1.41.0 — lexicon self-sweep over file-derived metadata: new derived values (the lexicon_match.metadata sub-block) move manifest_checksum ONLY on lexicon scans (the v1.29/v1.33 values-move + v1.38 gated precedent); no routing flag flips; no-lexicon scans byte-identical. Prior 1.21.0 = v1.38.0 — bring-your-own-lexicon term observer: a new baseline-tier content derivation (per-category term counts + density on a consumer-supplied lexicon). manifest_checksum moves ONLY for lexicon-supplied scans (the v1.30 gated-feature precedent) — no-lexicon scans are byte-identical, no routing flag flips. Prior 1.20.0 = v1.36.0 — defusedxml→purexml XML-dependency changeover: fo's XML hardening (OOXML/ODF specialists + structural XML-keys tier) moves from defusedxml to purexml (pure-stdlib, zero-dep, oracle-gated defusedxml replacement, MIT; capability-proven 2695/0 on fo's own corpus + 467/0 purexml's). fo OPTS INTO purexml's structural caps (RECOMMENDED_LIMITS: max_depth=1000/max_attributes=256/max_bytes=100 MiB) via `xml_fromstring` on the purexml path — so fo now REJECTS a pathologically-deep/attribute-flooded/oversized XML that defusedxml dutifully parsed (a catchable LimitExceeded⊂ValueError → the field degrades to null/error, never a crash). PARSE OUTPUT BYTE-IDENTICAL on real files (2695/0); output changes ONLY on pathological XML inputs → LOGIC bump (the v1.30.2 bounded-observation "output changes only on pathological input" precedent); no routing flag flips. Separately, ScanContext.dependencies records purexml (name+version+the applied limits) in place of defusedxml → manifest_checksum moves for EVERY manifest (the dep-record is in every ScanContext — Pillar 1: ScanContext explains environment variance; the same as any dep version bump). The stdlib fallback (no-purexml) stays unhardened + un-capped (LIMITATIONS). Prior 1.19.0 = v1.35.0 — AI-session per-model usage attribution (increment 3): a new provisional `ai_session.usage_by_model` — a deterministic list (real models sorted, null bucket last) of per-model token-usage SUMS, keyed on the model CO-LOCATED with each usage dict (Claude Code message.model / OpenAI response.model / Gemini modelVersion — all measured 100% co-located). INVARIANT: `usage` == elementwise sum of `usage_by_model` (the tested v1.33 session path untouched → session `usage` byte-identical). Model verbatim incl. markers (`<synthetic>`); model-less usage-turns + a hostile-cardinality overflow beyond AI_SESSION_MAX_MODELS → the null bucket (sums stay complete). NEVER priced (the bright line). ai_session method_version 1→2 (per-model grouping is a new block rule → feeds the ai_session rules_hash). VALUES move manifest_checksum on ai_session corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.18.0 = v1.34.0 — chatlog session axes (recall#62): the chatlog specialist emits three new FLAT top-level scalars — first_timestamp/last_timestamp (min/max turn timestamp, recognized-key set {timestamp,created_date,create_time,created_at}, parsed ISO-string-or-epoch → canonical ISO-8601 UTC `…Z`/ms, null-when-untimestamped) + cwd (first-seen top-level cwd, verbatim/bounded, null-when-absent). Deterministic pure function of the file (observe, don't derive); values move manifest_checksum on timestamped/cwd-bearing chatlog corpora (the v1.29/v1.33 values-move precedent → LOGIC bump); no routing flag flips, is_chatlog unchanged. chatlog method_version 10→11 (new signals + recognized-key set/normalization feed the chatlog rules_hash). Prior 1.17.0 = v1.33.0 — AI-session observation increment 1: a new provisional `ai_session` namespace on is_chatlog-detected AI session logs (Claude Code / OpenAI / Gemini), carrying token-usage SUMS (canonical fo names, null-per-absent, vendor raw keys preserved) + a producer-schema fingerprint (vendor/surface/models/id_prefix/object_types/schema_mismatch) anchored on id-prefix+object-type (NOT the usage-key vocab — OpenAI Responses collides with Anthropic on input_tokens; measure_ai_session_2026-07-05). Observe-only: SUMS never priced. VALUES move manifest_checksum on AI-session corpora (the v1.29 values-move precedent → LOGIC bump); no routing flag flips. Prior 1.16.0 = v1.32.0 — new content-detection routing: the generic kv-fact-block specialist (FR #114). A text file whose BODY (frontmatter stripped) is a `key: value` block now carries `is_fact_block` + a `fact_block` specialist dispatch (content-shape, any text body; the sentence-value veto keeps it off dialogue). Additive: `is_fact_block` False→True only; no file's prior routing flips away. The v1.2/v1.29 detection-LOGIC precedent. Prior 1.15.3 = v1.30.2 — ReDoS / bounded-TIME hardening (red-team class the v1.8.1 size/crash/escape pass didn't cover): three content regexes backtracked super-linearly on bounded-size-but-pathological input — CHATLOG_WIKI_LINK_RE (`\[\[.+?\]\]` → ~13 s on 64 KB of `[[`), ASSET_RE (~1.7 s on 64 KB of `[`), PROVENANCE_VERSION_SUFFIX_RE (`\s+…\s*…` overlap → hung on a 64 KB-whitespace PDF /Producer; found by the falsify-first all-regex battery, not manual read). All three bounded/anchored → linear (≤53 ms); a standing guard (test_regex_redos_hardening.py) battery-tests every compiled regex under a hard timeout so the class can't regress. Behavior byte-identical on real content (verified parity: wiki links, markdown assets, 10 real producer strings incl. the leading-whitespace edge); output changes ONLY on bracket-bearing / >400-char-target / >32-whitespace pathological inputs → manifest_checksum moves for those files only (the v1.8.1 red-team-hardening precedent; sweep NO-DRIFT — corpora lack such inputs). Prior 1.15.2 = v1.30.1 — the v1.30.0 self-inclusion skip is ANCHORED to fo's actual RESOLVED output dir (prefix-match on its rel path, normcase) instead of a bare-name match on `file-observer-manifests` at any depth — so an UNRELATED user dir that merely shares the name is no longer silently dropped from the manifest (leg-2/OpenAI red-team: silent data loss; also fixes the case-insensitive-fs miss). Runtime `skip_output_dir` (the CLI's own output dir; excluded from meta.config) drives it; the API never sets it → never skips. `manifest_checksum` moves ONLY for a tree containing an unrelated `file-observer-manifests` dir (now included) — corpora don't, so the sweep stays NO-DRIFT. Prior 1.15.1 = v1.30.0 — discovery SKIPS the tool's own default output dir (`file-observer-manifests/`) so a re-scan of the cwd never observes its own prior manifest/report (the leg-1 self-inclusion catch from the #110 default-output relocation). Prior 1.15.0 = v1.29.0 — chatlog detection recognizes agentic (tool-turn) sessions: a turn counts when it has a conversational role + a text-bearing block (backward-compat) OR a distinctive agentic block (thinking/tool_use/tool_result), in detection AND turn-counting signals (prose signals stay text+thinking only; generic image/document are NOT triggers — leg-1 review FP fix). Recovers tool-heavy Claude Code logs the text-centric gate false-negatived (3/28 real federation logs, incl. a 139MB session); falsify-first-validated FP-clean vs telemetry/RBAC/func-call/gallery/doc-store JSON. Strict superset of v1.28 → is_chatlog additive (False→True, never True→False); chatlog signal VALUES move for agentic logs (method_version 9→10) → manifest_checksum moves on agentic corpora. Prior 1.14.1 = v1.25.1 — OLE2 specialists (.doc/.xls/.msg/.ppt) declare a full-file deviation in signal_provenance (`ole2_full_file_required`) instead of the false `bounded_sample`; provenance-accuracy only, no extracted value changes, but moves manifest_checksum (the v1.8.2/v1.9.1 manifest-surface precedent). leg-4/Codex P2 on PR #98, OLE2-family-wide pre-existing. Prior 1.14.0 = v1.25.0 — audio (.mp3) + legacy presentation (.ppt) extraction (Candidate B ph.2): new `audio` namespace (ID3 + bounded MPEG frame-header parse) + .ppt via OLE2 → requires_specialist_tool flips False→True for both (routing change; the v1.16/v1.24 precedent). Prior 1.13.0 = v1.24.0 — office+image extraction (Candidate B ph.1): new specialists for .pptx/.odp/.odt/.ods/.jp2/.tiff/.tif → requires_specialist_tool flips False→True for them (routing change; the v1.16 precedent). Prior 1.12.4 = v1.23.3 — bzip2 dual-magic + `_OneOf` byte-alternation matcher: recognizes empty/data-less bzip2 (end-of-stream magic at offset 4, not the block magic) while rejecting prose + an invalid level byte; reconciled 0/0 with the puresniff clean-room replica. Prior 1.12.3 = v1.23.2 — corroborated PDF-header sniff: the `%PDF-` MIME-sniff window widens 256->1024 (matching the scanner's own `sample[:1024]` PDF-header tolerance) AND requires a corroborating PDF-structure token (`PDF_STRUCTURE_TOKENS`), so a real junk-prefixed PDF is typed while a deep literal with no structure is rejected; C2/`scan_signatures` stays pure find-anywhere. Prior 1.12.2 = v1.23.1 — PDF-header FP fix (C1/C2 split): the find-anywhere `%PDF-` magic rule is bounded to a 256-byte header window in the MIME sniff (C1, `_sniff_mime`) via the `_Within` sentinel — a stray deep `%PDF-` in a source/text file no longer types it `application/pdf` (no-libmagic path) — while `scan_signatures` (C2, format_signatures/is_polyglot) keeps find-anywhere so a real embedded PDF still registers (is_polyglot stays honest). FP surfaced by puresniff's clean-room sweep, loose since v1.3. Prior 1.12.1 = v1.22.1 — `.eml` MIME-guard relaxation: accept text/plain & text/html for .eml (libmagic types body-dominated mail as text, not message/rfc822, so the email specialist was wrongly skipped); extension-gated so a lying text `.msg` stays distrusted. Same class as v1.15.2. Prior 1.12.0 = v1.22.0 — content-aware recognition extended to BINARY: unsupported_extension fires ONLY when content didn't identify the file (octet-stream / extension-fallback / unreadable), NOT when identified-but-no-specialist. Recognition-only, no new extraction. supported counter now single-source (not-flagged AND not-stat-failed). Prior 1.11.0 = v1.21.0 — content-aware recognition (Option B) for TEXT: same diagnostic, text-only (text/* or known text-app MIME); supported/unsupported counters shifted. Prior 1.10.0 = v1.20.0 — video.creation_date_qt (Apple QuickTime creationdate key, capture moment WITH timezone, separate from mvhd creation_date — observe-don't-reconcile). Prior 1.9.0 = v1.19.0 — human-readable summary refresh: _build_summary surfaces provenance/capture-metadata/named-safety-flags/preservation + comments on ambiguity (the summary string feeds manifest_checksum). + new --schema --format summary (prose self-description, separate surface). Prior 1.8.0 — video capture device + GPS-presence: make/model (Apple QuickTime keys via moov→meta→keys/ilst) + gps_present/gps_source (location.ISO6709, presence not coordinates) → geotagged fires for video. New extraction + safety_flag routing. Prior 1.7.0 = v1.17.0 video container half.
 SCHEMA_VERSION = "1.23"   # v1.41.0 — additive: new provisional `lexicon_match.metadata` sub-block ({categories/total_hits/total_tokens} over the file-derived metadata self-sweep); a new field in an existing namespace = additive contract change (the v1.20/v1.33/v1.35 precedent), provisional. Prior 1.22 = v1.38.0 — additive: new provisional `lexicon_match` specialist namespace (lexicon_id/categories/total_hits) + new `lexicon_match` safety_flag + new `lexicon` vector + new `lexicon_full_file` provenance trigger, for the bring-your-own-lexicon term observer. A new namespace/vector/flag = contract-shape change (the v1.24/v1.32/v1.33 precedent), all provisional. Prior 1.21 = v1.35.0 — new provisional `ai_session.usage_by_model` field (per-model token-usage attribution); a new field in an existing namespace = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.20 = v1.34.0 — three new provisional fields in the `chatlog` namespace (first_timestamp/last_timestamp/cwd) for the recall#62 session time+project axes; new fields = additive contract change (the v1.20/v1.33 precedent), provisional. Prior 1.19 = v1.33.0 — new `ai_session` namespace (vendor/surface/models/id_prefix/object_types/schema_mismatch/usage) for AI-session observation increment 1; a new namespace = contract-shape change (the v1.24/v1.25/v1.32 precedent), all fields provisional. Prior 1.18 = v1.32.0 — new `fact_block` namespace (pair_count/pairs/duplicate_keys) for the generic kv-fact-block specialist (FR #114); a new namespace = contract-shape change (the v1.24/v1.25 precedent), new fields provisional. Prior 1.17 = v1.31.0 — promotion pass: image EXIF + the entire video namespace provisional→stable (designation-only, manifest byte-identical; the v0.11/v1.10/v1.14/v1.23 contract-change precedent). Prior 1.16 = v1.25.0 — new `audio` namespace (format/bitrate/duration_s/title/artist/album/year) for .mp3 (Candidate B ph.2); .ppt reuses the existing `presentation` fields. Prior 1.15 = v1.24.0 — new `presentation` namespace (slide_count/title/author/application) + office/image extraction routing (Candidate B ph.1). Prior 1.14 = v1.23.0 — promoted `preservation` (vector + FileRecord field) provisional→stable: a contract change (v0.11/v1.10/v1.14 precedent), designation-only so the manifest is byte-identical. Prior 1.13 = unchanged in v1.21 (recognition is LOGIC, no new field). v1.20.0 — new field video.creation_date_qt (additive). Prior 1.12 = v1.18.0 — video namespace gains make/model/gps_present/gps_source (additive); geotagged description broadens image→image+video
 
@@ -1446,6 +1446,16 @@ LEXICON_MAX_TERM_TOKENS = 16       # a term longer than 16 tokens is a mistake, 
 LEXICON_MAX_TERM_LEN = 128
 LEXICON_MAX_ID_LEN = 128
 LEXICON_MAX_FILE_BYTES = AI_SESSION_MAX_FILE_BYTES   # 64 MiB full-file bounded read (reuse the cap)
+# v1.43 source loader — bounds for the new text/index parsers (a lexicon source file is consumer-
+# controlled; fail-loud on violation). These gate SOURCE-FILE acceptance only; they are upstream of the
+# resolved lexicon and NOT in the rules_fingerprint (the resolved term set alone determines the manifest).
+LEXICON_MAX_SOURCES = 64            # composed member lists (a subscription can't fan out unbounded)
+LEXICON_MAX_LINE_LEN = 8192         # a text-lexicon line longer than this is malformed (bounds the parse)
+LEXICON_HEADER_MAX_VALUE_LEN = 512  # a load-time metadata value cap (never in the manifest — keep it small)
+# EasyList-style header key: "! Key: value". Anchored + bounded → linear (ReDoS-safe; in the battery).
+LEXICON_TEXT_HEADER_RE = re.compile(r"^([A-Za-z][A-Za-z0-9 _-]{0,63}):[ \t]*(.*)$")
+LEXICON_TEXT_META_KEYS = frozenset({"version", "date", "source", "license", "description", "count", "homepage", "expires"})
+LEXICON_JSON_META_KEYS = ("version", "date", "source", "license", "description", "count", "homepage", "expires")
 # v1.41: the metadata self-sweep joins the file-derived metadata strings into one text and scans it.
 # Metadata is short, but a hostile PDF could carry a huge producer/title string — cap the joined text
 # (declared deviation; feeds the rules_hash). Bounded, so the sweep can't be made to hang.
@@ -1554,6 +1564,188 @@ def lexicon_rules_fingerprint() -> str:
         f"max_term_len={LEXICON_MAX_TERM_LEN}",
         f"max_id_len={LEXICON_MAX_ID_LEN}",   # a validation cap that gates acceptance → in the fingerprint (leg-4/CodeRabbit)
     ])
+
+
+# ---------------------------------------------------------------------------------------------------
+# v1.43 — lexicon source loader: distribution format (JSON + EasyList-style text) + composition.
+# The loader is INPUT-side only. Both formats normalize into the SAME internal {lexicon_id, categories}
+# → dictionary_id, the matcher index, and the manifest are all unchanged for an equivalent term set
+# (LOGIC/SCHEMA frozen). Source provenance (version/source/...) is returned SEPARATELY for stderr and
+# NEVER attached to the lexicon that flows into the manifest. fo composes local files; it never fetches.
+# ---------------------------------------------------------------------------------------------------
+
+def parse_lexicon_text(text: str) -> tuple[dict[str, Any], dict[str, str]]:
+    """Parse an EasyList-style text lexicon into the raw {lexicon_id, categories:{cat:[terms]}} shape
+    parse_lexicon() accepts, PLUS a separate load-time metadata dict (version/source/... — never enters
+    the manifest). `!`/`#` begin a comment; a `! Key: value` line populates the header; `[category]`
+    opens a section; every other non-blank line is one term. A term before any section, a missing title,
+    or an over-long line is FAIL-LOUD (a dropped/misfiled term is a false 'clear', the dangerous FN)."""
+    lexicon_id: str | None = None
+    meta: dict[str, str] = {}
+    categories: dict[str, list[str]] = {}
+    current: str | None = None
+    for lineno, raw_line in enumerate(text.splitlines(), 1):
+        if len(raw_line) > LEXICON_MAX_LINE_LEN:
+            raise ValueError(f"lexicon text line {lineno}: exceeds {LEXICON_MAX_LINE_LEN} chars")
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line[0] in "!#":
+            m = LEXICON_TEXT_HEADER_RE.match(line[1:].strip())
+            if m:
+                key = m.group(1).strip().casefold().replace(" ", "_").replace("-", "_")
+                if key == "licence":
+                    key = "license"
+                val = m.group(2).strip()
+                if key in ("title", "lexicon_id"):
+                    lexicon_id = val   # NOT truncated — parse_lexicon enforces LEXICON_MAX_ID_LEN, fail-loud on >cap (so a truncated title can never silently collide — leg-4/CodeRabbit)
+                elif key in LEXICON_TEXT_META_KEYS:
+                    meta[key] = val[:LEXICON_HEADER_MAX_VALUE_LEN]   # display-only metadata → bounded
+            continue
+        if line[0] == "[" and line[-1] == "]":
+            cat = line[1:-1].strip()
+            if not cat:
+                raise ValueError(f"lexicon text line {lineno}: empty [category] header")
+            current = cat
+            categories.setdefault(cat, [])
+            continue
+        if current is None:
+            raise ValueError(f"lexicon text line {lineno}: term before any [category] section")
+        categories[current].append(line)
+    if not lexicon_id:
+        raise ValueError("text lexicon: missing '! Title:' (or '! Lexicon-Id:') header")
+    categories = {c: t for c, t in categories.items() if t}   # drop empty sections
+    if not categories:
+        raise ValueError("text lexicon: no terms")
+    return {"lexicon_id": lexicon_id, "categories": categories}, meta
+
+
+def _read_lexicon_bytes(path: Path, what: str) -> str:
+    """BOUNDED read: pull at most cap+1 bytes so an oversized source can't exhaust memory BEFORE the
+    length check (the v1.8.1 bounded-observation discipline — `read_bytes()` would allocate the whole
+    file first; leg-4/CodeRabbit). Strict UTF-8, BOM stripped (a lexicon is authored text; fail-loud)."""
+    with path.open("rb") as fh:
+        data = fh.read(LEXICON_MAX_FILE_BYTES + 1)
+    if len(data) > LEXICON_MAX_FILE_BYTES:
+        raise ValueError(f"{what} too large (> {LEXICON_MAX_FILE_BYTES} bytes): {path}")
+    return data.decode("utf-8-sig")
+
+
+def load_lexicon_source(path: Path) -> tuple[dict[str, Any], dict[str, str]]:
+    """Load ONE lexicon file — JSON (canonical) or EasyList-style text, sniffed on the first non-space
+    char (`{` → JSON). Returns (normalized_lexicon, load_meta). Bounded read; strict UTF-8; fail-loud."""
+    text = _read_lexicon_bytes(path, "lexicon file")
+    if text.lstrip()[:1] == "{":
+        raw = json.loads(text)
+        if not isinstance(raw, dict):
+            raise ValueError(f"JSON lexicon must be an object: {path}")
+        # scalar-only + bounded (parity with the text header; an object/list or a huge string is rejected/capped — leg-4/CodeRabbit)
+        meta = {k: str(raw[k])[:LEXICON_HEADER_MAX_VALUE_LEN]
+                for k in LEXICON_JSON_META_KEYS
+                if k in raw and isinstance(raw[k], (str, int, float, bool))}
+        return parse_lexicon(raw), meta   # parse_lexicon reads only lexicon_id+categories; extra keys ignored
+    raw, meta = parse_lexicon_text(text)
+    return parse_lexicon(raw), meta
+
+
+def compose_lexicons(lexicons: list[dict[str, Any]], lexicon_id: str | None = None) -> dict[str, Any]:
+    """Union normalized lexicons into one. Same category across sources → term sets merged + deduped.
+    ORDER-INDEPENDENT: the resolved (sorted, deduped) set — and thus dictionary_id — is identical
+    regardless of source count/order. Re-normalized through parse_lexicon so the COMPOSED whole is held
+    to the same caps (e.g. LEXICON_MAX_TOTAL_TERMS)."""
+    if not lexicons:
+        raise ValueError("no lexicon sources to compose")
+    merged: dict[str, set[str]] = {}
+    for lex in lexicons:
+        for cat, terms in lex["categories"].items():
+            merged.setdefault(cat, set()).update(terms)
+    # Composed id: explicit override, else the LEXICOGRAPHICALLY-FIRST source id (NOT flag-order-first) so
+    # the composed lexicon_id — and thus dictionary_id — is ORDER-INDEPENDENT for the same resolved union
+    # (leg-4/Codex P2). A consumer wanting a specific id passes --lexicon-id.
+    lid = lexicon_id or sorted(lex["lexicon_id"] for lex in lexicons)[0]
+    return parse_lexicon({"lexicon_id": lid, "categories": {c: sorted(merged[c]) for c in merged}})
+
+
+def _read_lexicon_index(idx: Path) -> tuple[list[Path], str | None]:
+    """Read a subscription index — JSON {sources:[relpaths], lexicon_id?} or a text list (`!`/`#`
+    comments, one relative path per line). Member paths resolve relative to the index file's OWN
+    directory. Returns (member_paths, index_lexicon_id)."""
+    text = _read_lexicon_bytes(idx, "lexicon index")
+    base = idx.parent
+    lid: str | None = None
+    rels: list[str] = []
+    if text.lstrip()[:1] == "{":
+        raw = json.loads(text)
+        if not isinstance(raw, dict) or not isinstance(raw.get("sources"), list):
+            raise ValueError("JSON lexicon index needs a 'sources' list")
+        rid = raw.get("lexicon_id")
+        lid = rid if isinstance(rid, str) and rid else None
+        for s in raw["sources"]:
+            if not isinstance(s, str) or not s:
+                raise ValueError("lexicon index 'sources' must be non-empty strings")
+            rels.append(s)
+    else:
+        for lineno, raw_line in enumerate(text.splitlines(), 1):
+            if len(raw_line) > LEXICON_MAX_LINE_LEN:
+                raise ValueError(f"lexicon index line {lineno}: too long")
+            line = raw_line.strip()
+            if not line or line[0] in "!#":
+                continue
+            rels.append(line)
+    return [base / r for r in rels], lid
+
+
+def _lexicon_path_in_root(p: Path, root: Path | None) -> Path:
+    """Resolve a lexicon path; when `root` is set, confine it there (MCP defense-in-depth). NOTE: the
+    lexicon/index paths are supplied at STARTUP by the operator (argv), the same trust level as --root
+    itself — so callers currently pass root=None for them; the confinement is available if ever wanted."""
+    rp = p.resolve()
+    if root is not None:
+        try:
+            rp.relative_to(root.resolve())
+        except ValueError:
+            raise ValueError(f"lexicon path escapes --root: {p}")
+    return rp
+
+
+def load_lexicon(paths: list[str] | None = None, index_path: str | None = None,
+                 lexicon_id: str | None = None, root: Path | None = None) -> tuple[dict[str, Any], list[dict]]:
+    """Resolve the effective lexicon from N source files and/or a subscription index, composing them into
+    ONE normalized lexicon (see compose_lexicons) + returning per-source load metadata (for a stderr
+    summary; NEVER the manifest). Fail-loud on any bad/missing/over-cap source. `root`, when set, confines
+    every resolved path."""
+    index_lid: str | None = None
+    sources: list[Path] = []
+    if index_path:
+        idx = _lexicon_path_in_root(Path(index_path), root)
+        if not idx.is_file():
+            raise ValueError(f"lexicon index not found: {index_path}")
+        members, index_lid = _read_lexicon_index(idx)
+        sources.extend(members)
+    for p in (paths or []):
+        sources.append(Path(p))
+    if not sources:
+        raise ValueError("no lexicon sources given (--lexicon / --lexicon-index)")
+    if len(sources) > LEXICON_MAX_SOURCES:
+        raise ValueError(f"too many lexicon sources (> {LEXICON_MAX_SOURCES})")
+    lexicons: list[dict] = []
+    metas: list[dict] = []
+    for sp in sources:
+        rp = _lexicon_path_in_root(sp, root)
+        if not rp.is_file():
+            raise ValueError(f"lexicon source not found: {sp}")
+        lex, meta = load_lexicon_source(rp)
+        n_terms = sum(len(v) for v in lex["categories"].values())
+        # `**meta` FIRST so the explicit keys win — a future meta key can't clobber name/lexicon_id/terms (leg-4/gemini)
+        rec: dict[str, Any] = {**meta, "name": sp.name, "lexicon_id": lex["lexicon_id"], "terms": n_terms}
+        if "count" in meta:   # integrity: a declared count disagreeing with the parsed total → a warning
+            try:
+                rec["count_mismatch"] = int(meta["count"]) != n_terms
+            except ValueError:
+                rec["count_mismatch"] = True
+        metas.append(rec)
+        lexicons.append(lex)
+    return compose_lexicons(lexicons, lexicon_id=lexicon_id or index_lid), metas
 
 
 # v0.9: Chatlog vector identity constants. The rules definition string
@@ -9080,7 +9272,9 @@ def main() -> None:
     parser.add_argument("--watch", action="store_true", help="Continuous mode: rescan on FS events and emit each delta as one JSONL line on stdout. Each emitted scan is byte-identical to a one-shot invocation at the same FS state (v1.11)")
     parser.add_argument("--watch-debounce-ms", type=int, default=200, metavar="N", help="Debounce window for batching FS events in --watch mode (default: 200ms)")
     parser.add_argument("--watch-include-files", action="store_true", help="Include files[] in each --watch emit (default: excluded to keep the stream small; the `delta` field carries what changed)")
-    parser.add_argument("--lexicon", metavar="PATH", default=None, help="Path to a consumer-supplied JSON lexicon {lexicon_id, categories:{cat:[terms]}} for the bring-your-own term observer (v1.38). fo counts each category's terms in every text file and reports per-category counts + density (an observation, never a verdict) + a `lexicon_match` safety_flag on any hit. Terms are consumer-private — never echoed into the manifest. Off by default.")
+    parser.add_argument("--lexicon", metavar="PATH", default=None, action="append", help="Path to a consumer-supplied lexicon for the bring-your-own term observer (v1.38). Accepts JSON {lexicon_id, categories:{cat:[terms]}} OR an EasyList-style text list (`! Title:` header, `[category]` sections, one-term-per-line, `!`/`#` comments) (v1.43). Repeatable: multiple --lexicon are unioned into one lexicon. fo counts each category's terms in every file and reports per-category counts + density (observation, never verdict) + a `lexicon_match` safety_flag on any hit. Terms + source provenance are consumer-private — never echoed into the manifest. Off by default.")
+    parser.add_argument("--lexicon-index", metavar="PATH", default=None, help="Path to a lexicon SUBSCRIPTION index (v1.43): JSON {sources:[relpaths], lexicon_id?} or a text list of relative paths (one per line, `!`/`#` comments). Member lists resolve relative to the index file's own directory and are unioned. Composes with --lexicon.")
+    parser.add_argument("--lexicon-id", metavar="ID", default=None, help="Override the composed lexicon_id (v1.43). Default: the index's lexicon_id, else the first source's.")
     parser.add_argument("--profile", choices=list(SCAN_PROFILES.keys()), default=None, help="Named scan profile (fast_sort, general, deep_extract)")
     parser.add_argument("--specialist-budget", type=int, default=None, help="Max bytes for specialist deviation reads")
     parser.add_argument("--override", action="append", default=[], help="Per-extension override: .ext:field=value (e.g., .csv:baseline_max_bytes=1048576)")
@@ -9171,12 +9365,23 @@ def main() -> None:
     # philosophy: a bad lexicon must not silently produce a no-match "all clear"). Parsed here for
     # an early, clear error; Scanner.__init__ re-validates (covers the API path).
     lexicon_cfg = None
-    if args.lexicon is not None:
+    if args.lexicon_id and not (args.lexicon or args.lexicon_index):
+        print("file-observer: --lexicon-id requires --lexicon or --lexicon-index", file=sys.stderr)
+        sys.exit(2)
+    if args.lexicon or args.lexicon_index:
         try:
-            lexicon_cfg = parse_lexicon(json.loads(Path(args.lexicon).read_text(encoding="utf-8")))
+            lexicon_cfg, lex_metas = load_lexicon(args.lexicon, args.lexicon_index, args.lexicon_id)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            print(f"file-observer: --lexicon could not be loaded: {exc}", file=sys.stderr)
+            print(f"file-observer: lexicon could not be loaded: {exc}", file=sys.stderr)
             sys.exit(2)
+        # v1.43: load-time provenance summary → stderr ONLY (never the manifest).
+        for r in lex_metas:
+            line = f"file-observer: loaded lexicon source '{r['name']}' [{r['lexicon_id']}] · {r['terms']} terms"
+            if r.get("version"):
+                line += f" · v{r['version']}"
+            print(line, file=sys.stderr)
+            if r.get("count_mismatch"):
+                print(f"file-observer: WARNING: '{r['name']}' declared count != {r['terms']} parsed terms", file=sys.stderr)
 
     config = ScannerConfig(
         enable_specialists=profile_values.get("enable_specialists", args.specialists),

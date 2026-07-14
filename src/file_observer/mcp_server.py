@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -38,7 +39,7 @@ from file_observer.scanner import (
     RECEIPT_DOC_VERSION,
     build_schema_document,
     schema_to_markdown,
-    parse_lexicon,
+    load_lexicon,
     _project_file_record_trusted_only,
 )
 
@@ -298,11 +299,16 @@ def main() -> None:
                                  description="file-observer MCP server (stdio) — read-only file observation for agents.")
     ap.add_argument("--root", metavar="DIR",
                     help="restrict all scans to this subtree (defense-in-depth; off by default).")
-    ap.add_argument("--lexicon", metavar="PATH",
-                    help="apply a consumer-supplied JSON lexicon {lexicon_id, categories:{cat:[terms]}} to "
-                         "every scan — per-category term counts + a lexicon_match flag (v1.38 guardrail "
-                         "pre-screen). Configured HERE at startup (not a tool arg) so the private terms "
-                         "never enter an agent's context; only term-free counts cross the wire. Off by default.")
+    ap.add_argument("--lexicon", metavar="PATH", action="append",
+                    help="apply a consumer-supplied lexicon to every scan — per-category term counts + a "
+                         "lexicon_match flag (v1.38 guardrail pre-screen). Accepts JSON {lexicon_id, "
+                         "categories:{cat:[terms]}} or an EasyList-style text list; repeatable (unioned) (v1.43). "
+                         "Configured HERE at startup (not a tool arg) so the private terms never enter an "
+                         "agent's context; only term-free counts cross the wire. Off by default.")
+    ap.add_argument("--lexicon-index", metavar="PATH",
+                    help="a lexicon subscription index composed at startup (v1.43): JSON {sources:[relpaths]} "
+                         "or a text path list, members resolved relative to the index dir. Composes with --lexicon.")
+    ap.add_argument("--lexicon-id", metavar="ID", help="override the composed lexicon_id (v1.43).")
     ap.add_argument("--trusted-only", action="store_true",
                     help="force SAFE MODE for every tool call — return only fo-derived (trusted) fields, "
                          "null the file-derived (attacker-controllable) strings. For a locked-down deployment "
@@ -316,11 +322,23 @@ def main() -> None:
         if not root.is_dir():   # fail fast at startup, not on every later tool call (leg-4/gemini)
             ap.error(f"--root is not a directory: {args.root}")
         _ROOT = root
-    if args.lexicon:
-        try:   # parse + validate ONCE at startup — a bad lexicon fails fast, not on every tool call
-            _LEXICON = parse_lexicon(json.loads(Path(args.lexicon).read_text(encoding="utf-8")))
+    if args.lexicon_id and not (args.lexicon or args.lexicon_index):
+        ap.error("--lexicon-id requires --lexicon or --lexicon-index")
+    if args.lexicon or args.lexicon_index:
+        try:   # compose + validate ONCE at startup — a bad lexicon fails fast, not on every tool call.
+            # Startup paths are OPERATOR-supplied (argv, same trust as --root itself) → not root-confined.
+            _LEXICON, lex_metas = load_lexicon(args.lexicon, args.lexicon_index, args.lexicon_id)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
-            ap.error(f"--lexicon could not be loaded: {exc}")
+            ap.error(f"lexicon could not be loaded: {exc}")
+        # Parity with the CLI: a load-time provenance summary + integrity warning → the server's stderr
+        # (operator-facing; never the manifest or the MCP wire) (leg-4/CodeRabbit).
+        for r in lex_metas:
+            line = f"file-observer-mcp: loaded lexicon source '{r['name']}' [{r['lexicon_id']}] · {r['terms']} terms"
+            if r.get("version"):
+                line += f" · v{r['version']}"
+            print(line, file=sys.stderr)
+            if r.get("count_mismatch"):
+                print(f"file-observer-mcp: WARNING: '{r['name']}' declared count != {r['terms']} parsed terms", file=sys.stderr)
     mcp.run(transport="stdio")
 
 
