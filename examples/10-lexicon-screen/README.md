@@ -12,7 +12,7 @@ threshold and decide what to do.
 
 An **EasyList-style** text list (JSON is also accepted):
 
-```
+```text
 ! Title: example-content-screen
 ! Version: 2026.07
 [fruit]
@@ -38,7 +38,7 @@ supplies its own sensitive lists and keeps them out of version control.
 
 ## What you'll see
 
-```
+```text
 --- load-time provenance (goes to STDERR; never the manifest) ---
 file-observer: loaded lexicon source 'lexicon.txt' [example-content-screen] · 5 terms · v2026.07
 
@@ -61,10 +61,11 @@ file-observer: loaded lexicon source 'lexicon.txt' [example-content-screen] · 5
 
 ## The privacy boundary
 
-The lexicon's **term list is never emitted** — the manifest carries only per-category
-**counts**, the **category names**, and a content-hash **`dictionary_id`** (which moves if the
-list changes, catching silent drift). Your sensitive terms stay in a config file fo never
-echoes.
+The lexicon's **term list is never emitted** — the manifest carries only the term-free derived
+results: per-category **counts + density** (and `total_hits`/`total_tokens`), the **category
+names**, and a content-hash **`dictionary_id`** (which moves if the list changes, catching silent
+drift). File Observer never echoes the terms themselves from your config file — into the manifest
+or its error logs.
 
 One nuance the example proves: a term that *also* appears in a scanned document's body shows
 up in **that file's `content_preview`** — as the document's own (untrusted) content, not as a

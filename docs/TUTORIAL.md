@@ -248,9 +248,11 @@ Two honest caveats:
 Safe mode (§11) strips *attacker* text out. The **lexicon** is the other half — *your own* signal
 in. Give file-observer a consumer-supplied, category-tagged term list and it counts those terms per
 file and raises a `lexicon_match` safety_flag on any hit — a cheap, deterministic **content pre-screen**.
-file-observer isn't an AI, so it can safely read files an LLM shouldn't, and tell you *which* are a
-guardrail-trip risk before any bytes reach a model. It's an **observation, never a verdict** — you set
-the threshold.
+file-observer never executes or interprets file content — it can't be prompt-injected — so it can
+read files an LLM shouldn't and tell you *which* are a guardrail-trip risk before any bytes reach a
+model. (Parsing untrusted input isn't risk-*free* — see [SECURITY.md](../SECURITY.md) — but it's
+bounded and never-crashes by design; it's the *injection* vector that's off the table.) It's an
+**observation, never a verdict** — you set the threshold.
 
 ```bash
 file-observer ./untrusted-uploads --specialists --lexicon terms.txt --stdout

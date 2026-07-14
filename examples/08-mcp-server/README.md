@@ -31,7 +31,8 @@ Server-startup flags (in `"args"`):
 - `--root /path/you/allow` — lock scans to a subtree (defense-in-depth).
 - `--lexicon terms.txt` (repeatable) / `--lexicon-index lists.txt` — apply a consumer content screen to
   every scan (see [example 10](../10-lexicon-screen/)). Configured **at startup, not as a tool arg**, so
-  the private terms never enter the agent's context — only term-free counts cross the wire.
+  the private terms never enter the agent's context — only term-free derived results (per-category
+  counts + density, category names, and a `dictionary_id`) cross the wire.
 - `--trusted-only` — force safe mode for every call (see [example 09](../09-trusted-only/)).
 
 ## The four tools (progressive disclosure — built for an agent's context budget)
@@ -46,10 +47,10 @@ Server-startup flags (in `"args"`):
 Everything is read-only and deterministic (same bytes → same result). The tools **observe and report**;
 the agent decides what to do with the observation.
 
-Two per-call params on `scan_summary`/`scan_file`/`scan_directory` mirror the CLI safe surfaces:
-`trusted_only=true` returns the safe-mode projection ([example 09](../09-trusted-only/)); `receipt=true`
-returns the compact tamper-evident screening receipt (`receipt_id`/`path_id` per file). A per-call
-`previous_manifest_path` runs a delta.
+Per-call params mirror the CLI safe surfaces: `trusted_only=true` (all three tools) returns the
+safe-mode projection ([example 09](../09-trusted-only/)); `receipt=true` (on `scan_file` /
+`scan_directory`) returns the compact tamper-evident screening receipt (`receipt_id`/`path_id` per
+file); and `previous_manifest_path` (on `scan_summary` / `scan_directory`) runs a delta.
 
 ## Try it programmatically (no MCP client needed)
 

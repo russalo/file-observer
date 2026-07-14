@@ -96,13 +96,14 @@ File Observer tracks three versions independently: **`SCANNER_VERSION`** (the re
 
 Documentation ships **with** the change, not after it — don't make the reviewer chase drift. Every PR sweeps the same angles (the [PR template](.github/PULL_REQUEST_TEMPLATE.md) carries the checklist): **correctness** (no doc statement the change made false; snippets still run); **safety / positioning framing** (no wording that misleads on the safety boundary — fo observes-never-judges, `--trusted-only` is a projection not a sanitizer, the screener is not an AI, fo is not a watcher); **versions & quantitative claims** (every version reference + hardcoded count/benchmark current); **user-facing** (README / `docs/TUTORIAL.md` / `examples/` reflect any new or changed flag, param, or capability — a headline capability earns a runnable example + a tutorial section); **discoverability** (new content is linked from an index/nav, not orphaned); **links & anchors** (internal links and anchors resolve); **human-readable surfaces** (the per-scan `summary` and `--schema --format summary` still name what a scan observes); **contributions** (this guide / the template if the *process* changed); **frozen vs live** (leave RFCs/`archive/` alone; add the `docs/HISTORY.md` row); and **new-doc need** (a deep mechanic may warrant its own guide — link the canonical source, never a drift-prone copy).
 
-**If you add any output surface** — a field, namespace, vector, safety flag, error code, provenance trigger, or format signature — you must (a) register it in the relevant registry, and (b) **regenerate the schema doc**:
+**If you add any output surface** — a field, namespace, vector, safety flag, error code, provenance trigger, or format signature — you must (a) register it in the relevant registry, and (b) **regenerate both generated schema artifacts**:
 
 ```bash
-python -m file_observer.scanner --schema --schema-format md > docs/SCHEMA.md
+python -m file_observer.scanner --schema --schema-format md          > docs/SCHEMA.md
+python -m file_observer.scanner --schema --schema-format json-schema > docs/manifest.schema.json
 ```
 
-A drift-guard test (`test_committed_schema_md_matches_generated`) fails the build otherwise. `docs/SCHEMA.md` is code-derived — never hand-edit it.
+Drift-guard tests (`test_committed_schema_md_matches_generated`, `test_committed_schema_matches_generated`) fail the build otherwise. Both are code-derived — never hand-edit them.
 
 ---
 
