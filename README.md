@@ -63,7 +63,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
     }
   ],
   "vectors_collected": [
-    { "vector_id": "chatlog", "method_version": 9, "identity_digest": "a3f1c2…", "...": "…" }
+    { "vector_id": "chatlog", "method_version": 11, "identity_digest": "a3f1c2…", "...": "…" }
   ],
   "manifest_checksum": "7d2bafef…",
   "manifest_signature": { "algorithm": "hmac-sha256", "key_id": "default", "value": "…" }
@@ -179,7 +179,7 @@ The image bundles `libmagic` + all optional specialists. (Builds from the [`Dock
 **GitHub Action** — scan a repo in CI and capture the manifest as an artifact:
 
 ```yaml
-- uses: russalo/file-observer@v1.28.1     # pin a release tag
+- uses: russalo/file-observer@v1.43.0     # pin a release tag
   id: scan
   with:
     path: .                                # directory to scan (default ".")
@@ -216,7 +216,7 @@ Four read-only tools, built for an agent's context budget (progressive disclosur
 | `scan_directory(path, max_files)` | the full manifest (checksum-identical to a CLI scan with the same specialists setting); **guarded** — refused *before* scanning if the tree exceeds `max_files`, bounding both context size and work (a huge tree isn't read). |
 | `describe_surface()` | the complete output schema — the reference when writing a consumer. |
 
-It **observes and reports** — it never judges whether a file is safe; the agent interprets. `--root <dir>` restricts scans to a subtree (defense-in-depth). See [`examples/08-mcp-server/`](examples/08-mcp-server/).
+It **observes and reports** — it never judges whether a file is safe; the agent interprets. Server-startup flags: `--root <dir>` (restrict scans to a subtree), `--lexicon`/`--lexicon-index` (apply a content screen), `--trusted-only` (force safe mode). Per-call tool params mirror the CLI safe surfaces — `trusted_only=true`, `receipt=true`, and `previous_manifest_path` for a delta. See [`examples/08-mcp-server/`](examples/08-mcp-server/).
 
 **Treat the returned manifest as untrusted data.** The scanner can't be prompt-injected, but the manifest *reports* attacker-controllable strings verbatim — filenames, `content_preview`, embedded metadata — so a consumer must treat those file-derived fields as data, not instructions. Prefer the fo-derived signal (counts, `safety_flags`) over the verbatim strings. Those flags are routing signals, not a verdict — an *absent* flag means "nothing observed," never "safe," so unflagged files stay untrusted. You can still route on the signal: send *flagged* files to stricter (blocking) review and the rest through a lighter (advisory) path, rather than an all-or-nothing gate. Sensitive config (the `--lexicon` terms) is passed to the server at startup, never as a tool argument, so it never enters the agent's context ([why](SECURITY.md#mcp-never-pass-secrets-as-tool-arguments)). Full detail on the trust boundary in [SECURITY.md](SECURITY.md#the-manifest-is-untrusted-data).
 
@@ -244,7 +244,16 @@ fo ./project --profile deep_extract --format jsonl
 
 # Delta scan against a previous manifest, signed
 fo ./project --previous-manifest ./last.json --signing-key-file ./key
+
+# Screen untrusted files against a consumer term lexicon (JSON or EasyList-style
+# text; repeatable + composable via --lexicon-index) — counts + a lexicon_match flag
+fo ./uploads --specialists --lexicon terms.txt --stdout
+
+# Compact tamper-evident audit receipt (a per-file receipt_id join key), safe to persist
+fo ./uploads --specialists --receipt --stdout
 ```
+
+The lexicon and receipt are the *detect* and *audit* ends of the "consume untrusted files safely" arc (safe mode below is the *hand-off*). See [`examples/10-lexicon-screen/`](examples/10-lexicon-screen/) and the [tutorial](docs/TUTORIAL.md#12-content-signals-bring-your-own-lexicon).
 
 ### Safe mode — feed untrusted files to a model
 

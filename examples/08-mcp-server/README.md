@@ -26,7 +26,13 @@ Add to your client config (Claude Desktop's `claude_desktop_config.json`, or Cla
 }
 ```
 
-Lock scans to a subtree (defense-in-depth) with `"args": ["--root", "/path/you/allow"]`.
+Server-startup flags (in `"args"`):
+
+- `--root /path/you/allow` — lock scans to a subtree (defense-in-depth).
+- `--lexicon terms.txt` (repeatable) / `--lexicon-index lists.txt` — apply a consumer content screen to
+  every scan (see [example 10](../10-lexicon-screen/)). Configured **at startup, not as a tool arg**, so
+  the private terms never enter the agent's context — only term-free counts cross the wire.
+- `--trusted-only` — force safe mode for every call (see [example 09](../09-trusted-only/)).
 
 ## The four tools (progressive disclosure — built for an agent's context budget)
 
@@ -40,6 +46,11 @@ Lock scans to a subtree (defense-in-depth) with `"args": ["--root", "/path/you/a
 Everything is read-only and deterministic (same bytes → same result). The tools **observe and report**;
 the agent decides what to do with the observation.
 
+Two per-call params on `scan_summary`/`scan_file`/`scan_directory` mirror the CLI safe surfaces:
+`trusted_only=true` returns the safe-mode projection ([example 09](../09-trusted-only/)); `receipt=true`
+returns the compact tamper-evident screening receipt (`receipt_id`/`path_id` per file). A per-call
+`previous_manifest_path` runs a delta.
+
 ## Try it programmatically (no MCP client needed)
 
 The tool functions are plain Python — you can call them directly to see the shapes:
@@ -52,4 +63,4 @@ print(scan_summary("."))          # compact overview of the current tree
 # → {path, scanner_version, summary, stats, notable{chatlogs, mime_mismatches, polyglots, safety_flags, ...}}
 ```
 
-Run `python demo.py` here for a live overview of this examples directory.
+Run `./run.sh` (or `python demo.py`) here for a live overview of this examples directory.

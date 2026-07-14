@@ -21,6 +21,14 @@ does **not** do obfuscation resistance — matching is literal, word-boundary,
 case-folded (l33t/homoglyph/embedded variants are out of scope in this release).
 The lexicon is **your** runtime input; fo ships no term list. The mapping from
 "category X matched N times" to "risky / block / review" is yours to define.
+Since v1.41 the same matcher also sweeps a file's *file-derived metadata* (filename,
+EXIF make/model, PDF producer/title/author, office application) into a separate
+`lexicon_match.metadata` sub-block — so a risk term hiding where the body scan can't
+look still surfaces — but this is still a **count, not a verdict**. Since v1.43 the
+lexicon can be sourced as JSON *or* an EasyList-style text list and composed from
+several sources (`--lexicon` repeated / `--lexicon-index`); fo composes **local**
+files only and **never fetches** — sourcing/updating the lists is a job for whatever
+subscription tool you like, not for fo.
 
 **Safe mode over-suppresses by design (v1.40, `--trusted-only`).** `--trusted-only`
 emits a projection that keeps only fo-derived signal and nulls every file-derived

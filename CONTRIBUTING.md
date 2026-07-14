@@ -92,9 +92,9 @@ The golden rule: **same input + same config = same output.** If your change coul
 
 File Observer tracks three versions independently: **`SCANNER_VERSION`** (the release), **`LOGIC_VERSION`** (routing/extraction *behavior* — anything that changes an observed value), **`SCHEMA_VERSION`** (the manifest *contract* — new fields/namespaces/vectors). If your change affects output, the right one(s) must bump. **Distinguish two cases:** a new *field / namespace / vector* is a manifest-shape change → MINOR + a **`SCHEMA_VERSION`** bump; a new *value* of an existing field (a provenance trigger, format signature, safety-flag value, error code) does **NOT** bump `SCHEMA_VERSION` — you still regenerate `docs/SCHEMA.md` (next section) so it reflects the value, but the contract shape is unchanged (e.g. v1.15.1 added `image/heif` to `format_signatures` with `SCHEMA_VERSION` unchanged). See **[CONVENTIONS.md §1](docs/CONVENTIONS.md)** for the which-bumps-when rules (a `test_packaging.py` guard keeps `SCANNER_VERSION` / `pyproject.toml` / the module docstring in sync — they can't silently drift).
 
-### Update docs in the same PR
+### Documentation is part of every PR
 
-If your change affects behavior, update the relevant docs. Don't make the reviewer chase documentation drift.
+Documentation ships **with** the change, not after it — don't make the reviewer chase drift. Every PR sweeps the same angles (the [PR template](.github/PULL_REQUEST_TEMPLATE.md) carries the checklist): **correctness** (no doc statement the change made false; snippets still run), **versions** (every reference current), **user-facing** (README / `docs/TUTORIAL.md` / `examples/` reflect any new or changed flag, param, or capability — a headline capability earns a runnable example + a tutorial section), **human-readable surfaces** (the per-scan `summary` and `--schema --format summary` still name what a scan observes), **contributions** (this guide / the template if the *process* changed), **frozen vs live** (leave RFCs/`archive/` alone; add the `docs/HISTORY.md` row), and **new-doc need** (a deep mechanic may warrant its own guide, not a bolted-on paragraph).
 
 **If you add any output surface** — a field, namespace, vector, safety flag, error code, provenance trigger, or format signature — you must (a) register it in the relevant registry, and (b) **regenerate the schema doc**:
 
@@ -116,7 +116,7 @@ Before submitting:
 - [ ] Determinism preserved
 - [ ] Correct version(s) bumped (`SCANNER` / `LOGIC` / `SCHEMA` — see CONVENTIONS §1)
 - [ ] `docs/SCHEMA.md` regenerated if you added an output surface
-- [ ] Documentation updated if behavior changed
+- [ ] Documentation swept — all angles above (correctness, versions, user-facing, human-readable surfaces, contributions, frozen-vs-live, new-doc need)
 - [ ] CLA signed (first-time contributors)
 
 ### Commit messages
