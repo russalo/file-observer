@@ -88,9 +88,11 @@ def test_index_matches_flags(tmp_path: Path):
 # --- 3. no-leak: version / source / path never in the manifest -------------------------------------
 def test_no_provenance_leak(tmp_path: Path):
     # the lexicon file lives OUTSIDE the scanned tree (else the scan reads it as a data file)
-    scan_dir = tmp_path / "data"; scan_dir.mkdir()
+    scan_dir = tmp_path / "data"
+    scan_dir.mkdir()
     (scan_dir / "doc.md").write_text("i love banana and cherry pie\n", encoding="utf-8")
-    lex_dir = tmp_path / "lex"; lex_dir.mkdir()
+    lex_dir = tmp_path / "lex"
+    lex_dir.mkdir()
     tp = _write(lex_dir, "SECRET-FILENAME.txt", TEXT_LEX)
     lex, metas = load_lexicon([str(tp)])
     assert any(m.get("source") == "SECRET-SOURCE-NAME" for m in metas)  # provenance reaches stderr metas
@@ -113,9 +115,22 @@ def test_version_bump_same_id_term_moves_id(tmp_path: Path):
     v1 = _write(tmp_path, "v1.txt", "! Title: x\n! Version: 1\n[c]\nbanana\n")
     v2 = _write(tmp_path, "v2.txt", "! Title: x\n! Version: 2\n[c]\nbanana\n")
     v3 = _write(tmp_path, "v3.txt", "! Title: x\n! Version: 2\n[c]\nbanana\ncherry\n")
-    a, _ = load_lexicon([str(v1)]); b, _ = load_lexicon([str(v2)]); c, _ = load_lexicon([str(v3)])
+    a, _ = load_lexicon([str(v1)])
+    b, _ = load_lexicon([str(v2)])
+    c, _ = load_lexicon([str(v3)])
     assert lexicon_dictionary_id(a) == lexicon_dictionary_id(b)
     assert lexicon_dictionary_id(a) != lexicon_dictionary_id(c)
+
+
+def test_composed_id_order_independent_without_override(tmp_path: Path):
+    """leg-4/Codex P2: with multiple sources and NO --lexicon-id, the composed id (and thus
+    dictionary_id) must NOT depend on flag order — it's the lexicographically-first source id."""
+    a = _write(tmp_path, "a.txt", "! Title: zebra\n[c]\nmango\n")
+    b = _write(tmp_path, "b.txt", "! Title: apple\n[c]\nbanana\n")
+    fwd, _ = load_lexicon([str(a), str(b)])
+    rev, _ = load_lexicon([str(b), str(a)])
+    assert fwd["lexicon_id"] == "apple" == rev["lexicon_id"]   # lexicographically first, not flag-order first
+    assert lexicon_dictionary_id(fwd) == lexicon_dictionary_id(rev)
 
 
 # --- 6. bounds / never-crash ----------------------------------------------------------------------
@@ -153,6 +168,35 @@ def test_count_mismatch_recorded(tmp_path: Path):
     lex, metas = load_lexicon([str(p)])
     assert metas[0]["count_mismatch"] is True
     assert lex["categories"]["c"] == ["banana", "cherry"]  # load still succeeded
+
+
+# --- leg-4 follow-ups -----------------------------------------------------------------------------
+def test_date_metadata_key_accepted(tmp_path: Path):
+    """leg-4/CodeRabbit: the RFC lists `date` as load-time metadata — it must be accepted, not dropped."""
+    p = _write(tmp_path, "d.txt", "! Title: x\n! Date: 2026-07-14\n[c]\nbanana\n")
+    _, metas = load_lexicon([str(p)])
+    assert metas[0].get("date") == "2026-07-14"
+
+
+def test_lone_lexicon_id_rejected_cli(tmp_path: Path):
+    """leg-4/CodeRabbit: a lone --lexicon-id with no source is meaningless → fail rc=2, not silent no-lexicon."""
+    import subprocess
+    import sys as _sys
+    (tmp_path / "d.txt").write_text("hi\n", encoding="utf-8")
+    proc = subprocess.run(
+        [_sys.executable, "-m", "file_observer.scanner", str(tmp_path), "--lexicon-id", "x", "--stdout"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert proc.returncode == 2
+
+
+def test_json_meta_scalar_bounded(tmp_path: Path):
+    """leg-4/CodeRabbit: JSON metadata must be scalar + bounded (an object value is dropped, not stringified huge)."""
+    p = _write(tmp_path, "l.json", json.dumps(
+        {"lexicon_id": "x", "source": {"nested": "obj"}, "version": "v1", "categories": {"c": ["banana"]}}))
+    _, metas = load_lexicon([str(p)])
+    assert metas[0].get("version") == "v1"
+    assert "source" not in metas[0]   # non-scalar dropped
 
 
 # --- version axes ---------------------------------------------------------------------------------

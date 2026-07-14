@@ -1454,8 +1454,8 @@ LEXICON_MAX_LINE_LEN = 8192         # a text-lexicon line longer than this is ma
 LEXICON_HEADER_MAX_VALUE_LEN = 512  # a load-time metadata value cap (never in the manifest — keep it small)
 # EasyList-style header key: "! Key: value". Anchored + bounded → linear (ReDoS-safe; in the battery).
 LEXICON_TEXT_HEADER_RE = re.compile(r"^([A-Za-z][A-Za-z0-9 _-]{0,63}):[ \t]*(.*)$")
-LEXICON_TEXT_META_KEYS = frozenset({"version", "source", "license", "description", "count", "homepage", "expires"})
-LEXICON_JSON_META_KEYS = ("version", "source", "license", "description", "count", "homepage", "expires")
+LEXICON_TEXT_META_KEYS = frozenset({"version", "date", "source", "license", "description", "count", "homepage", "expires"})
+LEXICON_JSON_META_KEYS = ("version", "date", "source", "license", "description", "count", "homepage", "expires")
 # v1.41: the metadata self-sweep joins the file-derived metadata strings into one text and scans it.
 # Metadata is short, but a hostile PDF could carry a huge producer/title string — cap the joined text
 # (declared deviation; feeds the rules_hash). Bounded, so the sweep can't be made to hang.
@@ -1596,11 +1596,11 @@ def parse_lexicon_text(text: str) -> tuple[dict[str, Any], dict[str, str]]:
                 key = m.group(1).strip().casefold().replace(" ", "_").replace("-", "_")
                 if key == "licence":
                     key = "license"
-                val = m.group(2).strip()[:LEXICON_HEADER_MAX_VALUE_LEN]
+                val = m.group(2).strip()
                 if key in ("title", "lexicon_id"):
-                    lexicon_id = val
+                    lexicon_id = val   # NOT truncated — parse_lexicon enforces LEXICON_MAX_ID_LEN, fail-loud on >cap (so a truncated title can never silently collide — leg-4/CodeRabbit)
                 elif key in LEXICON_TEXT_META_KEYS:
-                    meta[key] = val
+                    meta[key] = val[:LEXICON_HEADER_MAX_VALUE_LEN]   # display-only metadata → bounded
             continue
         if line[0] == "[" and line[-1] == "]":
             cat = line[1:-1].strip()
@@ -1620,18 +1620,29 @@ def parse_lexicon_text(text: str) -> tuple[dict[str, Any], dict[str, str]]:
     return {"lexicon_id": lexicon_id, "categories": categories}, meta
 
 
+def _read_lexicon_bytes(path: Path, what: str) -> str:
+    """BOUNDED read: pull at most cap+1 bytes so an oversized source can't exhaust memory BEFORE the
+    length check (the v1.8.1 bounded-observation discipline — `read_bytes()` would allocate the whole
+    file first; leg-4/CodeRabbit). Strict UTF-8, BOM stripped (a lexicon is authored text; fail-loud)."""
+    with path.open("rb") as fh:
+        data = fh.read(LEXICON_MAX_FILE_BYTES + 1)
+    if len(data) > LEXICON_MAX_FILE_BYTES:
+        raise ValueError(f"{what} too large (> {LEXICON_MAX_FILE_BYTES} bytes): {path}")
+    return data.decode("utf-8-sig")
+
+
 def load_lexicon_source(path: Path) -> tuple[dict[str, Any], dict[str, str]]:
     """Load ONE lexicon file — JSON (canonical) or EasyList-style text, sniffed on the first non-space
     char (`{` → JSON). Returns (normalized_lexicon, load_meta). Bounded read; strict UTF-8; fail-loud."""
-    data = path.read_bytes()
-    if len(data) > LEXICON_MAX_FILE_BYTES:
-        raise ValueError(f"lexicon file too large (> {LEXICON_MAX_FILE_BYTES} bytes): {path.name}")
-    text = data.decode("utf-8-sig")   # strip a BOM; a lexicon is authored UTF-8 text (strict → fail-loud)
+    text = _read_lexicon_bytes(path, "lexicon file")
     if text.lstrip()[:1] == "{":
         raw = json.loads(text)
         if not isinstance(raw, dict):
-            raise ValueError(f"JSON lexicon must be an object: {path.name}")
-        meta = {k: str(raw[k]) for k in LEXICON_JSON_META_KEYS if k in raw}
+            raise ValueError(f"JSON lexicon must be an object: {path}")
+        # scalar-only + bounded (parity with the text header; an object/list or a huge string is rejected/capped — leg-4/CodeRabbit)
+        meta = {k: str(raw[k])[:LEXICON_HEADER_MAX_VALUE_LEN]
+                for k in LEXICON_JSON_META_KEYS
+                if k in raw and isinstance(raw[k], (str, int, float, bool))}
         return parse_lexicon(raw), meta   # parse_lexicon reads only lexicon_id+categories; extra keys ignored
     raw, meta = parse_lexicon_text(text)
     return parse_lexicon(raw), meta
@@ -1648,7 +1659,10 @@ def compose_lexicons(lexicons: list[dict[str, Any]], lexicon_id: str | None = No
     for lex in lexicons:
         for cat, terms in lex["categories"].items():
             merged.setdefault(cat, set()).update(terms)
-    lid = lexicon_id or lexicons[0]["lexicon_id"]
+    # Composed id: explicit override, else the LEXICOGRAPHICALLY-FIRST source id (NOT flag-order-first) so
+    # the composed lexicon_id — and thus dictionary_id — is ORDER-INDEPENDENT for the same resolved union
+    # (leg-4/Codex P2). A consumer wanting a specific id passes --lexicon-id.
+    lid = lexicon_id or sorted(lex["lexicon_id"] for lex in lexicons)[0]
     return parse_lexicon({"lexicon_id": lid, "categories": {c: sorted(merged[c]) for c in merged}})
 
 
@@ -1656,10 +1670,7 @@ def _read_lexicon_index(idx: Path) -> tuple[list[Path], str | None]:
     """Read a subscription index — JSON {sources:[relpaths], lexicon_id?} or a text list (`!`/`#`
     comments, one relative path per line). Member paths resolve relative to the index file's OWN
     directory. Returns (member_paths, index_lexicon_id)."""
-    data = idx.read_bytes()
-    if len(data) > LEXICON_MAX_FILE_BYTES:
-        raise ValueError(f"lexicon index too large: {idx.name}")
-    text = data.decode("utf-8-sig")
+    text = _read_lexicon_bytes(idx, "lexicon index")
     base = idx.parent
     lid: str | None = None
     rels: list[str] = []
@@ -1693,7 +1704,7 @@ def _lexicon_path_in_root(p: Path, root: Path | None) -> Path:
         try:
             rp.relative_to(root.resolve())
         except ValueError:
-            raise ValueError(f"lexicon path escapes --root: {p.name}")
+            raise ValueError(f"lexicon path escapes --root: {p}")
     return rp
 
 
@@ -1708,7 +1719,7 @@ def load_lexicon(paths: list[str] | None = None, index_path: str | None = None,
     if index_path:
         idx = _lexicon_path_in_root(Path(index_path), root)
         if not idx.is_file():
-            raise ValueError(f"lexicon index not found: {Path(index_path).name}")
+            raise ValueError(f"lexicon index not found: {index_path}")
         members, index_lid = _read_lexicon_index(idx)
         sources.extend(members)
     for p in (paths or []):
@@ -1722,10 +1733,11 @@ def load_lexicon(paths: list[str] | None = None, index_path: str | None = None,
     for sp in sources:
         rp = _lexicon_path_in_root(sp, root)
         if not rp.is_file():
-            raise ValueError(f"lexicon source not found: {sp.name}")
+            raise ValueError(f"lexicon source not found: {sp}")
         lex, meta = load_lexicon_source(rp)
         n_terms = sum(len(v) for v in lex["categories"].values())
-        rec: dict[str, Any] = {"name": sp.name, "lexicon_id": lex["lexicon_id"], "terms": n_terms, **meta}
+        # `**meta` FIRST so the explicit keys win — a future meta key can't clobber name/lexicon_id/terms (leg-4/gemini)
+        rec: dict[str, Any] = {**meta, "name": sp.name, "lexicon_id": lex["lexicon_id"], "terms": n_terms}
         if "count" in meta:   # integrity: a declared count disagreeing with the parsed total → a warning
             try:
                 rec["count_mismatch"] = int(meta["count"]) != n_terms
@@ -9353,6 +9365,9 @@ def main() -> None:
     # philosophy: a bad lexicon must not silently produce a no-match "all clear"). Parsed here for
     # an early, clear error; Scanner.__init__ re-validates (covers the API path).
     lexicon_cfg = None
+    if args.lexicon_id and not (args.lexicon or args.lexicon_index):
+        print("file-observer: --lexicon-id requires --lexicon or --lexicon-index", file=sys.stderr)
+        sys.exit(2)
     if args.lexicon or args.lexicon_index:
         try:
             lexicon_cfg, lex_metas = load_lexicon(args.lexicon, args.lexicon_index, args.lexicon_id)

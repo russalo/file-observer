@@ -16,6 +16,7 @@ import argparse
 import json
 import os
 import shutil
+import sys
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
@@ -321,12 +322,23 @@ def main() -> None:
         if not root.is_dir():   # fail fast at startup, not on every later tool call (leg-4/gemini)
             ap.error(f"--root is not a directory: {args.root}")
         _ROOT = root
+    if args.lexicon_id and not (args.lexicon or args.lexicon_index):
+        ap.error("--lexicon-id requires --lexicon or --lexicon-index")
     if args.lexicon or args.lexicon_index:
         try:   # compose + validate ONCE at startup — a bad lexicon fails fast, not on every tool call.
             # Startup paths are OPERATOR-supplied (argv, same trust as --root itself) → not root-confined.
-            _LEXICON, _ = load_lexicon(args.lexicon, args.lexicon_index, args.lexicon_id)
+            _LEXICON, lex_metas = load_lexicon(args.lexicon, args.lexicon_index, args.lexicon_id)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             ap.error(f"lexicon could not be loaded: {exc}")
+        # Parity with the CLI: a load-time provenance summary + integrity warning → the server's stderr
+        # (operator-facing; never the manifest or the MCP wire) (leg-4/CodeRabbit).
+        for r in lex_metas:
+            line = f"file-observer-mcp: loaded lexicon source '{r['name']}' [{r['lexicon_id']}] · {r['terms']} terms"
+            if r.get("version"):
+                line += f" · v{r['version']}"
+            print(line, file=sys.stderr)
+            if r.get("count_mismatch"):
+                print(f"file-observer-mcp: WARNING: '{r['name']}' declared count != {r['terms']} parsed terms", file=sys.stderr)
     mcp.run(transport="stdio")
 
 
