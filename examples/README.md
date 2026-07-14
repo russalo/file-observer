@@ -17,6 +17,9 @@ excerpts stay stable across releases.
 | 05 | [Delta scan](05-delta-scan/) | What changed between two scans (added / modified / removed) |
 | 06 | [Schema discovery](06-schema-discovery/) | `--schema` — the complete output surface, no guessing |
 | 07 | [Parallel scan](07-parallel-scan/) | `--workers N` — faster, byte-identical output |
+| 08 | [MCP server](08-mcp-server/) | `file-observer-mcp` — the read-only tools an agent calls (`scan_summary`, …) |
+| 09 | [Safe mode](09-trusted-only/) | `--trusted-only` — a projection safe to hand to a model (nulls attacker-controllable strings) |
+| 10 | [Lexicon screen](10-lexicon-screen/) | `--lexicon` — screen untrusted files for consumer-defined terms before an AI reads them |
 
 ## Running an example
 

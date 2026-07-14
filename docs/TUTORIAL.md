@@ -48,6 +48,7 @@ pip install "file-observer[pdf]"      # object-stream + encrypted PDF metadata (
 pip install "file-observer[msg]"      # OLE2 .msg/.doc/.xls/.ppt (olefile)
 pip install "file-observer[security]" # hardened XML parsing (purexml — pure-stdlib, adds structural caps)
 pip install "file-observer[watch]"    # --watch FS-event mode (watchfiles)
+pip install "file-observer[mcp]"      # the file-observer-mcp agent server (see §10)
 ```
 
 Or run it with **no install** (zero-setup, from PyPI), or in a container with no Python at all:
@@ -206,11 +207,12 @@ Four read-only tools, built for an agent's context budget (progressive disclosur
 **observe and report** — the agent interprets. This exposes the *same* manifest you get from the
 CLI (§3), through a protocol an agent can call directly.
 
-Two more scanner capabilities thread through the tools (v1.39): start the server with
-`--lexicon <path>` to apply a bring-your-own term lexicon (§ *content signals*) to every scan — the
+More scanner capabilities thread through the tools: start the server with `--lexicon <path>`
+(or `--lexicon-index`) to apply a bring-your-own term lexicon (§12) to every scan — the
 guardrail-risk **pre-screen**, so an agent can flag content that might trip *its own* content filter
 before ingesting it (the terms live in the config file, never in the agent's context; only per-category
-counts come back). And pass `previous_manifest_path` to `scan_directory`/`scan_summary` for a **delta**
+counts come back). Per-call tool params mirror the CLI safe surfaces: `trusted_only=true` (§11) and
+`receipt=true` (§13). And pass `previous_manifest_path` to `scan_directory`/`scan_summary` for a **delta**
 (what changed since a prior scan) — the agentic-loop version of §8's `--previous-manifest`.
 
 ## 11. Safe mode: feeding untrusted files to a model
@@ -239,9 +241,68 @@ Two honest caveats:
 - **It's a projection, not a sanitizer, and it over-suppresses by design** (fail-safe: unsure ⇒ dropped). It also drops genuinely-useful things — the human `summary`, corpus vector summaries, even fo-enum strings like `codec`. Use the **default** manifest when you want those; `--trusted-only` only for the feed-to-a-model case.
 - Want a *different* cut? Read each field's `trust` attribute from `--schema` (§7) and build your own projection.
 
+## 12. Content signals: bring your own lexicon
+
+→ [Example 10](../examples/10-lexicon-screen/)
+
+Safe mode (§11) strips *attacker* text out. The **lexicon** is the other half — *your own* signal
+in. Give file-observer a consumer-supplied, category-tagged term list and it counts those terms per
+file and raises a `lexicon_match` safety_flag on any hit — a cheap, deterministic **content pre-screen**.
+file-observer never executes or interprets file content — it can't be prompt-injected — so it can
+read files an LLM shouldn't and tell you *which* are a guardrail-trip risk before any bytes reach a
+model. (Parsing untrusted input isn't risk-*free* — see [SECURITY.md](../SECURITY.md) — but it's
+bounded and never-crashes by design; it's the *injection* vector that's off the table.) It's an
+**observation, never a verdict** — you set the threshold.
+
+```bash
+file-observer ./untrusted-uploads --specialists --lexicon terms.txt --stdout
+```
+
+The lexicon is either **JSON** (`{"lexicon_id": "...", "categories": {"cat": ["term", …]}}`) or an
+**EasyList-style text** list — `! Title:` header, `[category]` sections, one literal term per line,
+`!`/`#` comments. It's **repeatable** (`--lexicon a.txt --lexicon b.json`, unioned, order-independent),
+and `--lexicon-index lists.txt` composes a whole subscription of member lists. file-observer composes
+**local** files — it never fetches; keep the lists current with whatever tool you like.
+
+What you get back (dormant unless a lexicon is supplied — no lexicon means the default manifest is
+byte-identical):
+
+- a `specialist_metadata.lexicon_match` block per text file — per-category **counts + density** for the
+  file's body, plus a `metadata` sub-block that runs the same match over file-derived metadata a body
+  scan can't see (a filename, an EXIF make/model, a PDF producer/title/author);
+- a corpus `lexicon` vector with per-category totals and a content-hash **`dictionary_id`** (moves on any
+  term change → catches silent list drift).
+
+**The terms stay private.** Only counts, category names, and the `dictionary_id` ever reach the manifest —
+your sensitive list lives in a config file file-observer never echoes (not into the manifest, not into
+error logs). One nuance: a term that *also* appears in a scanned document's body shows up in that file's
+`content_preview` — as the document's own untrusted content, not as a lexicon term; strip those with
+`--trusted-only` (§11).
+
+## 13. Screening receipts
+
+`--receipt` projects a built manifest into a compact, tamper-evident **audit record** — an envelope
+(versions, `manifest_checksum` + signature, `scan_id`, `dictionary_id`) plus a per-file entry
+(`receipt_id`, `path_id`, checksum, size, mime, `safety_flags`, and a lexicon hit-summary when a lexicon
+ran):
+
+```bash
+file-observer ./untrusted-uploads --specialists --lexicon terms.txt --receipt --stdout
+```
+
+The **`receipt_id`** is a sha256 over a length-prefixed `(manifest_checksum + path + file hash)` — the
+explicit join key a downstream read/skip log references, so file-observer's observation and your
+orchestrator's decision *actually meet*. It's independently recomputable (verifiable), tamper-evident,
+and **safe by construction** (no raw path — `path_id` correlates), so a receipt is safe to persist *and*
+to feed a model. file-observer records only what it *saw*; it never records what you then *did* with a
+file — that stays your orchestrator's log.
+
+Together, §12 → §11 → §13 are the "consume untrusted files safely" arc: **detect** (lexicon screen) →
+**safe hand-off** (`--trusted-only`) → **audit bridge** (`--receipt`).
+
 ## Where to go next
 
-- The [examples](../examples/) — runnable, one per concept (incl. [08 — the MCP server](../examples/08-mcp-server/) and [09 — safe mode](../examples/09-trusted-only/)).
+- The [examples](../examples/) — runnable, one per concept (incl. [08 — the MCP server](../examples/08-mcp-server/), [09 — safe mode](../examples/09-trusted-only/), and [10 — lexicon screen](../examples/10-lexicon-screen/)).
 - [`docs/SCHEMA.md`](SCHEMA.md) — the complete output surface (generated by `--schema`).
 - [`docs/PUBLIC_CONTRACT.md`](PUBLIC_CONTRACT.md) — what's stable to build against.
 - [`docs/LIMITATIONS.md`](LIMITATIONS.md) — what file-observer deliberately doesn't do.

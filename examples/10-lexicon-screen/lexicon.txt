@@ -1,0 +1,19 @@
+! Title: example-content-screen
+! Version: 2026.07
+! Source: example (replace with your own curated lists)
+!
+! A consumer-supplied lexicon. File Observer counts these terms per file and
+! reports per-category counts + density — an OBSERVATION, never a verdict.
+! The terms below are BENIGN PLACEHOLDERS; a real deployment supplies its own
+! sensitive lists, keeps them out of version control, and the terms never enter
+! the manifest (only counts, category names, and a content-hash dictionary_id do).
+!
+! Format: EasyList-style. `!`/`#` = comment; `! Key: value` = header; `[name]`
+! opens a category; every other line is one literal term. JSON is also accepted.
+[fruit]
+banana
+cherry
+mango
+[placeholder-flag]
+example-marker
+sample-flagword

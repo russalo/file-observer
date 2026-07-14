@@ -68,13 +68,13 @@ Two classes of field:
 
 ## MCP: never pass secrets as tool arguments
 
-An MCP tool's arguments are **constructed by the calling LLM**, so anything passed as a tool argument is, by definition, in the agent's context. Sensitive input must therefore never be a tool parameter. File Observer supplies the consumer lexicon via a **server-startup `--lexicon <path>` flag**, not a per-call argument, so the lexicon *term list* never crosses the wire — only term-free derived results do (per-category counts, densities, the category names, and the content-hash `dictionary_id`). This scopes the guarantee to the lexicon *config*: a term that happens to appear in a scanned file's own content will still surface in file-derived fields like `content_preview`, exactly as any other content would — treat those as untrusted per the section above. The same rule generalizes to any secret (API keys, credentials): verify it server-side, and let the agent see only already-scoped, secret-free results.
+An MCP tool's arguments are **constructed by the calling LLM**, so anything passed as a tool argument is, by definition, in the agent's context. Sensitive input must therefore never be a tool parameter. File Observer supplies the consumer lexicon via **server-startup `--lexicon <path>` / `--lexicon-index <path>` flags** (v1.43 accepts JSON or an EasyList-style text list, and composes several), not a per-call argument, so the lexicon *term list* never crosses the wire — only term-free derived results do (per-category counts, densities, the category names, and the content-hash `dictionary_id`). This scopes the guarantee to the lexicon *config*: a term that happens to appear in a scanned file's own content will still surface in file-derived fields like `content_preview`, exactly as any other content would — treat those as untrusted per the section above. The same rule generalizes to any secret (API keys, credentials): verify it server-side, and let the agent see only already-scoped, secret-free results.
 
 ## Supported Versions
 
 | Version | Supported |
 |---|---|
-| 1.40.x | Yes (current) |
-| 1.39.x | Security fixes only |
-| 1.0–1.38.x | No (schema-stable but unsupported; please upgrade) |
+| 1.43.x | Yes (current) |
+| 1.42.x | Security fixes only |
+| 1.0–1.41.x | No (schema-stable but unsupported; please upgrade) |
 | < 1.0 | No |
