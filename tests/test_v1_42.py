@@ -156,6 +156,6 @@ def test_mcp_scan_file_receipt_binds_callers_path(tree: Path):
 
 # --- 10. version axes -----------------------------------------------------------------
 def test_version_axes():
-    assert SCANNER_VERSION == "1.42.0"
+    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 42, 0)   # floor (v1.43 bumped SCANNER)
     assert LOGIC_VERSION == "1.22.0"    # projection = front-door, LOGIC frozen
     assert SCHEMA_VERSION == "1.23"     # manifest contract frozen

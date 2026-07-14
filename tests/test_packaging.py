@@ -197,9 +197,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.42.0"
-    assert SCHEMA_VERSION == "1.23"  # v1.41.0 — additive: new provisional lexicon_match.metadata sub-block (file-derived metadata self-sweep)
-    assert LOGIC_VERSION == "1.22.0"  # v1.41.0 — new derived values (lexicon_match.metadata) move manifest_checksum on lexicon scans only
+    assert SCANNER_VERSION == "1.43.0"
+    assert SCHEMA_VERSION == "1.23"  # v1.43.0 — FROZEN (loader upgrade; no new manifest field). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
+    assert LOGIC_VERSION == "1.22.0"  # v1.43.0 — FROZEN (front-door loader; resolved lexicon + dictionary_id behavior-identical for equivalent terms)
 
 
 def test_legacy_scanner_import_warns():
