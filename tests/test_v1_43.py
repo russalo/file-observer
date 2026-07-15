@@ -202,5 +202,5 @@ def test_json_meta_scalar_bounded(tmp_path: Path):
 # --- version axes ---------------------------------------------------------------------------------
 def test_version_axes():
     assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 43, 0)   # floor (v1.44 bumped SCANNER)
-    assert LOGIC_VERSION == "1.22.0"   # loader upgrade = front-door, LOGIC frozen
+    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 22, 0)   # floor (v1.45 bumped LOGIC)
     assert SCHEMA_VERSION == "1.23"    # manifest contract frozen
