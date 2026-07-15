@@ -1,0 +1,10 @@
+! Title: routing-policy-example
+! Version: 2026.07
+!
+! Benign PLACEHOLDER terms — a real deployment supplies its own sensitive lists.
+! The routing tier for each category is the CONSUMER's choice (see POLICY in route.py),
+! never a File Observer verdict. File Observer only counts; you decide.
+[secrets]
+banana
+[profanity]
+cherry
