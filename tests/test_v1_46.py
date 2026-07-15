@@ -34,7 +34,7 @@ from file_observer.scanner import (
     SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
-    _reached_through_reparse,
+    _should_prune_dir,
     _write_stdout_utf8,
 )
 
@@ -45,11 +45,21 @@ def test_csv_pinned_to_text_csv():
     assert mimetypes.guess_type("x.csv") == ("text/csv", None)
 
 
-def test_vnd_ms_excel_is_binary_but_text_csv_is_not():
-    # documents+guards the causal chain: WITHOUT the pin a Windows .csv (-> vnd.ms-excel) would be
-    # binary; WITH the pin (-> text/csv) it is not.
+def test_vnd_ms_excel_is_binary_but_text_csv_is_not(tmp_path: Path):
+    # Reproduce the Windows failure MECHANISM on Linux via detect_binary directly:
+    # the Windows registry MIME (application/vnd.ms-excel) flips is_binary True → the
+    # text tier (csv_headers) is skipped; the v1.46 pin forces text/csv, which stays
+    # text. NOTE: the pin is a NO-OP on Linux (guess_type is already text/csv there),
+    # so the true end-to-end falsifier — fail@1.45, pass@1.46 — is the Windows suite's
+    # test_csv_headers_extracted, validated by the Ally X shakedown re-run (RFC §5).
     assert "application/vnd.ms-excel" in BINARY_MIME_TYPES
     assert "text/csv" not in BINARY_MIME_TYPES
+    sc = Scanner(tmp_path, ScannerConfig())
+    sample = b"name,age\nalice,30\nbob,25\n"
+    is_bin_excel, _ = sc.detect_binary(sample, "application/vnd.ms-excel")
+    is_bin_csv, _ = sc.detect_binary(sample, "text/csv")
+    assert is_bin_excel is True, "the registry MIME → binary (the bug the pin avoids on Windows)"
+    assert is_bin_csv is False, "text/csv (the pin) → text → csv_headers reachable"
 
 
 def test_csv_stays_text_with_headers(tmp_path: Path):
@@ -87,19 +97,16 @@ def test_in_tree_file_symlink_kept(tmp_path: Path):
     assert "target.txt" in paths and "alias.txt" in paths
 
 
-# --- A: the reparse-ancestor helper (mocked — POSIX cannot make a junction) ------------------------
-def test_reached_through_reparse_detects_and_never_raises(tmp_path: Path, monkeypatch):
-    root = tmp_path
+# --- A: the reparse-dir prune helper (mocked — POSIX cannot make a junction) -----------------------
+def test_should_prune_dir_reparse_and_failclosed(tmp_path: Path, monkeypatch):
+    root = tmp_path; root_resolved = root.resolve()
     junction = root / "jlink"; junction.mkdir()
-    inner = junction / "inside.txt"; inner.write_text("x", encoding="utf-8")
-    normal = root / "plain.txt"; normal.write_text("y", encoding="utf-8")
+    normal = root / "plain"; normal.mkdir()
 
     REPARSE = 0x400
 
     class FakeStat:
         def __init__(self, attrs): self.st_file_attributes = attrs
-
-    real_lstat = os.lstat
 
     def fake_lstat(p):
         if Path(p) == junction:
@@ -107,14 +114,34 @@ def test_reached_through_reparse_detects_and_never_raises(tmp_path: Path, monkey
         return FakeStat(0)
 
     monkeypatch.setattr(os, "lstat", fake_lstat)
-    assert _reached_through_reparse(inner, root) is True     # inside a reparse dir
-    assert _reached_through_reparse(normal, root) is False    # not
+    assert _should_prune_dir(junction, root_resolved) is True    # reparse → prune
+    assert _should_prune_dir(normal, root_resolved) is False     # normal in-tree → descend
 
-    # never raises on OSError/AttributeError -> treated as not-a-reparse
-    def boom(p): raise OSError("boom")
-    monkeypatch.setattr(os, "lstat", boom)
-    assert _reached_through_reparse(inner, root) is False
-    monkeypatch.setattr(os, "lstat", real_lstat)
+
+def test_should_prune_dir_failclosed_on_inconclusive(tmp_path: Path):
+    # On POSIX, os.lstat() results have NO st_file_attributes → AttributeError → the
+    # helper FAILS CLOSED via resolve()-containment (no monkeypatch needed — this is
+    # the real inconclusive path): an in-tree dir is kept, an out-of-tree one pruned.
+    root = tmp_path / "root"; root.mkdir(); root_resolved = root.resolve()
+    intree = root / "d"; intree.mkdir()
+    outside = tmp_path / "outside"; outside.mkdir()
+    assert _should_prune_dir(intree, root_resolved) is False      # resolves in-tree → keep
+    assert _should_prune_dir(outside, root_resolved) is True       # resolves out-of-tree → prune (fail-closed)
+
+
+def test_windows_reparse_dir_pruned_from_walk(tmp_path: Path, monkeypatch):
+    # end-to-end: simulate Windows + a reparse dir; iter_files must NOT descend into it
+    # (no records under it) — closes escape/double-count/DoS BEFORE materializing its subtree.
+    tree = tmp_path / "t"; tree.mkdir()
+    (tree / "real.txt").write_text("keep", encoding="utf-8")
+    j = tree / "jlink"; j.mkdir(); (j / "inside.txt").write_text("dup", encoding="utf-8")
+    import file_observer.scanner as s
+    monkeypatch.setattr(s, "_WINDOWS", True)
+    monkeypatch.setattr(s, "_should_prune_dir", lambda p, root_resolved: p.name == "jlink")
+    m = s.Scanner(tree, s.ScannerConfig()).scan()
+    paths = {f.path for f in m.files}
+    assert "real.txt" in paths
+    assert not any("jlink" in p for p in paths), "reparse dir was descended into"
 
 
 # --- C: byte-safe stdout helper -------------------------------------------------------------------
