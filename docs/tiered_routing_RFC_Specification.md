@@ -27,7 +27,7 @@ Measured (2026-07-15), a per-file receipt record with a lexicon:
 { "receipt_id": "742c…", "path_id": "fecc…",
   "safety_flags": ["lexicon_match"],
   "lexicon": { "body_hits": 1, "metadata_hits": 0,
-               "categories": { "secrets": 1, "profanity": 0 }, "metadata_categories": {…} } }
+               "categories": { "secrets": 1, "profanity": 0 }, "metadata_categories": {} } }
 ```
 That is *exactly* a tiered-routing input: `safety_flags` + per-category counts, keyed by an id, with no
 raw path or content. The gap is purely demonstrative.

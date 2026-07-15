@@ -310,7 +310,7 @@ signal — `safety_flags` plus *which* lexicon **category** hit — lets a consu
 through. This is what the r/mcp "blocking-for-flagged vs advisory-for-rest" ask needed, and v1.44 (the
 category breakdown surviving safe mode) made it expressible on a model-safe manifest.
 
-The natural input is the **receipt** — it already carries per file `safety_flags`, the lexicon
+The natural input is the **receipt** — it already carries per-file `safety_flags`, the lexicon
 `categories`, and a `receipt_id`:
 
 ```bash
