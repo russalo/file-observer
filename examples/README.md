@@ -20,6 +20,7 @@ excerpts stay stable across releases.
 | 08 | [MCP server](08-mcp-server/) | `file-observer-mcp` — the read-only tools an agent calls (`scan_summary`, …) |
 | 09 | [Safe mode](09-trusted-only/) | `--trusted-only` — a projection safe to hand to a model (nulls attacker-controllable strings) |
 | 10 | [Lexicon screen](10-lexicon-screen/) | `--lexicon` — screen untrusted files for consumer-defined terms before an AI reads them |
+| 11 | [Tiered routing](11-tiered-routing/) | route each file block / review / pass on `safety_flags` + lexicon category, over the `--receipt` |
 
 ## Running an example
 
