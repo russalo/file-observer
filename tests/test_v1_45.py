@@ -55,7 +55,8 @@ def plain_tree(tmp_path: Path) -> Path:
 # --- 1. THE decoupling: manifest_checksum is INDEPENDENT of the summary content -------------------
 def test_checksum_independent_of_summary(plain_tree: Path):
     m = Scanner(plain_tree, ScannerConfig(enable_specialists=True)).scan()
-    c1 = compute_manifest_checksum(m)
+    assert m.manifest_checksum == compute_manifest_checksum(m)   # the EMITTED field matches the recompute
+    c1 = m.manifest_checksum
     m.summary = "ARBITRARY REWRITTEN PROSE " * 20   # mutate the human view
     assert compute_manifest_checksum(m) == c1, "summary must NOT be in the checksum (v1.45)"
 
@@ -71,9 +72,11 @@ def test_refresh_present(rich_tree: Path):
     keys = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_creation_tokens", "reasoning_tokens")
     total = 0
     for f in m.files:
-        if f.specialist_metadata and "ai_session" in f.specialist_metadata:
-            u = f.specialist_metadata["ai_session"].get("usage") or {}
-            total += sum(u.get(k) or 0 for k in keys)
+        ais = (f.specialist_metadata or {}).get("ai_session")
+        if isinstance(ais, dict):                                # guard: an ai_session value may be None
+            u = ais.get("usage") or {}
+            t = u.get("total_tokens")                            # vendor total when present, else components
+            total += t if t is not None else sum(u.get(k) or 0 for k in keys)
     assert total > 0 and f"{total:,}" in m.summary
 
 
