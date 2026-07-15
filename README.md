@@ -46,7 +46,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.23",
-  "context": { "scanner_version": "1.45.0", "logic_version": "1.23.0", "...": "…" },
+  "context": { "scanner_version": "1.46.0", "logic_version": "1.24.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -78,7 +78,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.45.0` |
+| **Version** | `1.46.0` |
 | **Schema** | `1.23` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -179,7 +179,7 @@ The image bundles `libmagic` + all optional specialists. (Builds from the [`Dock
 **GitHub Action** — scan a repo in CI and capture the manifest as an artifact:
 
 ```yaml
-- uses: russalo/file-observer@v1.45.0     # pin a release tag
+- uses: russalo/file-observer@v1.46.0     # pin a release tag
   id: scan
   with:
     path: .                                # directory to scan (default ".")
@@ -381,7 +381,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.45.0 RFC Specification](docs/v1.45.0_RFC_Specification.md) | Current release spec — **Decouple the human summary from the determinism contract + refresh it.** The per-scan `summary` is a *derived view* of already-checksummed data, yet it was inside `manifest_checksum` — so every prose refresh cost a `LOGIC_VERSION` bump. v1.45 excludes the whole `summary` from the checksum (a one-time bump, every checksum moves once), after which summary refreshes are free forever; the summary stays one coherent readable field (a sidecar would fragment it). Consequence: the summary becomes a **non-sealed, unsigned derived view** — trust the sealed machine fields. Rides free in the same release: the summary now surfaces the lexicon vector, `fact_block` count, and `ai_session` token sums (gated on presence; tokens counted, never priced). `LOGIC_VERSION` 1.22.0→1.23.0 (one-time), SCHEMA 1.23 unchanged. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.46.0 RFC Specification](docs/v1.46.0_RFC_Specification.md) | Current release spec — **Native-Windows / NTFS hardening** (from a native-NTFS shakedown). (A) reparse-aware discovery containment — the v1.8.1 symlink-escape guard is extended to **NTFS junctions/reparse-point dirs** (`rglob` descends into them on Windows, not POSIX) via a Windows-only skip of files reached through a reparse-point dir, closing an out-of-tree junction escape + the in-tree double-count (POSIX behavior unchanged); (B) pin `.csv → text/csv` so a plain CSV isn't typed *binary* by the Windows MIME registry's `application/vnd.ms-excel` on the no-libmagic path (restores `csv_headers`); (C) byte-safe `--watch`/`--schema` stdout (UTF-8 via `stdout.buffer`, so a non-ASCII payload doesn't crash a cp1252 console). A+B are cross-platform routing-LOGIC changes (Linux real-corpus output byte-identical); `LOGIC_VERSION` 1.23.0→1.24.0, SCHEMA 1.23 unchanged. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.45.0 RFC Specification](docs/v1.45.0_RFC_Specification.md) | **Decouple the human summary from the determinism contract + refresh it.** The per-scan `summary` is a *derived view* of already-checksummed data, yet it was inside `manifest_checksum` — so every prose refresh cost a `LOGIC_VERSION` bump. v1.45 excludes the whole `summary` from the checksum (a one-time bump, every checksum moves once), after which summary refreshes are free forever; the summary stays one coherent readable field (a sidecar would fragment it). Consequence: the summary becomes a **non-sealed, unsigned derived view** — trust the sealed machine fields. Rides free in the same release: the summary now surfaces the lexicon vector, `fact_block` count, and `ai_session` token sums (gated on presence; tokens counted, never priced). `LOGIC_VERSION` 1.22.0→1.23.0 (one-time), SCHEMA 1.23 unchanged. |
 | [v1.44.0 RFC Specification](docs/v1.44.0_RFC_Specification.md) | Prior release spec — **Lexicon category breakdown survives `--trusted-only`.** Safe mode (`--trusted-only`) is the mode you feed a manifest to a model, and the bring-your-own lexicon is the guardrail pre-screen — but together they were silently dropping the per-category breakdown a consumer routes on (category names are dynamic dict keys, dropped by the projection's attacker-label defense). The whole lexicon path is counts + consumer-config names (never file bytes), so v1.44 names a third trust class `consumer_config` and keeps the category breakdown in safe mode, via a scoped relaxation inside `lexicon_match` only + a completeness guard + a no-file-content canary. A projection change → default manifest byte-identical, `LOGIC_VERSION`/`SCHEMA_VERSION` UNCHANGED (1.22.0 / 1.23). Unblocks per-category tiered routing (#135). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.43.0 RFC Specification](docs/v1.43.0_RFC_Specification.md) | Prior release spec — **Lexicon source loader (distribution format + composition).** How a consumer *sources* the bring-your-own lexicon moves from one flat JSON file to the way risk/blocklist term lists are actually distributed (uBlock/EasyList/hosts). Two formats normalize to the same internal shape: JSON (with optional load-time header keys) + an EasyList-style **text** list (`! Title:` header, `[category]` sections, one-term-per-line, `!`/`#` comments). Composition via repeatable `--lexicon` flags (union, order-independent) + a `--lexicon-index` subscription file. Source provenance stays load-time-only — never in the manifest; `dictionary_id` stays content-anchored. fo composes **local** files, never fetches (the offline charter). A loader/front-door upgrade → `LOGIC_VERSION`/`SCHEMA_VERSION` UNCHANGED (1.22.0 / 1.23); an equivalent term set resolves byte-identical. v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.42.0 RFC Specification](docs/v1.42.0_RFC_Specification.md) | Prior release spec — **Screening receipt + bridge id (`--receipt`).** A compact, audit-friendly projection of a scan: an envelope (versions, `manifest_checksum` + signature, `scan_id`, `dictionary_id`) + a per-file record (`receipt_id`, `path_id`, checksum, size, mime, safety_flags, lexicon hit-summary). The **`receipt_id`** is a tamper-evident hash of (`manifest_checksum` + path + file hash) — the explicit join key a downstream read/skip log references, so fo's observation and the orchestrator's decision "actually meet." Safe by construction (no raw path). fo never records the read/skip decision (the charter boundary). A projection of existing observation → `LOGIC_VERSION`/`SCHEMA_VERSION` UNCHANGED (1.22.0 / 1.23); new `receipt_doc_version`. Phase 3 of the r/mcp consumption-safety plan. v1.0.0 RFC remains the binding schema-freeze contract. |

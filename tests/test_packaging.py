@@ -197,9 +197,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.45.0"
-    assert SCHEMA_VERSION == "1.23"  # v1.43.0 — FROZEN (loader upgrade; no new manifest field). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
-    assert LOGIC_VERSION == "1.23.0"  # v1.45.0 — one-time: the checksum computation changed (summary excluded from it)
+    assert SCANNER_VERSION == "1.46.0"
+    assert SCHEMA_VERSION == "1.23"  # v1.46.0 — FROZEN (Windows hardening; no new manifest field). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
+    assert LOGIC_VERSION == "1.24.0"  # v1.46.0 — cross-platform routing-LOGIC change (reparse containment + .csv pin); Linux byte-identical
 
 
 def test_legacy_scanner_import_warns():
