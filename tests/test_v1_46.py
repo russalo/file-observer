@@ -118,15 +118,31 @@ def test_should_prune_dir_reparse_and_failclosed(tmp_path: Path, monkeypatch):
     assert _should_prune_dir(normal, root_resolved) is False     # normal in-tree → descend
 
 
-def test_should_prune_dir_failclosed_on_inconclusive(tmp_path: Path):
-    # On POSIX, os.lstat() results have NO st_file_attributes → AttributeError → the
-    # helper FAILS CLOSED via resolve()-containment (no monkeypatch needed — this is
-    # the real inconclusive path): an in-tree dir is kept, an out-of-tree one pruned.
+def test_should_prune_dir_failclosed_on_inconclusive(tmp_path: Path, monkeypatch):
+    # Force the INCONCLUSIVE-attribute-read path PORTABLY: POSIX os.lstat() lacks
+    # st_file_attributes (AttributeError) but Windows HAS it (so a normal dir there
+    # is correctly identified as non-reparse and never reaches the fallback). Raise
+    # OSError for exactly the two dirs under test — the helper's `except (OSError,
+    # AttributeError)` catches it on every OS → the fail-closed resolve()-containment
+    # runs: an in-tree dir is kept, an out-of-tree one pruned. Delegate for all other
+    # paths so resolve() still works.
     root = tmp_path / "root"; root.mkdir(); root_resolved = root.resolve()
     intree = root / "d"; intree.mkdir()
     outside = tmp_path / "outside"; outside.mkdir()
-    assert _should_prune_dir(intree, root_resolved) is False      # resolves in-tree → keep
-    assert _should_prune_dir(outside, root_resolved) is True       # resolves out-of-tree → prune (fail-closed)
+    real_lstat = os.lstat
+
+    def fake_lstat(p, *a, **k):
+        try:
+            hit = Path(p) in (intree, outside)
+        except TypeError:
+            hit = False
+        if hit:
+            raise OSError("simulated inconclusive attribute read")
+        return real_lstat(p, *a, **k)
+
+    monkeypatch.setattr(os, "lstat", fake_lstat)
+    assert _should_prune_dir(intree, root_resolved) is False      # inconclusive → resolves in-tree → keep
+    assert _should_prune_dir(outside, root_resolved) is True       # inconclusive → resolves out-of-tree → prune (fail-closed)
 
 
 def test_windows_reparse_dir_pruned_from_walk(tmp_path: Path, monkeypatch):
