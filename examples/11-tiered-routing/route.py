@@ -20,22 +20,37 @@ TIER_RANK = {"pass": 0, "review": 1, "block": 2}          # most-severe wins
 def route(rec):
     """Return (tier, drivers) for one receipt record — pure consumer logic over fo's signal."""
     tier, drivers = "pass", []
+
+    def bump(t):
+        nonlocal tier
+        if TIER_RANK[t] > TIER_RANK[tier]:
+            tier = t
+
     for flag in rec.get("safety_flags", []):
         if flag in FLAG_TIER:
             drivers.append(flag)
-            if TIER_RANK[FLAG_TIER[flag]] > TIER_RANK[tier]:
-                tier = FLAG_TIER[flag]
-    for cat, n in (rec.get("lexicon") or {}).get("categories", {}).items():
-        if n > 0 and cat in CATEGORY_TIER:
-            drivers.append(cat)
-            if TIER_RANK[CATEGORY_TIER[cat]] > TIER_RANK[tier]:
-                tier = CATEGORY_TIER[cat]
+            bump(FLAG_TIER[flag])
+    # A category hit in the BODY *or* the file-derived metadata (filename / EXIF / producer, v1.41)
+    # counts — a term hiding in metadata is exactly what the body scan can't see.
+    lex = rec.get("lexicon") or {}
+    body, meta = lex.get("categories", {}), lex.get("metadata_categories", {})
+    for cat in sorted(set(body) | set(meta)):
+        if cat not in CATEGORY_TIER:
+            continue
+        b, m = body.get(cat, 0), meta.get(cat, 0)
+        if b > 0 or m > 0:
+            drivers.append(cat if b > 0 else f"{cat}(metadata)")
+            bump(CATEGORY_TIER[cat])
     return tier, drivers
 
 
-receipt = json.load(sys.stdin)
+try:
+    receipt = json.load(sys.stdin)
+    records = receipt["receipts"]
+except (json.JSONDecodeError, KeyError, TypeError):
+    sys.exit("route.py: expected a file-observer `--receipt` JSON document on stdin")
 buckets = {"block": [], "review": [], "pass": []}
-for rec in receipt["receipts"]:
+for rec in records:
     tier, drivers = route(rec)
     buckets[tier].append((rec["receipt_id"][:12], drivers))
 

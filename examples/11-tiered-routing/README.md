@@ -43,15 +43,18 @@ FLAG_TIER     = {"has_macros": "block", "has_javascript": "review"}
 ## What you'll see
 
 ```text
-[BLOCK] 1 file(s)
-    receipt_id=b5a807fca8f4…  driver=secrets
+[BLOCK] 2 file(s)
+    receipt_id=…  driver=secrets(metadata)
+    receipt_id=…  driver=secrets
 [REVIEW] 1 file(s)
-    receipt_id=aac8a883bf1b…  driver=profanity
+    receipt_id=…  driver=profanity
 [PASS] 1 file(s)
-    receipt_id=17c66bf38b92…  driver=—
+    receipt_id=…  driver=—
 ```
 
-`credentials.md` tripped the `secrets` category → **block**; `transcript.md` tripped `profanity` →
+`credentials.md` tripped the `secrets` category in its **body** → **block**; `banana-backup.md` tripped
+`secrets` in its **filename** (metadata, `secrets(metadata)`) → **block** — a term hiding where the body
+scan can't look still routes (the v1.41 metadata sweep); `transcript.md` tripped `profanity` →
 **review**; `readme.md` was clean → **pass**. Change the policy map and the routing changes — File
 Observer's output didn't.
 
