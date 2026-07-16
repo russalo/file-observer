@@ -122,6 +122,13 @@ it and the pure-Python MIME fallback engages automatically (it just works). Wind
 users who want libmagic-grade content MIME can install `python-magic-bin` (it bundles
 the DLL). One-shot scanning is otherwise fully cross-platform.
 
+**Windows NTFS reparse points (v1.46):** discovery does **not** descend into NTFS
+junctions or directory reparse points — matching POSIX's handling of symlinked
+directories — so a file reachable *only through* a junction is not observed. This is a
+deliberate containment choice: it stops an out-of-tree junction from pulling external
+files into the manifest, and keeps a junction's target from being double-counted. (File
+symlinks whose target resolves outside the scan tree are likewise excluded, on every OS.)
+
 Optional *extras* widen coverage further:
 
 - **PyYAML** — frontmatter parsing
