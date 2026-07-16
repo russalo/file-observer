@@ -183,6 +183,6 @@ def test_write_stdout_utf8_falls_back_without_buffer(monkeypatch):
 
 # --- version axes ---------------------------------------------------------------------------------
 def test_version_axes():
-    assert SCANNER_VERSION == "1.46.0"
-    assert LOGIC_VERSION == "1.24.0"   # A+B: cross-platform routing-LOGIC change (v1.15 precedent)
+    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 46, 0)   # floor (v1.46.1 bumped SCANNER)
+    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 24, 0)   # floor (v1.46.1 bumped LOGIC)
     assert SCHEMA_VERSION == "1.23"    # no new field / shape change
