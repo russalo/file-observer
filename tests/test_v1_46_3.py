@@ -78,6 +78,6 @@ def test_guard_uses_clamped_max_files(tmp_path: Path):
 
 
 def test_version_axes():
-    assert SCANNER_VERSION == "1.46.3"
-    assert LOGIC_VERSION == "1.24.2"   # MCP-surface patch — manifest logic unchanged
+    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 46, 3)   # floor (v1.46.4 bumped SCANNER)
+    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 24, 2)   # LOGIC floor (v1.46.4 bumped it)
     assert SCHEMA_VERSION == "1.23"
