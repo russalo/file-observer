@@ -197,9 +197,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.46.1"
-    assert SCHEMA_VERSION == "1.23"  # v1.46.1 — FROZEN (csv_headers provenance patch; no new manifest field). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
-    assert LOGIC_VERSION == "1.24.1"  # v1.46.1 — values-move: csv_headers signal_provenance entry now feeds the checksum (v1.25.1 precedent)
+    assert SCANNER_VERSION == "1.46.2"
+    assert SCHEMA_VERSION == "1.23"  # v1.46.2 — FROZEN (.vx MIME pin; no new manifest field). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
+    assert LOGIC_VERSION == "1.24.2"  # v1.46.2 — values-move: .vx pinned to text/plain (cross-OS is_binary/extension_mime alignment; the v1.46 .csv-pin class)
 
 
 def test_legacy_scanner_import_warns():
