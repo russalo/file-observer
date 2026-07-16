@@ -24,13 +24,20 @@ def _fn(tool):
     return getattr(tool, "fn", tool)   # unwrap the FastMCP tool to the raw function
 
 
-# --- #161: scan_file context-blind sidecar_exists ------------------------------------------------
-def test_scan_file_nulls_sidecar_exists(tmp_path: Path):
+# --- #161: scan_file observes sidecar_exists on the ORIGINAL (not the isolated copy) --------------
+def test_scan_file_observes_sidecar_on_original(tmp_path: Path):
     (tmp_path / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0stub\n")
     (tmp_path / "photo.jpg.json").write_bytes(b'{"sidecar": true}\n')   # a real sidecar in the neighbourhood
     rec = json.loads(_fn(mcp_server.scan_file)(str(tmp_path / "photo.jpg"), specialists=False))
-    assert rec["sidecar_exists"] is None, "scan_file must null sidecar_exists (not observable in isolation)"
+    # the isolated copy has no neighbour, but we re-observe the sidecar on the original path → correct True
+    assert rec["sidecar_exists"] is True, "scan_file must observe the real sidecar (was a silent False)"
     assert isinstance(rec.get("asset_matches"), list), "asset_matches is content-derived → still present"
+
+
+def test_scan_file_sidecar_false_when_absent(tmp_path: Path):
+    (tmp_path / "lonely.jpg").write_bytes(b"\xff\xd8\xff\xe0stub\n")   # no sidecar beside it
+    rec = json.loads(_fn(mcp_server.scan_file)(str(tmp_path / "lonely.jpg"), specialists=False))
+    assert rec["sidecar_exists"] is False   # correctly False (a real observation, not the copy artifact)
 
 
 def test_scan_directory_sidecar_unaffected(tmp_path: Path):
