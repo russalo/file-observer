@@ -8599,7 +8599,11 @@ class Scanner:
         except Exception:
             return None
 
-    def detect_sidecar(self, path: Path) -> bool:
+    @staticmethod
+    def detect_sidecar(path: Path) -> bool:
+        # A pure function of the path (a neighbourhood stat, no self-state) — @staticmethod so a
+        # consumer (the MCP scan_file #161 fix) can call it without constructing a Scanner (which would
+        # run _load_ignore_patterns and read the dir's .scannerignore — an unwanted side effect).
         candidates = [
             path.with_suffix(path.suffix + ".json"),
             path.with_suffix(path.suffix + ".md"),

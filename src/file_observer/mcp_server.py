@@ -147,18 +147,12 @@ def _clamp_max_files(max_files: int) -> int:
     return clamped
 
 
-_SIDECAR_PROBE: "Scanner | None" = None
-
-
 def _detect_sidecar(fp: Path) -> bool:
     """#161: observe fp's sidecar via fo's OWN `Scanner.detect_sidecar` (so the sidecar-name patterns
-    can't drift from the scanner). It's a pure function of the path — a neighbourhood stat, no scan and
-    no `self` state — so a single cached probe instance serves every call. Never raises (detect_sidecar
-    guards each candidate)."""
-    global _SIDECAR_PROBE
-    if _SIDECAR_PROBE is None:
-        _SIDECAR_PROBE = Scanner(source_dir=fp.parent, config=ScannerConfig())
-    return _SIDECAR_PROBE.detect_sidecar(fp)
+    can't drift from the scanner). It's a @staticmethod — a pure neighbourhood stat with no scan and no
+    `self` state — so we call it WITHOUT constructing a Scanner (which would run `_load_ignore_patterns`
+    and read the dir's `.scannerignore`, an unwanted side effect — leg-4/CodeRabbit). Never raises."""
+    return Scanner.detect_sidecar(fp)
 
 
 @mcp.tool()

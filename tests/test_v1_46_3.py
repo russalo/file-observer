@@ -31,13 +31,22 @@ def test_scan_file_observes_sidecar_on_original(tmp_path: Path):
     rec = json.loads(_fn(mcp_server.scan_file)(str(tmp_path / "photo.jpg"), specialists=False))
     # the isolated copy has no neighbour, but we re-observe the sidecar on the original path → correct True
     assert rec["sidecar_exists"] is True, "scan_file must observe the real sidecar (was a silent False)"
-    assert isinstance(rec.get("asset_matches"), list), "asset_matches is content-derived → still present"
 
 
 def test_scan_file_sidecar_false_when_absent(tmp_path: Path):
     (tmp_path / "lonely.jpg").write_bytes(b"\xff\xd8\xff\xe0stub\n")   # no sidecar beside it
     rec = json.loads(_fn(mcp_server.scan_file)(str(tmp_path / "lonely.jpg"), specialists=False))
     assert rec["sidecar_exists"] is False   # correctly False (a real observation, not the copy artifact)
+
+
+def test_scan_file_preserves_content_derived_asset_matches(tmp_path: Path):
+    # asset_matches is content-derived (from the file's own text) → the isolated copy has the same
+    # content → the references survive scan_file. Falsifiable: the specific markers must appear.
+    (tmp_path / "doc.md").write_text(
+        "See ![diagram](assets/pipeline.png) and [spec](docs/spec.pdf).\n", encoding="utf-8")
+    rec = json.loads(_fn(mcp_server.scan_file)(str(tmp_path / "doc.md"), specialists=False))
+    assert "assets/pipeline.png" in rec["asset_matches"]
+    assert "docs/spec.pdf" in rec["asset_matches"]
 
 
 def test_scan_directory_sidecar_unaffected(tmp_path: Path):
