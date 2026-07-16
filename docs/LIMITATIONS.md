@@ -129,6 +129,19 @@ deliberate containment choice: it stops an out-of-tree junction from pulling ext
 files into the manifest, and keeps a junction's target from being double-counted. (File
 symlinks whose target resolves outside the scan tree are likewise excluded, on every OS.)
 
+**macOS filename normalization (NFC vs NFD):** APFS/HFS+ store filenames in Unicode NFD
+(decomposed) form, while Linux and Windows preserve whatever the app wrote (typically NFC,
+composed). fo emits each filename **exactly as the filesystem hands it back** — it never
+normalizes — so every path in the manifest round-trips to a real on-disk file (a consumer
+re-opening an fo-emitted path always succeeds). The consequence is cross-OS: the *same
+logical filename* (e.g. `résumé.txt`) has different bytes on macOS (NFD) than on Linux/
+Windows (NFC), so the `path`/`filename` fields — and any name-derived signal
+(`filename_patterns`, `filename_date`) — differ across platforms. This is correct
+(preserving on-disk bytes is what keeps round-trip safe; normalizing would break it), but a
+consumer that correlates files **across** operating systems by name should normalize both
+sides to a canonical form (NFC) before comparing. The content `checksum_sha256` is
+name-independent, so content-based correlation is unaffected.
+
 Optional *extras* widen coverage further:
 
 - **PyYAML** — frontmatter parsing
