@@ -131,6 +131,22 @@ def _count_files_bounded(d: Path, cap: int) -> int:
     return n
 
 
+# #162 (bestiary): the pre-scan work guard bounds work to `max_files` — but `max_files` is a TOOL ARG,
+# and tool args are LLM-CONSTRUCTED, so an over-set value (e.g. 10_000_000) defeats the guard: the count
+# walk + the subsequent read/hash run over the whole tree. Clamp the caller's max_files to a server-side
+# ceiling (and a floor of 1, which also fixes a negative value producing a "more than -1 files" message).
+# Operators who genuinely need a larger scan raise this constant in source.
+SERVER_MAX_FILES = 100_000
+
+
+def _clamp_max_files(max_files: int) -> int:
+    clamped = max(1, min(int(max_files), SERVER_MAX_FILES))
+    if clamped != max_files:
+        print(f"file-observer-mcp: max_files={max_files} clamped to {clamped} "
+              f"(server ceiling {SERVER_MAX_FILES}, floor 1)", file=sys.stderr, flush=True)
+    return clamped
+
+
 @mcp.tool()
 def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
                  previous_manifest_path: str | None = None, trusted_only: bool = False) -> str:
@@ -148,6 +164,7 @@ def scan_summary(path: str, specialists: bool = False, max_files: int = 1000,
         raise ValueError(f"not a directory (use scan_file for a single file): {path}")
     prev = _resolve_previous_manifest(previous_manifest_path)
     eff = _eff_trusted_only(trusted_only)
+    max_files = _clamp_max_files(max_files)   # #162: cap the LLM-supplied arg so the guard can't be defeated
     n = _count_files_bounded(d, max_files)
     if n > max_files:
         # Codex P2: the guard fires BEFORE the scan, but its message must still honor
@@ -201,7 +218,9 @@ def scan_file(path: str, specialists: bool = True, trusted_only: bool = False, r
     """The full observation record for ONE file: identity, content-detected MIME (+ whether it
     matches the extension), routing flags, safety flags, per-field signal provenance, and — with
     specialists — format-specific metadata. Read-only, deterministic. Use after `scan_summary`
-    flags a specific file. `trusted_only` (default off): safe-mode projection — return ONLY the
+    flags a specific file. NOTE: `sidecar_exists` is null here — a single file is scanned in isolation,
+    so its directory neighbourhood (a `<name>.json`/`.md` sidecar) isn't observable; use `scan_directory`
+    to see sidecars. (`asset_matches` is content-derived and unaffected.) `trusted_only` (default off): safe-mode projection — return ONLY the
     fo-derived (trusted) fields and null the file-derived (attacker-controllable) strings, so the
     record is safe to feed to a model (it never sees the file's bytes); a fo-derived `path_id`
     replaces the path as a correlation handle."""
@@ -213,8 +232,11 @@ def scan_file(path: str, specialists: bool = True, trusted_only: bool = False, r
     # temp dir containing a COPY of it. A COPY (not a hardlink): `os.link` would bump the target inode's
     # link-count + ctime, MUTATING a file fo promises never to touch (leg-4/Codex P1). `copy2` only READS
     # the target (same footprint as a normal scan) → read-only preserved. Report the caller's real path.
-    # NOTE: the isolated scan can't see the target's DIRECTORY CONTEXT, so a context-dependent field
-    # (`sidecar_exists`, `asset_matches`) reflects the isolated copy, not the original's neighbourhood.
+    # NOTE (#161, bestiary): the isolated single-file copy has no DIRECTORY CONTEXT, so `sidecar_exists`
+    # (which checks the target's NEIGHBOURHOOD for a `<name>.json`/`.md` sidecar) can't be observed here —
+    # it would always be a misleading False. We null it below (fo's "not observed within bounds"
+    # semantics); use `scan_directory` to observe sidecars. `asset_matches` is CONTENT-derived (extracted
+    # from the file's own text) → identical in the copy → correct and UNAFFECTED.
     with tempfile.TemporaryDirectory() as td:
         copy = Path(td) / fp.name
         shutil.copy2(fp, copy)
@@ -223,6 +245,7 @@ def scan_file(path: str, specialists: bool = True, trusted_only: bool = False, r
             if r.path == fp.name:
                 d = asdict(r)
                 d["path"] = str(fp)   # the caller's real path, not the temp basename
+                d["sidecar_exists"] = None   # #161: not observable in single-file isolation (see NOTE above)
                 if receipt:
                     # v1.42: the screening receipt for this one file (audit record + bridge id).
                     # Its own projection (safe / fo-derived), so it takes precedence over trusted_only.
@@ -264,6 +287,7 @@ def scan_directory(path: str, specialists: bool = False, max_files: int = 200,
         raise ValueError(f"not a directory (use scan_file for a single file): {path}")
     prev = _resolve_previous_manifest(previous_manifest_path)
     eff = _eff_trusted_only(trusted_only)
+    max_files = _clamp_max_files(max_files)   # #162: cap the LLM-supplied arg so the guard can't be defeated
     n = _count_files_bounded(d, max_files)   # bound WORK: refuse before the expensive scan (leg-2/gem-pro DoS fix)
     if n > max_files:
         # Codex P2: the pre-scan guard message must honor trusted-only — don't echo the path.
