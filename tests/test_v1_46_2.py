@@ -52,6 +52,6 @@ def test_vx_scans_as_text(tmp_path: Path):
 
 
 def test_version_axes():
-    assert SCANNER_VERSION == "1.46.2"
-    assert LOGIC_VERSION == "1.24.2"   # values-move: .vx extension_mime/is_binary now aligned cross-OS
+    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 46, 2)   # floor (v1.46.3 bumped SCANNER)
+    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 24, 2)   # LOGIC floor (unchanged at v1.46.3)
     assert SCHEMA_VERSION == "1.23"

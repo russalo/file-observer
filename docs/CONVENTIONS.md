@@ -18,7 +18,7 @@ The scanner has five distinct things that carry versions. They are independent â
 **Where it lives:** `pyproject.toml`, `SCANNER_VERSION` constant in `src/file_observer/scanner.py`, scanner module docstring, `meta.config` of every manifest, `manifest_v{version}_{timestamp}.json` filenames.
 **When it bumps:** Any release.
 **Format:** `MAJOR.MINOR.PATCH`
-**Current:** `1.46.2`
+**Current:** `1.46.3`
 
 ### 1.2 LOGIC_VERSION
 **What it is:** The version of the routing decision logic â€” code that decides `is_binary`, `requires_vision`, `requires_specialist_tool`, the SPECIALIST_TOOLS dict, SUPPORTED_EXTENSIONS, SPECIALIST_NAMESPACE.
@@ -67,7 +67,7 @@ The scanner has five distinct things that carry versions. They are independent â
 
 | Concern | Constant | Format | Current | Internal/Public |
 |---|---|---|---|---|
-| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.46.2 | Internal |
+| Package release | `SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | 1.46.3 | Internal |
 | Routing logic | `LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | 1.24.2 | Internal* |
 | Manifest shape | `SCHEMA_VERSION` | `MAJOR.MINOR` | 1.23 | **Public** |
 | Vector logic (v0.9+) | per-vector | `int` | n/a | **Public** (when shipped) |
