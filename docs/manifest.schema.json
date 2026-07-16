@@ -1,5 +1,5 @@
 {
-  "$comment": "Generated from the file-observer dataclasses by `file-observer --schema --schema-format json-schema` (scanner 1.46.0, schema 1.23). Pin the MAJOR of schema_version (the breaking-change point). Stable core typed strictly; namespace-keyed/provisional dicts are open.",
+  "$comment": "Generated from the file-observer dataclasses by `file-observer --schema --schema-format json-schema` (scanner 1.46.1, schema 1.23). Pin the MAJOR of schema_version (the breaking-change point). Stable core typed strictly; namespace-keyed/provisional dicts are open.",
   "$defs": {
     "DeltaRecord": {
       "additionalProperties": false,
