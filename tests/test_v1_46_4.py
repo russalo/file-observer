@@ -44,9 +44,20 @@ def test_dsstore_recognized(tmp_path: Path):
 def test_appledouble_recognized(tmp_path: Path):
     # a no-extension AppleDouble (._foo) is the case that WAS flagged (an extensioned ._x.txt has a
     # supported extension already); it must now be recognized by magic.
-    _m, f = _rec(tmp_path, "._foo", APPLEDOUBLE)
+    m, f = _rec(tmp_path, "._foo", APPLEDOUBLE)
     assert not _unsupported(f)
     assert any(x["format"] == "application/applefile" for x in (f.format_signatures or []))
+    assert m.quality.error_files == 0   # quality-clean: no OTHER error record regressed the fix
+
+
+def test_recognition_deterministic_across_workers(tmp_path: Path):
+    # the new recognition-gate arm must be worker-invariant (serial vs process pool → same manifest).
+    (tmp_path / ".DS_Store").write_bytes(DSSTORE)
+    (tmp_path / "._foo").write_bytes(APPLEDOUBLE)
+    (tmp_path / "normal.txt").write_text("hello\n", encoding="utf-8")
+    c1 = Scanner(tmp_path, ScannerConfig(enable_specialists=True, workers=1)).scan().manifest_checksum
+    c2 = Scanner(tmp_path, ScannerConfig(enable_specialists=True, workers=2)).scan().manifest_checksum
+    assert c1 == c2
 
 
 def test_genuine_unknown_still_flags(tmp_path: Path):
