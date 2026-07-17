@@ -124,8 +124,16 @@ def test_jsonl_corpus_scores_clean(tmp_path: Path):
     m = Scanner(tmp_path, ScannerConfig(enable_specialists=True)).scan()
     detected = {f.mime_analysis.detected_mime for f in m.files}
     if detected & {"application/x-ndjson", "application/json", "application/jsonl"}:
+        # The fix's guarantee, on BOTH the libmagic and no-libmagic paths: a valid jsonl
+        # corpus is no longer 100% MIME-mismatch (the recall symptom).
         assert m.quality.mime_mismatches == 0, "valid jsonl corpus must not be all-mismatch"
-        assert m.quality.clean_files == m.quality.total_files, "a clean jsonl corpus must score clean"
+        # clean_files is stronger and libmagic-path-specific: on the NO-libmagic path a
+        # `.jsonl` has no magic signature → falls to extension_fallback → degraded for that
+        # (pre-existing, accepted — v1.21) reason, NOT a mismatch. So only assert "clean"
+        # when libmagic CONTENT-identified the file (detected is x-ndjson/json, not the
+        # extension-fallback application/jsonl). recall's real scan is the libmagic path.
+        if detected & {"application/x-ndjson", "application/json"}:
+            assert m.quality.clean_files == m.quality.total_files, "a content-identified jsonl corpus must score clean"
 
 
 # ---- a real cross-format mismatch is still surfaced end-to-end ------------------------
