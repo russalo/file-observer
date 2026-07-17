@@ -67,6 +67,6 @@ def test_genuine_unknown_still_flags(tmp_path: Path):
 
 
 def test_version_axes():
-    assert SCANNER_VERSION == "1.46.4"
-    assert LOGIC_VERSION == "1.24.3"   # recognition change: unsupported_extension flips for these files
+    assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 46, 4)   # floor (v1.46.5 bumped SCANNER)
+    assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 24, 3)   # floor (v1.46.5 bumped LOGIC)
     assert SCHEMA_VERSION == "1.23"
