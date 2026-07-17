@@ -17,6 +17,7 @@ precedent; default corpora byte-identical). LOGIC 1.24.4→1.24.5, SCHEMA 1.23 F
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -29,6 +30,7 @@ from file_observer.scanner import (
     Scanner,
     ScannerConfig,
     _mime_labels_compatible,
+    manifest_to_json,
 )
 
 
@@ -162,9 +164,20 @@ def test_synonym_corpus_worker_deterministic(tmp_path: Path):
     m1 = Scanner(tmp_path, ScannerConfig(enable_specialists=True, workers=1)).scan()
     m4 = Scanner(tmp_path, ScannerConfig(enable_specialists=True, workers=4)).scan()
     assert m1.manifest_checksum == m4.manifest_checksum, "workers=1 vs 4 must be byte-identical"
-    me1 = {f.path: f.mime_analysis.matches_extension for f in m1.files}
-    me4 = {f.path: f.mime_analysis.matches_extension for f in m4.files}
-    assert me1 == me4, "matches_extension must be identical across worker counts"
+    # Compare the full canonical serialized payload (leg-4/CodeRabbit), normalizing only the
+    # documented volatile fields (scan_id, generated_at) — the checksum already proves this,
+    # but an explicit byte comparison surfaces any drift as a readable diff, not just a hash
+    # mismatch, and covers the complete MIME-analysis result, not the boolean alone.
+    def _canon(m):
+        d = json.loads(manifest_to_json(m))
+        d["meta"]["scan_id"] = d["meta"]["generated_at"] = "<volatile>"
+        return json.dumps(d, sort_keys=True)
+    assert _canon(m1) == _canon(m4), "canonical manifest must be byte-identical across worker counts"
+    # And the complete MIME result per file (detected + extension + match), so detection
+    # drift on the synonym path can't pass unnoticed.
+    mime1 = {f.path: (f.mime_analysis.detected_mime, f.mime_analysis.extension_mime, f.mime_analysis.matches_extension) for f in m1.files}
+    mime4 = {f.path: (f.mime_analysis.detected_mime, f.mime_analysis.extension_mime, f.mime_analysis.matches_extension) for f in m4.files}
+    assert mime1 == mime4, "full MIME analysis must be identical across worker counts"
 
 
 def test_synonym_classes_are_disjoint():
