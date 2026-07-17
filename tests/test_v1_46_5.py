@@ -15,7 +15,6 @@ LOGIC 1.24.3→1.24.4 (a value changes only on a malformed EXIF file → NO-DRIF
 from __future__ import annotations
 
 import struct
-import tempfile
 from pathlib import Path
 
 from file_observer.scanner import (
@@ -58,10 +57,10 @@ def test_orientation_still_numeric():
     assert exif and exif.get("orientation") == 6                      # the legit numeric field survives
 
 
-def test_scan_survives_numeric_make_jpeg_corpus():
+def test_scan_survives_numeric_make_jpeg_corpus(tmp_path: Path):
     # the corpus-level never-crash: a bad .jpg + good files → the WHOLE scan must complete, all files
     # observed, NO whole-scan abort (bestiary #165 crashed the dir before this fix).
-    d = Path(tempfile.mkdtemp())
+    d = tmp_path
     (d / "bad.jpg").write_bytes(_jpeg_numeric_make())
     (d / "good1.txt").write_text("hello\n", encoding="utf-8")
     (d / "good2.md").write_text("# ok\n", encoding="utf-8")

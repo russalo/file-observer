@@ -62,3 +62,6 @@ Thumbs.db
 
 # review-apparatus canonical-tree marker (local safety guard; not public)
 .review-canonical
+
+# Build artifacts (setuptools) — never commit
+build/
