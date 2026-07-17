@@ -81,14 +81,16 @@ class TestHeldSetsStayProvisional:
         for f in ("content_shape", "speaker_turn_counts", "speaker_turn_chars", "alternation"):
             assert cl[f] == "provisional", f"chatlog.{f} must stay provisional (alpha-locked)"
 
-    def test_presentation_and_audio_held_too_young(self):
+    def test_presentation_and_audio_promoted_at_v1_47(self):
+        # At v1.31 these were HELD ("too young, season next pass"); v1.47.0 is that next pass and
+        # PROMOTED both namespaces provisional→stable. This asserts the current (post-v1.47) state.
         doc = _schema()
         pres = _ns_stability(doc, "presentation")
         aud = _ns_stability(doc, "audio")
         for f in ("slide_count", "title", "author", "application"):
-            assert pres[f] == "provisional", f"presentation.{f} (v1.24, too young) must stay provisional"
+            assert pres[f] == "stable", f"presentation.{f} promoted to stable at v1.47"
         for f in ("format", "bitrate", "duration_s", "title", "artist", "album", "year"):
-            assert aud[f] == "provisional", f"audio.{f} (v1.25, too young) must stay provisional"
+            assert aud[f] == "stable", f"audio.{f} promoted to stable at v1.47"
 
     def test_held_by_design_stays_provisional(self):
         fr = {x["name"]: x["stability"] for x in _schema()["manifest"]["FileRecord"]}

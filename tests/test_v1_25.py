@@ -100,9 +100,10 @@ def test_extensions_registered():
 def test_audio_namespace_surface():
     fields = set(SPECIALIST_FIELDS["audio"])
     assert {"format", "bitrate", "duration_s", "title", "artist", "album", "year"} <= fields
-    # the whole audio namespace is provisional on arrival
+    # v1.47.0 promotion pass: the audio namespace graduated provisional→stable (was provisional
+    # on arrival at v1.25; the pair v1.31 deferred as "season next pass").
     for f in ("format", "bitrate", "duration_s", "title", "artist", "album", "year"):
-        assert ("audio", f) in PROVISIONAL_SPECIALIST_FIELDS
+        assert ("audio", f) not in PROVISIONAL_SPECIALIST_FIELDS
 
 
 def test_audio_mime_guard_is_tight():

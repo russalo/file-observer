@@ -76,4 +76,4 @@ def test_scan_survives_numeric_make_jpeg_corpus(tmp_path: Path):
 def test_version_axes():
     assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 46, 5)   # floor (v1.46.6 bumped SCANNER)
     assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 24, 4)   # LOGIC floor (unchanged at v1.46.6)
-    assert SCHEMA_VERSION == "1.23"
+    assert SCHEMA_VERSION == "1.24"
