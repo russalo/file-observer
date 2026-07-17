@@ -2613,7 +2613,7 @@ def _parse_exif_tiff(buf: bytes) -> dict | None:
             if tag in ifd0:
                 typ, _cnt, raw = ifd0[tag]
                 if name == "orientation":
-                    # orientation is the only numeric IFD0 field (SHORT, 1–8); a non-SHORT is malformed.
+                    # orientation is the only numeric IFD0 field (SHORT, 1-8); a non-SHORT is malformed.
                     out[name] = struct.unpack(bo + "H", raw[:2])[0] if (typ == 3 and len(raw) >= 2) else None
                 else:
                     # make/model/datetime are ASCII (TIFF type 2) BY SPEC. A numeric-typed tag is
