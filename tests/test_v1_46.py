@@ -99,22 +99,39 @@ def test_in_tree_file_symlink_kept(tmp_path: Path):
 
 # --- A: the reparse-dir prune helper (mocked — POSIX cannot make a junction) -----------------------
 def test_should_prune_dir_reparse_and_failclosed(tmp_path: Path, monkeypatch):
-    root = tmp_path; root_resolved = root.resolve()
-    junction = root / "jlink"; junction.mkdir()
-    normal = root / "plain"; normal.mkdir()
+    # v1.46.8 (#169): prune gates on the NAME-SURROGATE tag bit, not the bare reparse bit.
+    # A junction (name surrogate) prunes; a NON-surrogate reparse dir (OneDrive Files-On-
+    # Demand / Data-Dedup) must DESCEND — pruning it dropped its in-tree subtree silently.
+    root = tmp_path
+    root_resolved = root.resolve()
+    junction = root / "jlink"
+    junction.mkdir()
+    cloud = root / "cloud"
+    cloud.mkdir()
+    normal = root / "plain"
+    normal.mkdir()
 
     REPARSE = 0x400
+    real_lstat = os.lstat
 
     class FakeStat:
-        def __init__(self, attrs): self.st_file_attributes = attrs
+        def __init__(self, attrs, tag=0):
+            self.st_file_attributes = attrs
+            self.st_reparse_tag = tag
 
-    def fake_lstat(p):
-        if Path(p) == junction:
-            return FakeStat(REPARSE)   # the junction dir carries the reparse attribute
-        return FakeStat(0)
+    def fake_lstat(p, *a, **k):
+        pp = Path(p)
+        if pp == junction:
+            return FakeStat(REPARSE, 0xA0000003)   # IO_REPARSE_TAG_MOUNT_POINT — name surrogate
+        if pp == cloud:
+            return FakeStat(REPARSE, 0x9000001A)   # IO_REPARSE_TAG_CLOUD — NOT a surrogate
+        if pp == normal:
+            return FakeStat(0)                       # normal dir
+        return real_lstat(p, *a, **k)               # delegate so resolve() still works
 
     monkeypatch.setattr(os, "lstat", fake_lstat)
-    assert _should_prune_dir(junction, root_resolved) is True    # reparse → prune
+    assert _should_prune_dir(junction, root_resolved) is True    # name surrogate → prune (contained)
+    assert _should_prune_dir(cloud, root_resolved) is False      # non-surrogate reparse → DESCEND (#169)
     assert _should_prune_dir(normal, root_resolved) is False     # normal in-tree → descend
 
 

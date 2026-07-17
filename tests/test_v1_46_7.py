@@ -191,6 +191,8 @@ def test_synonym_classes_are_disjoint():
 
 
 def test_version_axes():
-    assert SCANNER_VERSION == "1.46.7"
-    assert LOGIC_VERSION == "1.24.5"   # values-move: matches_extension False→True on synonym files
+    # Net version moved on in v1.46.8 (Windows reparse-tag fix); this suite pins the axes as
+    # of the v1.46.7 synonym change, which the later patch preserved (LOGIC 1.24.5→1.24.6).
+    assert SCANNER_VERSION == "1.46.8"
+    assert LOGIC_VERSION == "1.24.6"   # v1.46.7 synonym values-move (1.24.5) → v1.46.8 reparse-tag (1.24.6)
     assert SCHEMA_VERSION == "1.23"    # FROZEN — no manifest-shape change
