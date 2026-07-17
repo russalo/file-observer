@@ -69,23 +69,53 @@ def test_previously_stable_unchanged():
         assert _field_stability(ns, f) == "stable", f"{ns}.{f} regressed off stable"
 
 
+def test_held_by_design_manifest_fields_stay_provisional():
+    """leg-4/CodeRabbit: the held-by-design FileRecord fields (§2.4) must ALSO stay off the promotion
+    — they live in a separate registry (PROVISIONAL_MANIFEST_FIELDS) the field-stability test above
+    doesn't cover. The signature vocabulary intentionally grows every MIME change → never promotable."""
+    from file_observer.scanner import PROVISIONAL_MANIFEST_FIELDS
+    for pair in (("FileRecord", "format_signatures"), ("FileRecord", "is_polyglot")):
+        assert pair in PROVISIONAL_MANIFEST_FIELDS, f"{pair} (held-by-design §2.4) must stay provisional"
+
+
 def test_manifest_carries_no_stability_annotation(tmp_path: Path):
-    """The load-bearing designation-only proof: stability is a `--schema`-only concept. A real
-    manifest — even of a presentation/audio-bearing tree — contains no `stability` key anywhere, so
-    the promotion is structurally incapable of moving any manifest value. (The only manifest change
-    this release is `schema_version` itself.)"""
-    # a minimal recognizable text tree is enough — the manifest shape is what matters
+    """The load-bearing designation-only proof: stability is a `--schema`-only concept, so a manifest
+    that DOES contain promoted-namespace metadata still carries no `stability` key anywhere — the
+    promotion is structurally incapable of moving any manifest value. (The only manifest change this
+    release is `schema_version` itself.) Exercises the `audio` namespace with a real generated `.mp3`
+    (leg-4/CodeRabbit — the prior text-only tree never serialized a promoted namespace)."""
+    import struct
+
+    def _cbr_mp3(title, artist, album, year, audio_bytes=16000):
+        # a minimal ID3v2.3 tag (UTF-8 text frames) + one 128 kbps MPEG1-LayerIII frame
+        def frame(fid, text):
+            payload = b"\x03" + text.encode("utf-8")
+            return fid + struct.pack(">I", len(payload)) + b"\x00\x00" + payload
+        body = frame(b"TIT2", title) + frame(b"TPE1", artist) + frame(b"TALB", album) + frame(b"TYER", year)
+        ss = bytes([(len(body) >> 21) & 0x7F, (len(body) >> 14) & 0x7F, (len(body) >> 7) & 0x7F, len(body) & 0x7F])
+        id3 = b"ID3\x03\x00\x00" + ss + body
+        mpeg_frame = b"\xff\xfb\x90\x00" + b"\x00" * (audio_bytes - 4)  # sync + MPEG1/LayerIII/128kbps/44100
+        return id3 + mpeg_frame
+
     (tmp_path / "a.txt").write_text("hello world\n", encoding="utf-8")
-    (tmp_path / "notes.md").write_text("# Title\n\nbody\n", encoding="utf-8")
+    (tmp_path / "song.mp3").write_bytes(_cbr_mp3("T", "A", "Al", "2024"))
     m = Scanner(tmp_path, ScannerConfig(enable_specialists=True)).scan()
+
+    # the audio namespace WAS exercised (otherwise the no-stability check is vacuous for it)
+    audio_recs = [f for f in m.files
+                  if isinstance(getattr(f, "specialist_metadata", None), dict)
+                  and f.specialist_metadata.get("audio")]
+    assert audio_recs, "the generated .mp3 must have produced an `audio` specialist record"
+
     payload = manifest_to_json(m)
     assert '"stability"' not in payload, "manifest must not carry a stability annotation (--schema-only)"
-    # schema_version is the promoted contract version
     assert json.loads(payload)["schema_version"] == "1.24"
 
 
-def test_schema_lists_presentation_audio_as_stable():
-    """`--schema` (the surface where stability DOES live) annotates the promoted fields stable."""
+def test_schema_annotates_promoted_namespaces_stable():
+    """`--schema` (the surface where stability DOES live) must annotate EVERY presentation/audio field
+    stable. Namespace-scoped (some field names — title/author/format — recur in still-provisional
+    namespaces, so a name-only walk would false-positive); asserts on the parsed schema doc directly."""
     import subprocess
     import sys
     r = subprocess.run(
@@ -93,30 +123,27 @@ def test_schema_lists_presentation_audio_as_stable():
         capture_output=True, text=True,
     )
     assert r.returncode == 0
-    doc = json.dumps(json.loads(r.stdout))  # normalize
-    # crude but sufficient: the schema doc must contain the audio/presentation fields marked stable,
-    # not provisional. Assert none of the promoted namespaces' fields are annotated provisional.
     schema = json.loads(r.stdout)
 
-    def find_provisional(obj, ns_hint=None):
-        bad = []
+    found: dict[str, dict[str, str]] = {}
+
+    def walk(obj):
         if isinstance(obj, dict):
-            nm = obj.get("name")
-            if obj.get("stability") == "provisional" and nm in {f for _, f in PROMOTED}:
-                bad.append(nm)
-            for v in obj.values():
-                bad += find_provisional(v)
+            for k, v in obj.items():
+                if (k in ("presentation", "audio") and isinstance(v, list) and v
+                        and isinstance(v[0], dict) and "stability" in v[0]):
+                    found[k] = {e["name"]: e["stability"] for e in v}
+                walk(v)
         elif isinstance(obj, list):
             for v in obj:
-                bad += find_provisional(v)
-        return bad
+                walk(v)
 
-    # Note: some field NAMES (title/author/format) also exist in still-provisional namespaces, so a
-    # name-only check would false-positive. The authoritative check is _field_stability (above); this
-    # asserts --schema and the registry agree for the unambiguous promoted names.
-    for ns, f in [("audio", "bitrate"), ("audio", "duration_s"), ("audio", "year"),
-                  ("presentation", "slide_count")]:
-        assert _field_stability(ns, f) == "stable"
+    walk(schema)
+    assert {"presentation", "audio"} <= set(found), \
+        f"--schema must list the presentation + audio namespaces with stability (got {list(found)})"
+    for ns in ("presentation", "audio"):
+        for name, stab in found[ns].items():
+            assert stab == "stable", f"--schema annotates {ns}.{name} as {stab!r}, expected stable"
 
 
 def test_version_axes():

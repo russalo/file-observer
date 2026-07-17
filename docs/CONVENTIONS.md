@@ -52,7 +52,7 @@ The scanner has five distinct things that carry versions. They are independent �
 - `provenance` method_version: 2 (v1.10.0: + OLE2 producing-app feeds the toolchain; v1.6.0: corpus-scoped — normalized toolchain (closed table), production era, digitization origin; complements author_aggregate). STABLE v1.14.
 - `fact_block` method_version: 1 (v1.32.0: content-detected generic kv-fact-block; gate/veto/caps feed rules_hash, thresholds feed static_tuning_hash). Provisional.
 - `ai_session` method_version: 2 (v1.35.0: + per-model usage attribution rule; v1.33.0: usage-map/fingerprint tables feed rules_hash). Provisional.
-- `lexicon` method_version: 1 (v1.38.0: bring-your-own-lexicon; the MECHANISM feeds rules_hash, the supplied dictionary feeds `dictionary_id` — see §1.5). File-scoped, registered only when a lexicon is supplied. Provisional.
+- `lexicon` method_version: 2 (v1.41.0: metadata self-sweep is a new rule → 1→2; v1.38.0: bring-your-own-lexicon; the MECHANISM feeds rules_hash, the supplied dictionary feeds `dictionary_id` — see §1.5). File-scoped, registered only when a lexicon is supplied. Provisional.
 **Internal rule:** A vector at version N in two scanner releases must produce identical counts on identical input. If counts could differ, bump the vector version. This is enforced by the identity digest — same digest guarantees same output.
 
 ### 1.5 DICTIONARY_ID (per customer dictionary — REALIZED in v1.38)
