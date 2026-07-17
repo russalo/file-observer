@@ -91,6 +91,8 @@ def test_symlink_escape_rejected(tmp_path: Path):
 
 
 def test_version_axes():
-    assert SCANNER_VERSION == "1.46.6"
-    assert LOGIC_VERSION == "1.24.4"   # loader hardening — valid bundles byte-identical, LOGIC frozen
+    # NOTE: current net version moved on in v1.46.7 (MIME synonyms); this suite pins the
+    # axes AS OF v1.46.6's LOGIC-frozen loader hardening, which the later patch preserved.
+    assert SCANNER_VERSION == "1.46.7"
+    assert LOGIC_VERSION == "1.24.5"   # v1.46.6 was LOGIC-frozen; v1.46.7 bumped it (synonym values-move)
     assert SCHEMA_VERSION == "1.23"
