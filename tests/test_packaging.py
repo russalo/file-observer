@@ -125,7 +125,7 @@ def test_contract_docs_version_references_current():
     behind the build (PUBLIC_CONTRACT §3 history lagged 6 minors; surfaced by a
     consumer). Guard them so a stale contract doc fails CI instead of a consumer.
     Same disease/cure as test_readme_version_references_current."""
-    from file_observer.scanner import SCANNER_VERSION
+    from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
 
     root = Path(__file__).resolve().parent.parent
     contract = (root / "docs" / "PUBLIC_CONTRACT.md").read_text(encoding="utf-8")
@@ -142,6 +142,12 @@ def test_contract_docs_version_references_current():
     # was unguarded; guard it so the two can't diverge again).
     assert f"`SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | {SCANNER_VERSION} |" in conventions, \
         f"CONVENTIONS §1.6 Quick Reference SCANNER row is stale (want {SCANNER_VERSION})"
+    # §1.6 Quick Reference LOGIC_VERSION row — was unguarded, so a v1.46.7 bump left it
+    # stale at 1.24.4 (caught by leg-4/CodeRabbit, not CI). Guard it so the LOGIC row can't
+    # silently lag the constant either (the §1.2 "Current" prose carries a history
+    # parenthetical that isn't cleanly machine-checkable; the quick-ref row is).
+    assert f"`LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | {LOGIC_VERSION} |" in conventions, \
+        f"CONVENTIONS §1.6 Quick Reference LOGIC_VERSION row is stale (want {LOGIC_VERSION})"
 
 
 def test_canonical_top_level_api():
@@ -197,9 +203,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.46.6"
-    assert SCHEMA_VERSION == "1.23"  # v1.46.6 — FROZEN (lexicon-index confinement; loader hardening, no manifest change). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
-    assert LOGIC_VERSION == "1.24.4"  # v1.46.6 — UNCHANGED (lexicon-index member confinement is a loader hardening; valid bundles byte-identical, the v1.43 loader-frozen precedent)
+    assert SCANNER_VERSION == "1.46.7"
+    assert SCHEMA_VERSION == "1.23"  # v1.46.7 — FROZEN (MIME synonym classes; a values-move accuracy fix, no manifest-shape change). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
+    assert LOGIC_VERSION == "1.24.5"  # v1.46.7 — values-move: matches_extension False→True on same-format-different-label files (the v1.25.1 accuracy-fix precedent; default corpora byte-identical)
 
 
 def test_legacy_scanner_import_warns():
