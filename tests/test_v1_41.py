@@ -178,4 +178,4 @@ def test_binary_zero_body_has_provenance(tree: Path):
 def test_version_axes():
     assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 41, 0)   # floor (v1.42 bumped SCANNER)
     assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 22, 0)   # floor (v1.45 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.23"
+    assert SCHEMA_VERSION == "1.24"

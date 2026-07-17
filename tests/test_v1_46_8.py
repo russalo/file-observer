@@ -113,6 +113,6 @@ def test_name_surrogate_bit_value():
 
 
 def test_version_axes():
-    assert SCANNER_VERSION == "1.46.8"
+    assert SCANNER_VERSION == "1.47.0"
     assert LOGIC_VERSION == "1.24.6"   # Windows file-set change; Linux byte-identical (cross-platform-LOGIC)
-    assert SCHEMA_VERSION == "1.23"    # FROZEN
+    assert SCHEMA_VERSION == "1.24"    # FROZEN

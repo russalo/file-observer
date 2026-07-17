@@ -62,4 +62,4 @@ def test_provenance_entry_is_in_the_checksum(tmp_path: Path):
 def test_version_axes():
     assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 46, 1)   # floor (v1.46.2 bumped SCANNER)
     assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 24, 1)   # floor (v1.46.2 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.23"    # no new manifest field / shape change
+    assert SCHEMA_VERSION == "1.24"    # no new manifest field / shape change

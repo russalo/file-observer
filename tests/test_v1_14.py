@@ -120,12 +120,8 @@ class TestProvisionalRegistryMatchesContract:
             ("chatlog", "cwd"),
             # v1.31.0 promotion pass: image-EXIF (v1.16) + the whole video namespace
             # (v1.17–1.20) were PROMOTED provisional→stable → no longer here (see test_v1_31).
-            # v1.24 (Candidate B): new presentation namespace — provisional on arrival (held: too young)
-            ("presentation", "slide_count"), ("presentation", "title"),
-            ("presentation", "author"), ("presentation", "application"),
-            # v1.25 (Candidate B ph.2): new audio namespace — provisional on arrival
-            ("audio", "format"), ("audio", "bitrate"), ("audio", "duration_s"),
-            ("audio", "title"), ("audio", "artist"), ("audio", "album"), ("audio", "year"),
+            # v1.47.0 promotion pass: the presentation (v1.24) + audio (v1.25) namespaces were
+            # PROMOTED provisional→stable → no longer here (see test_v1_47).
             # v1.32 (FR #114): new fact_block namespace — provisional on arrival
             ("fact_block", "pair_count"), ("fact_block", "pairs"), ("fact_block", "duplicate_keys"),
             # v1.33: the new ai_session namespace — provisional on arrival.
