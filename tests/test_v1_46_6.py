@@ -71,11 +71,14 @@ def test_absolute_in_bundle_also_rejected(tmp_path: Path):
         _read_lexicon_index(_idx(b, [str(b / "base.json")]))
 
 
-def test_overlong_index_rejected(tmp_path: Path):
-    # leg-4/Codex: the source-count cap fires BEFORE the per-member resolve loop.
+def test_overlong_index_capped_before_resolution(tmp_path: Path):
+    # leg-4/Codex + CodeRabbit: the source-count cap must fire BEFORE the per-member resolve loop.
+    # Prove the ORDERING (not just that it raises): make every over-cap member an ESCAPING path. If the
+    # cap fires first → the CAP error ("refused before resolving"); if resolution ran first → the ESCAPE
+    # error. Asserting the cap error proves no per-member resolve() happened.
     b = _bundle(tmp_path)
     with pytest.raises(ValueError, match="refused before resolving"):
-        _read_lexicon_index(_idx(b, ["base.json"] * (LEXICON_MAX_SOURCES + 1)))
+        _read_lexicon_index(_idx(b, ["../escape.json"] * (LEXICON_MAX_SOURCES + 1)))
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink")
