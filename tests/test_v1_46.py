@@ -102,10 +102,14 @@ def test_should_prune_dir_reparse_and_failclosed(tmp_path: Path, monkeypatch):
     # v1.46.8 (#169): prune gates on the NAME-SURROGATE tag bit, not the bare reparse bit.
     # A junction (name surrogate) prunes; a NON-surrogate reparse dir (OneDrive Files-On-
     # Demand / Data-Dedup) must DESCEND — pruning it dropped its in-tree subtree silently.
-    root = tmp_path; root_resolved = root.resolve()
-    junction = root / "jlink"; junction.mkdir()
-    cloud = root / "cloud"; cloud.mkdir()
-    normal = root / "plain"; normal.mkdir()
+    root = tmp_path
+    root_resolved = root.resolve()
+    junction = root / "jlink"
+    junction.mkdir()
+    cloud = root / "cloud"
+    cloud.mkdir()
+    normal = root / "plain"
+    normal.mkdir()
 
     REPARSE = 0x400
     real_lstat = os.lstat
