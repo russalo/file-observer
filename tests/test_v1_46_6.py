@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from file_observer.scanner import (
+    LEXICON_MAX_SOURCES,
     LOGIC_VERSION,
     SCANNER_VERSION,
     SCHEMA_VERSION,
@@ -45,7 +46,8 @@ def _idx(bundle: Path, sources) -> Path:
 def test_in_bundle_members_ok(tmp_path: Path):
     b = _bundle(tmp_path)
     members, _ = _read_lexicon_index(_idx(b, ["base.json", "sub/more.json"]))
-    assert len(members) == 2                                  # same-dir + subdir both allowed
+    # assert the EXACT members (not just the count — a dup/wrong-path regression would pass otherwise)
+    assert [m.resolve() for m in members] == [(b / "base.json").resolve(), (b / "sub" / "more.json").resolve()]
 
 
 @pytest.mark.parametrize("bad", ["../secret.json", "../../etc/passwd", "sub/../../secret.json"])
@@ -55,10 +57,25 @@ def test_dotdot_escape_rejected(tmp_path: Path, bad: str):
         _read_lexicon_index(_idx(b, [bad]))
 
 
-def test_absolute_path_rejected(tmp_path: Path):
+def test_absolute_out_of_bundle_rejected(tmp_path: Path):
     b = _bundle(tmp_path)
-    with pytest.raises(ValueError, match="escapes the index directory"):
+    with pytest.raises(ValueError, match="absolute path"):
         _read_lexicon_index(_idx(b, [str(tmp_path / "secret.json")]))   # absolute, out of bundle
+
+
+def test_absolute_in_bundle_also_rejected(tmp_path: Path):
+    # leg-4/CodeRabbit: an absolute path that lands INSIDE the bundle still violates the relative
+    # contract (non-portable for a distributed index) → rejected regardless of where it resolves.
+    b = _bundle(tmp_path)
+    with pytest.raises(ValueError, match="absolute path"):
+        _read_lexicon_index(_idx(b, [str(b / "base.json")]))
+
+
+def test_overlong_index_rejected(tmp_path: Path):
+    # leg-4/Codex: the source-count cap fires BEFORE the per-member resolve loop.
+    b = _bundle(tmp_path)
+    with pytest.raises(ValueError, match="refused before resolving"):
+        _read_lexicon_index(_idx(b, ["base.json"] * (LEXICON_MAX_SOURCES + 1)))
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX symlink")

@@ -1826,9 +1826,22 @@ def _read_lexicon_index(idx: Path) -> tuple[list[Path], str | None]:
     # absolute path, or a symlink) out of the bundle. resolve()-containment closes all three; a member
     # that escapes fails LOUD (the read never happens). Cross-bundle composition stays available via
     # separate `--lexicon PATH` flags (the arbitrary-path mechanism), so no functionality is lost.
+    # leg-4/Codex: apply the source-count cap HERE (before the per-member resolve loop), not only in
+    # the downstream composer — else a hostile index could force N resolve() calls before the cap fires.
+    if len(rels) > LEXICON_MAX_SOURCES:
+        raise ValueError(f"lexicon index lists {len(rels)} sources (cap {LEXICON_MAX_SOURCES}) — refused before resolving members")
     base_resolved = base.resolve()
     members: list[Path] = []
     for r in rels:
+        # leg-4/CodeRabbit: members MUST be relative (the documented contract + a distributed bundle
+        # must be portable). Reject an absolute path outright — `base / r` would silently discard `base`
+        # for an absolute `r`, so even one that happens to land in-bundle violates the relative contract.
+        if Path(r).is_absolute():
+            raise ValueError(
+                f"lexicon index member {r!r} is an absolute path — members must be RELATIVE to the "
+                f"index directory (a self-contained subscription bundle); use a separate --lexicon flag "
+                f"for an absolute source"
+            )
         m = base / r
         if not m.resolve().is_relative_to(base_resolved):
             raise ValueError(
