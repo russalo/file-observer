@@ -152,6 +152,21 @@ def test_png_as_txt_still_mismatches(tmp_path: Path):
 
 # ---- table hygiene + version axes ----------------------------------------------------
 
+def test_synonym_corpus_worker_deterministic(tmp_path: Path):
+    """The values-move (matches_extension flips on synonym files) must stay byte-identical
+    across worker counts — the v1.9 determinism contract. The default fixtures cover
+    xml/rtf/python synonyms under the global workers-equality gate, but jsonl isn't among
+    them, so pin it explicitly here (leg-4/CodeRabbit)."""
+    for i in range(6):
+        (tmp_path / f"s{i}.jsonl").write_text(_MULTILINE, encoding="utf-8")
+    m1 = Scanner(tmp_path, ScannerConfig(enable_specialists=True, workers=1)).scan()
+    m4 = Scanner(tmp_path, ScannerConfig(enable_specialists=True, workers=4)).scan()
+    assert m1.manifest_checksum == m4.manifest_checksum, "workers=1 vs 4 must be byte-identical"
+    me1 = {f.path: f.mime_analysis.matches_extension for f in m1.files}
+    me4 = {f.path: f.mime_analysis.matches_extension for f in m4.files}
+    assert me1 == me4, "matches_extension must be identical across worker counts"
+
+
 def test_synonym_classes_are_disjoint():
     """No MIME may appear in two classes (an ambiguous membership would make
     compatibility non-transitive / order-dependent)."""

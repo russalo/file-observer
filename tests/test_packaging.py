@@ -125,7 +125,7 @@ def test_contract_docs_version_references_current():
     behind the build (PUBLIC_CONTRACT §3 history lagged 6 minors; surfaced by a
     consumer). Guard them so a stale contract doc fails CI instead of a consumer.
     Same disease/cure as test_readme_version_references_current."""
-    from file_observer.scanner import SCANNER_VERSION
+    from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION
 
     root = Path(__file__).resolve().parent.parent
     contract = (root / "docs" / "PUBLIC_CONTRACT.md").read_text(encoding="utf-8")
@@ -142,6 +142,12 @@ def test_contract_docs_version_references_current():
     # was unguarded; guard it so the two can't diverge again).
     assert f"`SCANNER_VERSION` | `MAJOR.MINOR.PATCH` | {SCANNER_VERSION} |" in conventions, \
         f"CONVENTIONS §1.6 Quick Reference SCANNER row is stale (want {SCANNER_VERSION})"
+    # §1.6 Quick Reference LOGIC_VERSION row — was unguarded, so a v1.46.7 bump left it
+    # stale at 1.24.4 (caught by leg-4/CodeRabbit, not CI). Guard it so the LOGIC row can't
+    # silently lag the constant either (the §1.2 "Current" prose carries a history
+    # parenthetical that isn't cleanly machine-checkable; the quick-ref row is).
+    assert f"`LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | {LOGIC_VERSION} |" in conventions, \
+        f"CONVENTIONS §1.6 Quick Reference LOGIC_VERSION row is stale (want {LOGIC_VERSION})"
 
 
 def test_canonical_top_level_api():
