@@ -197,9 +197,9 @@ def test_canonical_submodule_constants_unchanged():
     """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.46.5"
-    assert SCHEMA_VERSION == "1.23"  # v1.46.5 — FROZEN (never-crash EXIF patch; no new manifest field). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
-    assert LOGIC_VERSION == "1.24.4"  # v1.46.5 — never-crash EXIF type-gate: a malformed numeric make/model is None not int (value change on malformed files only; real corpora NO-DRIFT)
+    assert SCANNER_VERSION == "1.46.6"
+    assert SCHEMA_VERSION == "1.23"  # v1.46.6 — FROZEN (lexicon-index confinement; loader hardening, no manifest change). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
+    assert LOGIC_VERSION == "1.24.4"  # v1.46.6 — UNCHANGED (lexicon-index member confinement is a loader hardening; valid bundles byte-identical, the v1.43 loader-frozen precedent)
 
 
 def test_legacy_scanner_import_warns():
