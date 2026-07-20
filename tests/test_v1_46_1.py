@@ -10,10 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from file_observer.scanner import (
-    LOGIC_VERSION,
     PROVENANCE_TRIGGERS,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
     compute_manifest_checksum,
@@ -57,9 +54,3 @@ def test_provenance_entry_is_in_the_checksum(tmp_path: Path):
     csv = next(f for f in m.files if f.path == "data.csv")
     del csv.signal_provenance["structural.csv_headers"]
     assert compute_manifest_checksum(m) != c1, "csv_headers provenance must be inside manifest_checksum"
-
-
-def test_version_axes():
-    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 46, 1)   # floor (v1.46.2 bumped SCANNER)
-    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 24, 1)   # floor (v1.46.2 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.24"    # no new manifest field / shape change

@@ -16,7 +16,6 @@ Version axes: SCANNER 1.35.0→1.36.0 · LOGIC 1.19.0→1.20.0 · SCHEMA unchang
 """
 from __future__ import annotations
 
-import io
 import zipfile
 from pathlib import Path
 

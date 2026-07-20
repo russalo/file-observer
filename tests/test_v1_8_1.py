@@ -9,7 +9,6 @@ red-team and can't be run safely in-process. The crash/escape guards (#4–#6) f
 against pre-fix code (verified).
 """
 import os
-import struct
 import time
 import zlib
 from pathlib import Path

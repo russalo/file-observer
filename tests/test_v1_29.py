@@ -6,7 +6,6 @@ turn-counting signals; prose signals stay text+thinking only. Falsify-first: the
 relaxation must NOT false-fire on structured JSON with conversational-looking roles.
 """
 import json
-from pathlib import Path
 
 import pytest
 

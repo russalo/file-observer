@@ -13,6 +13,23 @@ env:
   PYTHONUTF8: "1"
 
 jobs:
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install ruff
+        run: python -m pip install --upgrade pip ruff
+      - name: ruff check
+        # The rule set is pinned in pyproject [tool.ruff.lint] — a NARROW static-analysis gate
+        # for the code-hygiene error class (unused imports/locals, undefined names, redefinitions,
+        # f-string nits) that a v1.47.1 polish pass found. Fails CI so the class can't recur.
+        run: ruff check src/ tests/
+
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

@@ -15,10 +15,9 @@ Q:/A:-labeled interview) so a future boundary move is deliberate, not accidental
 import json
 from pathlib import Path
 
-import pytest
 
 from file_observer.scanner import (
-    Scanner, ScannerConfig, SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
+    Scanner, ScannerConfig, SCHEMA_VERSION,
     CHATLOG_METHOD_VERSION,
 )
 

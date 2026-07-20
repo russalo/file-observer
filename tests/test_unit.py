@@ -7,6 +7,7 @@ import pytest
 
 import struct
 from dataclasses import asdict
+from typing import Any
 from file_observer.scanner import Scanner, ScannerConfig, ErrorRecord, SCANNER_VERSION, LOGIC_VERSION
 
 
@@ -2379,7 +2380,7 @@ class TestDocMetadata:
         config = ScannerConfig(enable_specialists=True)
         scanner = Scanner(source_dir=fixtures, config=config)
         manifest = scanner.scan()
-        docs = [f for f in manifest.files if f.extension == ".doc" and f.specialist_metadata]
+        [f for f in manifest.files if f.extension == ".doc" and f.specialist_metadata]
         # If olefile is available and fixtures have OLE properties, we should get metadata
         import scanner.scanner as mod
         if mod.olefile:

@@ -13,7 +13,6 @@ xref tables — the reader has to actually follow offsets, not regex-scan.
 """
 from pathlib import Path
 
-import pytest
 
 from file_observer.scanner import (
     Scanner, ScannerConfig, SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,

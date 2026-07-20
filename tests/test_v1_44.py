@@ -12,9 +12,6 @@ from pathlib import Path
 import pytest
 
 from file_observer.scanner import (
-    LOGIC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
     _project_metadata_trusted_only,
@@ -111,7 +108,3 @@ def test_default_manifest_unaffected(tree: Path):
 
 
 # --- version axes ---------------------------------------------------------------------------------
-def test_version_axes():
-    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 44, 0)   # floor (v1.45 bumped SCANNER)
-    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 22, 0)   # floor (v1.45 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.24"

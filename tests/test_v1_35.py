@@ -18,12 +18,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from file_observer.scanner import (
     Scanner, ScannerConfig,
     SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
-    AI_SESSION_NAMESPACE, AI_SESSION_METHOD_VERSION, AI_SESSION_MAX_MODELS,
+    AI_SESSION_METHOD_VERSION, AI_SESSION_MAX_MODELS,
     AI_SESSION_USAGE_KINDS,
     ai_session_rules_fingerprint,
     build_schema_document,

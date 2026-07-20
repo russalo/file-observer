@@ -12,7 +12,6 @@ Version axes: SCANNER 1.38.1→1.39.0 · LOGIC unchanged (1.21.0) · SCHEMA unch
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import pytest
 

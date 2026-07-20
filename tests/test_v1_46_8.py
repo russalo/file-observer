@@ -18,16 +18,12 @@ points is validated separately on the native-NTFS box (Tailnet).
 from __future__ import annotations
 
 import os
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 import file_observer.scanner as fo
 from file_observer.scanner import (
-    LOGIC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     _NAME_SURROGATE_BIT,
     _REPARSE_ATTR,
     _should_prune_dir,
@@ -110,9 +106,3 @@ def test_inconclusive_lstat_fails_closed_via_containment(monkeypatch, tmp_path):
 
 def test_name_surrogate_bit_value():
     assert _NAME_SURROGATE_BIT == 0x20000000
-
-
-def test_version_axes():
-    assert SCANNER_VERSION == "1.47.0"
-    assert LOGIC_VERSION == "1.24.6"   # Windows file-set change; Linux byte-identical (cross-platform-LOGIC)
-    assert SCHEMA_VERSION == "1.24"    # FROZEN

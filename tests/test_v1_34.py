@@ -15,13 +15,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from file_observer.scanner import (
     Scanner, ScannerConfig,
     SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
     CHATLOG_METHOD_VERSION, CHATLOG_VECTOR_ID,
-    build_schema_document,
 )
 
 

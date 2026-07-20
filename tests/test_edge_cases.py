@@ -9,10 +9,6 @@ import pytest
 from file_observer.scanner import (
     Scanner,
     ScannerConfig,
-    FileRecord,
-    FrontmatterRecord,
-    MimeAnalysisRecord,
-    StructuralRecord,
     manifest_to_json,
     compute_manifest_checksum,
 )

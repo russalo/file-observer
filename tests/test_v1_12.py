@@ -395,7 +395,6 @@ class TestEncryptionUnsupportedPath:
     aggregate quality counters reflect the failure (round-2 leg-1 #11/#12)."""
 
     def test_dependency_error_emits_error_record_and_counts(self, tmp_path, monkeypatch):
-        from file_observer import scanner as scanner_mod
         from file_observer.scanner import ERR_PDF_ENCRYPTION_UNSUPPORTED
 
         # Build a real AES-256 encrypted PDF first (in this test env cryptography
@@ -436,10 +435,9 @@ class TestEncryptionUnsupportedPath:
         """Round-2 leg-1 #11/#12: ERR_PDF_ENCRYPTION_UNSUPPORTED MUST be counted
         in ScanQuality.specialist_failures + per-directory failures + the
         specialist_stats[tool].failed bucket."""
-        from file_observer.scanner import ERR_PDF_ENCRYPTION_UNSUPPORTED
 
         data = _encrypted_pdf(extract_allowed=False)
-        p = _write(tmp_path, "encrypted.pdf", data)
+        _write(tmp_path, "encrypted.pdf", data)
 
         DepErr = pypdf.errors.DependencyError
         orig_pdf_reader = pypdf.PdfReader

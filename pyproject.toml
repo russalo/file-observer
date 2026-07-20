@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.47.0"
+version = "1.47.1"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -52,7 +52,7 @@ mcp = ["mcp>=1.0"]   # v1.37: MCP server (agent-native front-door) — the offic
 # the others so it can't drift (a new extra is picked up automatically). The drift-guard test
 # `test_all_extra_covers_every_runtime_extra` fails CI if a runtime extra is ever omitted here.
 all = ["file-observer[yaml,msg,security,pdf,watch,mcp]"]
-dev = ["file-observer[all]", "pytest", "pytest-timeout", "jsonschema"]   # v1.28.1: dev = all runtime extras + test tooling (jsonschema = DEV-only manifest-schema validation guard; runtime stays zero-dep)
+dev = ["file-observer[all]", "pytest", "pytest-timeout", "jsonschema", "ruff"]   # v1.28.1: dev = all runtime extras + test tooling (jsonschema = DEV-only manifest-schema validation guard; runtime stays zero-dep). ruff added v1.47.1 (a static-analysis gate for the code-hygiene error class — see [tool.ruff.lint]).
 
 [project.urls]
 Homepage = "https://github.com/russalo/file-observer"
@@ -81,3 +81,13 @@ timeout = 120
 # shared corpora — polluting the empirical sweep (found running v1.7 against the
 # full library, 2026-06-03).
 testpaths = ["tests"]
+
+[tool.ruff.lint]
+# v1.47.1: a DELIBERATELY NARROW static-analysis gate — the error CLASSES a polish pass found
+# (and that CI should never let recur), NOT full style linting. Extend consciously.
+#   F401 unused import   F811 redefinition   F821 undefined name
+#   F841 unused local    F541 f-string without placeholders
+# (F402 "import shadowed by loop variable" is deliberately NOT selected — two such shadows are
+# correct-as-is; renaming them on the 560 KB scanner.py is churn for zero behavior gain.)
+# Intentional import-availability tests carry `# noqa: F401`; ruff honors them.
+select = ["F401", "F811", "F821", "F841", "F541"]

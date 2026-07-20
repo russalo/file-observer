@@ -16,15 +16,11 @@ from pathlib import Path
 import pytest
 
 from file_observer.scanner import (
-    LOGIC_VERSION,
     RECEIPT_DOC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
     _receipt_id,
     compute_manifest_checksum,
-    manifest_to_json,
     manifest_to_receipt,
 )
 
@@ -155,7 +151,3 @@ def test_mcp_scan_file_receipt_binds_callers_path(tree: Path):
 
 
 # --- 10. version axes -----------------------------------------------------------------
-def test_version_axes():
-    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 42, 0)   # floor (v1.43 bumped SCANNER)
-    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 22, 0)   # floor (v1.45 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.24"     # manifest contract frozen

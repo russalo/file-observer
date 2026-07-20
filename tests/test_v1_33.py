@@ -402,7 +402,7 @@ class TestEndToEnd:
 # --------------------------------------------------------------------------- schema surface
 def test_ai_session_in_schema_as_provisional():
     doc = build_schema_document()
-    fields = doc["specialists"]["namespaces"].get(AI_SESSION_NAMESPACE) \
+    doc["specialists"]["namespaces"].get(AI_SESSION_NAMESPACE) \
         if "namespaces" in doc.get("specialists", {}) else None
     # tolerate either the namespaces map or the flat SPECIALIST_FIELDS registry
     from file_observer.scanner import SPECIALIST_FIELDS, PROVISIONAL_SPECIALIST_FIELDS

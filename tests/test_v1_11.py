@@ -6,7 +6,6 @@ LOGIC_VERSION and SCHEMA_VERSION stay frozen — --watch only controls *when*
 observation triggers, not *what*. Same lesson as --workers N in v1.9.
 """
 import json
-import os
 import signal
 import subprocess
 import sys

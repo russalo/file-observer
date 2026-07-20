@@ -46,7 +46,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.24",
-  "context": { "scanner_version": "1.47.0", "logic_version": "1.24.6", "...": "…" },
+  "context": { "scanner_version": "1.47.1", "logic_version": "1.24.6", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -78,7 +78,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.47.0` |
+| **Version** | `1.47.1` |
 | **Schema** | `1.24` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -179,7 +179,7 @@ The image bundles `libmagic` + all optional specialists. (Builds from the [`Dock
 **GitHub Action** — scan a repo in CI and capture the manifest as an artifact:
 
 ```yaml
-- uses: russalo/file-observer@v1.46.0     # pin a release tag
+- uses: russalo/file-observer@v1.47.0     # pin a release tag
   id: scan
   with:
     path: .                                # directory to scan (default ".")
