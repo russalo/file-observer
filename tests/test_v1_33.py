@@ -413,9 +413,12 @@ def test_ai_session_in_schema_as_provisional():
     assert fields, "ai_session has no fields in --schema"
     assert all(f.get("stability") == "provisional" for f in fields), \
         "every ai_session field must be annotated provisional in --schema"
-    # and the schema must agree with the code registries
+    # and the schema must agree EXACTLY with the code registry — not just "present" (leg-4/CodeRabbit:
+    # otherwise --schema could silently drop a registered ai_session field and the test would pass).
     from file_observer.scanner import SPECIALIST_FIELDS, PROVISIONAL_SPECIALIST_FIELDS
     assert AI_SESSION_NAMESPACE in SPECIALIST_FIELDS
+    assert {f["name"] for f in fields} == set(SPECIALIST_FIELDS[AI_SESSION_NAMESPACE]), \
+        "--schema ai_session fields must exactly match SPECIALIST_FIELDS (no field dropped/added)"
     assert any(ns == AI_SESSION_NAMESPACE for ns, _ in PROVISIONAL_SPECIALIST_FIELDS)
 
 
