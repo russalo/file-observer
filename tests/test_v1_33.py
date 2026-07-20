@@ -401,10 +401,19 @@ class TestEndToEnd:
 
 # --------------------------------------------------------------------------- schema surface
 def test_ai_session_in_schema_as_provisional():
+    # leg-4/CodeRabbit: the test name says "in_schema" — actually ASSERT on the generated schema
+    # document (the discarded lookup gave no regression signal; the test passed even if ai_session
+    # were absent from --schema).
     doc = build_schema_document()
-    doc["specialists"]["namespaces"].get(AI_SESSION_NAMESPACE) \
-        if "namespaces" in doc.get("specialists", {}) else None
-    # tolerate either the namespaces map or the flat SPECIALIST_FIELDS registry
+    # per-namespace field-stability lives under specialists.fields[ns] (the original code looked in
+    # ["namespaces"] — the wrong key — so its lookup silently returned None and asserted nothing).
+    ns_fields = doc.get("specialists", {}).get("fields", {})
+    assert AI_SESSION_NAMESPACE in ns_fields, "ai_session namespace missing from the --schema document"
+    fields = ns_fields[AI_SESSION_NAMESPACE]
+    assert fields, "ai_session has no fields in --schema"
+    assert all(f.get("stability") == "provisional" for f in fields), \
+        "every ai_session field must be annotated provisional in --schema"
+    # and the schema must agree with the code registries
     from file_observer.scanner import SPECIALIST_FIELDS, PROVISIONAL_SPECIALIST_FIELDS
     assert AI_SESSION_NAMESPACE in SPECIALIST_FIELDS
     assert any(ns == AI_SESSION_NAMESPACE for ns, _ in PROVISIONAL_SPECIALIST_FIELDS)

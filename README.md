@@ -179,7 +179,7 @@ The image bundles `libmagic` + all optional specialists. (Builds from the [`Dock
 **GitHub Action** — scan a repo in CI and capture the manifest as an artifact:
 
 ```yaml
-- uses: russalo/file-observer@v1.47.0     # pin a release tag
+- uses: russalo/file-observer@v1.47.1     # pin a release tag
   id: scan
   with:
     path: .                                # directory to scan (default ".")

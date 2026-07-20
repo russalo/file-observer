@@ -184,16 +184,19 @@ def test_public_contract_stability_matches_registry():
 
 
 def test_every_specialist_namespace_documented():
-    """COMPLETENESS guard (hunt for what's MISSING): every namespace the scanner can EMIT must appear
-    in PUBLIC_CONTRACT — an emitted-but-undocumented namespace is a silent contract gap."""
+    """COMPLETENESS guard (hunt for what's MISSING): every namespace the scanner can EMIT must be
+    documented in the CONTRACT BODY (§1–§2) — NOT merely mentioned in a §3 Schema-Version-History
+    row (leg-4/CodeRabbit: a history-row mention is a changelog entry, not a durable contract
+    statement, so it must not satisfy "documented")."""
     from file_observer.scanner import SPECIALIST_NAMESPACE, SPECIALIST_FIELDS
 
     root = Path(__file__).resolve().parent.parent
     contract = (root / "docs" / "PUBLIC_CONTRACT.md").read_text(encoding="utf-8")
+    body = contract[: contract.index("## 3. Schema Version History")]   # exclude the §3 history rows
     namespaces = set(SPECIALIST_NAMESPACE.values()) | set(SPECIALIST_FIELDS)
     missing = sorted(ns for ns in namespaces
-                     if f"specialist_metadata.{ns}" not in contract and f"`{ns}`" not in contract)
-    assert not missing, f"specialist namespaces are emitted but NOT documented in PUBLIC_CONTRACT: {missing}"
+                     if f"specialist_metadata.{ns}" not in body and f"`{ns}`" not in body)
+    assert not missing, f"specialist namespaces emitted but NOT documented in the PUBLIC_CONTRACT body (§1–§2): {missing}"
 
 
 def test_security_supported_versions_current():
