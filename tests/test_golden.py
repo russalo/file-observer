@@ -4,7 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from file_observer.scanner import Scanner, manifest_to_json
 

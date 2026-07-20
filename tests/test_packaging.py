@@ -148,6 +148,68 @@ def test_contract_docs_version_references_current():
     # parenthetical that isn't cleanly machine-checkable; the quick-ref row is).
     assert f"`LOGIC_VERSION` | `MAJOR.MINOR.PATCH` | {LOGIC_VERSION} |" in conventions, \
         f"CONVENTIONS §1.6 Quick Reference LOGIC_VERSION row is stale (want {LOGIC_VERSION})"
+    # §1.6 SCHEMA_VERSION quick-ref row — same class (was unguarded; a SCHEMA bump could leave it stale).
+    from file_observer.scanner import SCHEMA_VERSION
+    assert f"`SCHEMA_VERSION` | `MAJOR.MINOR` | {SCHEMA_VERSION} |" in conventions, \
+        f"CONVENTIONS §1.6 Quick Reference SCHEMA_VERSION row is stale (want {SCHEMA_VERSION})"
+
+
+def test_public_contract_stability_matches_registry():
+    """OPERATIONALIZED GUARD for the error class that slipped at v1.47.0: PUBLIC_CONTRACT §2.4's
+    provisional/stable PROSE drifted from the code registry — the promotion updated
+    `PROVISIONAL_SPECIALIST_FIELDS` but §2.4 still called `presentation`/`audio` provisional (§2.4
+    prose was unguarded; caught only by a hand polish pass). Guard both directions so it can't recur:
+    a namespace that is FULLY STABLE in code must NOT sit in §2.4's provisional section, and a
+    namespace WITH provisional fields MUST be documented there."""
+    from file_observer.scanner import SPECIALIST_FIELDS, PROVISIONAL_SPECIALIST_FIELDS
+
+    root = Path(__file__).resolve().parent.parent
+    contract = (root / "docs" / "PUBLIC_CONTRACT.md").read_text(encoding="utf-8")
+    # §2.4's provisional region = from the "subject to change" marker to the first promotion paragraph.
+    start = contract.index("subject to change in MINOR releases without notice")
+    end = contract.index("**Promoted to stable", start)
+    prov_region = contract[start:end]
+    for ns, fields in sorted(SPECIALIST_FIELDS.items()):
+        has_provisional = any((ns, f) in PROVISIONAL_SPECIALIST_FIELDS for f in fields)
+        in_prov_region = f"specialist_metadata.{ns}." in prov_region
+        if not has_provisional:
+            assert not in_prov_region, (
+                f"PUBLIC_CONTRACT §2.4 lists `{ns}` as provisional, but EVERY field of `{ns}` is stable in "
+                f"PROVISIONAL_SPECIALIST_FIELDS — a promotion updated the registry but not §2.4 (the v1.47.0 "
+                f"presentation/audio class). Move `{ns}` to a 'Promoted to stable' paragraph.")
+        else:
+            assert in_prov_region, (
+                f"`{ns}` has provisional fields in code but is not documented in PUBLIC_CONTRACT §2.4's "
+                f"provisional section — a new provisional namespace must be listed there.")
+
+
+def test_every_specialist_namespace_documented():
+    """COMPLETENESS guard (hunt for what's MISSING): every namespace the scanner can EMIT must be
+    documented in the CONTRACT BODY (§1–§2) — NOT merely mentioned in a §3 Schema-Version-History
+    row (leg-4/CodeRabbit: a history-row mention is a changelog entry, not a durable contract
+    statement, so it must not satisfy "documented")."""
+    from file_observer.scanner import SPECIALIST_NAMESPACE, SPECIALIST_FIELDS
+
+    root = Path(__file__).resolve().parent.parent
+    contract = (root / "docs" / "PUBLIC_CONTRACT.md").read_text(encoding="utf-8")
+    body = contract[: contract.index("## 3. Schema Version History")]   # exclude the §3 history rows
+    namespaces = set(SPECIALIST_NAMESPACE.values()) | set(SPECIALIST_FIELDS)
+    missing = sorted(ns for ns in namespaces
+                     if f"specialist_metadata.{ns}" not in body and f"`{ns}`" not in body)
+    assert not missing, f"specialist namespaces emitted but NOT documented in the PUBLIC_CONTRACT body (§1–§2): {missing}"
+
+
+def test_security_supported_versions_current():
+    """SECURITY.md's Supported Versions table is hand-maintained and was unguarded — it lagged to
+    1.46.x while the build shipped 1.47.0 (caught by the polish pass). Guard it: the 'Yes (current)'
+    row must name the current MAJOR.MINOR."""
+    from file_observer.scanner import SCANNER_VERSION
+
+    root = Path(__file__).resolve().parent.parent
+    security = (root / "SECURITY.md").read_text(encoding="utf-8")
+    major_minor = ".".join(SCANNER_VERSION.split(".")[:2])
+    assert f"| {major_minor}.x | Yes (current) |" in security, \
+        f"SECURITY.md 'Yes (current)' row is stale (want {major_minor}.x)"
 
 
 def test_canonical_top_level_api():
@@ -200,10 +262,14 @@ def test_module_cli_entrypoint(module):
 
 
 def test_canonical_submodule_constants_unchanged():
-    """Constants and the manifest field they feed stay stable across the 1.0.x → 1.1 line (the 1.0.1 import-package rename left them intact)."""
+    """THE single net-current version gate — the ONLY test that pins SCANNER/LOGIC/SCHEMA to exact
+    values, so a version bump updates exactly ONE place. (v1.47.1 removed the per-release
+    `test_v1_XX::test_version_axes` duplication — 16 files that each pinned net-current and had to be
+    sed'd every release. Do NOT reintroduce net-current exact pins in per-release test files; assert
+    a release's BEHAVIOR there, not the live version constant.)"""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.47.0"
+    assert SCANNER_VERSION == "1.47.1"
     assert SCHEMA_VERSION == "1.24"  # v1.47.0 — promotion pass: presentation + audio provisional→stable (a promotion is a contract change even with no value change; v0.11/v1.10/v1.14/v1.23/v1.31 precedent). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
     assert LOGIC_VERSION == "1.24.6"  # v1.47.0 — FROZEN (designation-only; stability lives only in --schema, no observing logic changed). Prior bump 1.24.5→1.24.6 = v1.46.8 Windows reparse-tag fix
 

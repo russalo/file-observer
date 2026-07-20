@@ -7,7 +7,6 @@ All fixtures are synthetic/inline so the suite is CI-safe (no external corpora).
 """
 
 import json
-from pathlib import Path
 
 from file_observer.scanner import Scanner, ScannerConfig, ErrorRecord
 

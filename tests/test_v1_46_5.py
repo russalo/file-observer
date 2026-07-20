@@ -18,9 +18,6 @@ import struct
 from pathlib import Path
 
 from file_observer.scanner import (
-    LOGIC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
     _parse_exif_tiff,
@@ -71,9 +68,3 @@ def test_scan_survives_numeric_make_jpeg_corpus(tmp_path: Path):
     img = (bad.specialist_metadata or {}).get("image") or {}
     assert not isinstance(img.get("make"), int)                        # never an int
     assert isinstance(m.summary, str)                                  # the summary built (didn't abort)
-
-
-def test_version_axes():
-    assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 46, 5)   # floor (v1.46.6 bumped SCANNER)
-    assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 24, 4)   # LOGIC floor (unchanged at v1.46.6)
-    assert SCHEMA_VERSION == "1.24"

@@ -12,7 +12,6 @@ LOGIC 1.12.1→1.12.2 (MIME-sniff routing change); SCANNER 1.23.0→1.23.1; SCHE
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 from file_observer.scanner import (
     Scanner,
@@ -20,7 +19,6 @@ from file_observer.scanner import (
     SCANNER_VERSION,
     LOGIC_VERSION,
     SCHEMA_VERSION,
-    PDF_HEADER_MAX_OFFSET,
 )
 
 

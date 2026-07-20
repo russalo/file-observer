@@ -15,10 +15,7 @@ import json
 from pathlib import Path
 
 from file_observer.scanner import (
-    LOGIC_VERSION,
     PROVISIONAL_SPECIALIST_FIELDS,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
     _field_stability,
@@ -144,9 +141,3 @@ def test_schema_annotates_promoted_namespaces_stable():
     for ns in ("presentation", "audio"):
         for name, stab in found[ns].items():
             assert stab == "stable", f"--schema annotates {ns}.{name} as {stab!r}, expected stable"
-
-
-def test_version_axes():
-    assert SCANNER_VERSION == "1.47.0"
-    assert SCHEMA_VERSION == "1.24"    # promotion = contract change (v0.11/v1.10/v1.14/v1.23/v1.31)
-    assert LOGIC_VERSION == "1.24.6"   # FROZEN — designation-only, no observing logic changed

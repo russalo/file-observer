@@ -322,7 +322,7 @@ def _mov_with_moov_at_tail(codec=b"avc1", w=1920, h=1080,
 
 
 (OUT / "video_h264.mov").write_bytes(_mov_with_moov_at_tail())
-print(f"wrote video_h264.mov           minimal ISOBMFF (moov-at-tail) fixture")
+print("wrote video_h264.mov           minimal ISOBMFF (moov-at-tail) fixture")
 
 
 # ---- v1.18: ISOBMFF .mov with Apple QuickTime keys (make/model) + GPS-presence ----

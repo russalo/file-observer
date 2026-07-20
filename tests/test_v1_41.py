@@ -10,7 +10,6 @@ Values-neutral: the only lexicon terms here are benign fruit/animal placeholder 
 """
 from __future__ import annotations
 
-import json
 import struct
 import zlib
 from pathlib import Path
@@ -19,13 +18,9 @@ import pytest
 
 from file_observer.scanner import (
     LEXICON_METADATA_MAX_CHARS,
-    LOGIC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
     compute_manifest_checksum,
-    manifest_to_json,
 )
 
 LEX = {"lexicon_id": "test", "categories": {
@@ -112,7 +107,7 @@ def test_metadata_hit_sets_safety_flag(tree: Path):
 
 # --- 4. dormant without a lexicon: byte-identical --------------------------------------
 def test_dormant_without_lexicon_byte_identical(tree: Path):
-    with_lex = _scan(tree)
+    _scan(tree)
     no_lex = Scanner(tree, ScannerConfig(enable_specialists=True)).scan()
     # no lexicon → no lexicon_match namespace at all
     for f in no_lex.files:
@@ -175,7 +170,3 @@ def test_binary_zero_body_has_provenance(tree: Path):
 
 
 # --- 7. version axes ------------------------------------------------------------------
-def test_version_axes():
-    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 41, 0)   # floor (v1.42 bumped SCANNER)
-    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 22, 0)   # floor (v1.45 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.24"

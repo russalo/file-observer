@@ -9,7 +9,6 @@ on a bad output path.
 import json
 import subprocess
 import sys
-from pathlib import Path
 
 from file_observer import scan
 

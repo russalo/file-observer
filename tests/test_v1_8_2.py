@@ -10,7 +10,6 @@ degraded record, and keeping `modified_at` a non-null `str` so the frozen public
 contract (modified_at: string, Stable) is unchanged. Found by the decorrelated Gemini leg;
 the v1.8.1 in-house red-team hunted crash/bound/escape, not determinism.
 """
-from pathlib import Path
 
 from file_observer.scanner import Scanner, ScannerConfig, ERR_UNIVERSAL_STAT_FAILED
 

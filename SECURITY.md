@@ -74,7 +74,7 @@ An MCP tool's arguments are **constructed by the calling LLM**, so anything pass
 
 | Version | Supported |
 |---|---|
-| 1.46.x | Yes (current) |
-| 1.45.x | Security fixes only |
-| 1.0–1.44.x | No (schema-stable but unsupported; please upgrade) |
+| 1.47.x | Yes (current) |
+| 1.46.x | Security fixes only |
+| 1.0–1.45.x | No (schema-stable but unsupported; please upgrade) |
 | < 1.0 | No |

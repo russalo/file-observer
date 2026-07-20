@@ -12,7 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from file_observer.scanner import Scanner, ScannerConfig, manifest_to_json
+from file_observer.scanner import Scanner, ScannerConfig
 
 
 def _is_chatlog(tmp_path, name, content):

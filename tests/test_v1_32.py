@@ -10,7 +10,6 @@ SCANNER 1.31.0→1.32.0.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -23,7 +22,6 @@ from file_observer.scanner import (
     SCHEMA_VERSION,
     PROVISIONAL_SPECIALIST_FIELDS,
     build_schema_document,
-    manifest_to_json,
     fact_block_rules_fingerprint,
 )
 

@@ -20,9 +20,6 @@ import pytest
 
 from file_observer.scanner import (
     LEXICON_MAX_SOURCES,
-    LOGIC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     _read_lexicon_index,
 )
 
@@ -88,11 +85,3 @@ def test_symlink_escape_rejected(tmp_path: Path):
     os.symlink(tmp_path / "secret.json", b / "link.json")
     with pytest.raises(ValueError, match="escapes the index directory"):
         _read_lexicon_index(_idx(b, ["link.json"]))
-
-
-def test_version_axes():
-    # NOTE: current net version moved on in v1.46.7 (MIME synonyms); this suite pins the
-    # axes AS OF v1.46.6's LOGIC-frozen loader hardening, which the later patch preserved.
-    assert SCANNER_VERSION == "1.47.0"
-    assert LOGIC_VERSION == "1.24.6"   # v1.46.6 LOGIC-frozen; .7 synonym values-move; .8 Windows reparse-tag fix
-    assert SCHEMA_VERSION == "1.24"

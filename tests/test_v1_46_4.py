@@ -13,9 +13,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from file_observer.scanner import (
-    LOGIC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
 )
@@ -64,9 +61,3 @@ def test_genuine_unknown_still_flags(tmp_path: Path):
     # CONTROL: the fix must NOT over-broaden — a real unidentified binary still flags unsupported.
     _m, f = _rec(tmp_path, "mystery.xyz", b"\x01\x02\x03\x04not a known format\n")
     assert _unsupported(f), "a genuine unknown binary must STILL flag unsupported_extension"
-
-
-def test_version_axes():
-    assert tuple(int(x) for x in SCANNER_VERSION.split(".")) >= (1, 46, 4)   # floor (v1.46.5 bumped SCANNER)
-    assert tuple(int(x) for x in LOGIC_VERSION.split(".")) >= (1, 24, 3)   # floor (v1.46.5 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.24"

@@ -131,7 +131,7 @@ class TestDeterminism:
     def test_workers_byte_identical(self, tmp_path):
         (tmp_path / f"a{UNLISTED}").write_bytes(_zip_bytes())
         (tmp_path / f"b{UNLISTED}").write_bytes(b"\x00\xff" * 100)
-        (tmp_path / f"c.txt").write_text("hello\n")
+        (tmp_path / "c.txt").write_text("hello\n")
         a = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True, workers=1)).scan()
         b = Scanner(source_dir=tmp_path, config=ScannerConfig(enable_specialists=True, workers=4)).scan()
         assert a.manifest_checksum == b.manifest_checksum

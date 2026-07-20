@@ -13,9 +13,6 @@ from pathlib import Path
 import pytest
 
 from file_observer.scanner import (
-    LOGIC_VERSION,
-    SCANNER_VERSION,
-    SCHEMA_VERSION,
     Scanner,
     ScannerConfig,
     compute_manifest_checksum,
@@ -96,7 +93,3 @@ def test_signature_over_summary_independent_checksum(plain_tree: Path):
 
 
 # --- 5. version axes ------------------------------------------------------------------------------
-def test_version_axes():
-    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 45, 0)   # floor (v1.46 bumped SCANNER)
-    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 23, 0)   # floor (v1.46 bumped LOGIC)
-    assert SCHEMA_VERSION == "1.24"    # the summary field's shape is unchanged

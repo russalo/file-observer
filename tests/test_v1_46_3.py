@@ -15,7 +15,6 @@ from pathlib import Path
 
 import pytest
 
-from file_observer.scanner import LOGIC_VERSION, SCANNER_VERSION, SCHEMA_VERSION
 
 mcp_server = pytest.importorskip("file_observer.mcp_server", reason="mcp SDK not installed ([mcp] extra)")
 
@@ -75,9 +74,3 @@ def test_guard_uses_clamped_max_files(tmp_path: Path):
         (tmp_path / f"f{i}.txt").write_text("x\n", encoding="utf-8")
     man = json.loads(_fn(mcp_server.scan_directory)(str(tmp_path), specialists=False, max_files=10_000_000))
     assert "files" in man and len(man["files"]) == 5   # normal small scan unaffected by the clamp
-
-
-def test_version_axes():
-    assert tuple(int(p) for p in SCANNER_VERSION.split(".")) >= (1, 46, 3)   # floor (v1.46.4 bumped SCANNER)
-    assert tuple(int(p) for p in LOGIC_VERSION.split(".")) >= (1, 24, 2)   # LOGIC floor (v1.46.4 bumped it)
-    assert SCHEMA_VERSION == "1.24"

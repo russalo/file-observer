@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from file_observer.scanner import (
-    Scanner, ScannerConfig, SUPPORTED_EXTENSIONS,
+    Scanner, SUPPORTED_EXTENSIONS,
     SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
 )
 

@@ -8,7 +8,6 @@ change. Synthetic inline PDFs, CI-safe.
 """
 from pathlib import Path
 
-import pytest
 
 import re
 

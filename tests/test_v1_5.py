@@ -11,10 +11,9 @@ PDFs — no external libs, CI-safe.
 """
 from pathlib import Path
 
-import pytest
 
 from file_observer.scanner import (
-    Scanner, ScannerConfig, SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
+    Scanner, ScannerConfig, LOGIC_VERSION, SCHEMA_VERSION,
 )
 
 HEAD = 8192
