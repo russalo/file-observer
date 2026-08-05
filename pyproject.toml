@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.48.0"
+version = "1.48.1"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -44,14 +44,17 @@ dependencies = ["python-magic; platform_system != 'Windows'", "chardet"]
 [project.optional-dependencies]
 yaml = ["PyYAML"]
 msg = ["olefile"]
-security = ["purexml>=1.0.0"]   # v1.36: pure-stdlib, oracle-gated defusedxml replacement (a 2.0 is a breaking-contract re-review)
+security = ["purexml>=1.0.0,<2"]   # v1.36: pure-stdlib, oracle-gated defusedxml replacement (a 2.0 is a breaking-contract re-review)
 pdf = ["pypdf", "cryptography"]   # v1.8: object-stream page_count/Info (tier 1; stdlib fallback if absent). v1.12: cryptography required by pypdf for AES-256/V5 owner-locked PDFs (e.g. Caltrans 2025 specs)
 watch = ["watchfiles"]   # v1.11: --watch FS-event backend (measured vs watchdog; watchfiles won 1:1 delivery + 43ms latency)
-mcp = ["mcp>=1.0,<2"]   # v1.37: MCP server (agent-native front-door) — the official MCP Python SDK; optional, runtime stays zero-required-dep.
-#   UPPER BOUND ADDED v1.48: mcp 2.0.0 moved `mcp.server.fastmcp`, so an unbounded `>=1.0` let a MAJOR
-#   release walk in and break CI on a branch that never touched MCP. Pin to the major boundary — the same
-#   advice fo gave recall for its own floor (`file-observer>=1.46,<2`), which fo had not applied to itself.
-#   Supporting mcp 2.x is a separate evaluation, not a dependency-resolution accident.
+mcp = ["mcp>=1.0,<3"]   # v1.37: MCP server (agent-native front-door) — the official MCP Python SDK; optional, runtime stays zero-required-dep.
+#   BOUNDED UPPER since v1.48 (#174): an unbounded `>=1.0` let mcp 2.0.0 walk in and break CI on a branch
+#   that never touched MCP — the same advice fo gave recall for its own floor (`file-observer>=1.46,<2`),
+#   which fo had not applied to itself. v1.48.1 WIDENED it to `<3` after verifying 2.x support rather than
+#   assuming it: 2.0 renamed `mcp.server.fastmcp.FastMCP` to `mcp.server.mcpserver.MCPServer`, but the
+#   surface fo uses is byte-for-byte compatible (constructor kwargs, `run(transport=...)`, the `.tool()`
+#   decorator), so one aliased import covers both. The bound stays at the NEXT major, not removed —
+#   the point was never "pin low", it is "never let an unreviewed major in".
 # v1.28.1: one-line full coverage — the union of every RUNTIME extra (NOT dev). Self-references
 # the others so it can't drift (a new extra is picked up automatically). The drift-guard test
 # `test_all_extra_covers_every_runtime_extra` fails CI if a runtime extra is ever omitted here.

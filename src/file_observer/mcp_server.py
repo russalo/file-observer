@@ -21,13 +21,44 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 
+# MCP SDK 1.x and 2.x, both supported (#174).
+#
+# 2.0.0 RENAMED the server class and moved its module: `mcp.server.fastmcp.FastMCP`
+# became `mcp.server.mcpserver.MCPServer`. Verified against 2.0.0 that this is a rename
+# and NOT a redesign — the surface fo uses is identical: the constructor still takes
+# `name`/`instructions`, `run(transport="stdio")` has the same signature, and the
+# `.tool()` decorator is unchanged. So one aliased import covers both, and nothing
+# below this line needs to know which SDK is installed.
+#
+# Try 2.x FIRST: on a machine with both resolvable, the newer SDK is the right default,
+# and the 1.x path is the compatibility branch rather than the other way round.
 try:
-    from mcp.server.fastmcp import FastMCP
-except ModuleNotFoundError as _e:   # a friendly message instead of a bare traceback (leg-4/gemini);
-    # still an ImportError so `pytest.importorskip` skips cleanly when the [mcp] extra isn't installed.
-    raise ImportError(
-        'file-observer-mcp needs the MCP SDK — install it with:  pip install "file-observer[mcp]"'
-    ) from _e
+    from mcp.server.mcpserver import MCPServer as FastMCP   # mcp >= 2.0
+except ModuleNotFoundError as _e2:
+    # Fall back ONLY when the 2.x module itself is absent. A bare
+    # `except ModuleNotFoundError` also swallows a missing TRANSITIVE import or a
+    # defect *inside* the 2.x module — and would then either silently run the 1.x
+    # branch or report "install the SDK" while the real failure was something else
+    # entirely. Masking a real error with a misleading message is worse than the
+    # traceback it replaces (leg-2).
+    # The SET matters: when the SDK is absent ENTIRELY, Python reports the FIRST
+    # missing component — `name == "mcp"`, not the full dotted path. A `!=` check
+    # against the full path therefore re-raises a bare ModuleNotFoundError in the
+    # MOST COMMON case (no [mcp] extra installed), skipping the friendly message and
+    # breaking `pytest.importorskip`. My first cut had a set for the 1.x branch and
+    # not this one; that inconsistency WAS the bug (leg-4).
+    if _e2.name not in {"mcp", "mcp.server", "mcp.server.mcpserver"}:
+        raise
+    try:
+        from mcp.server.fastmcp import FastMCP              # mcp 1.x
+    except ModuleNotFoundError as _e:
+        if _e.name not in {"mcp", "mcp.server", "mcp.server.fastmcp"}:
+            raise
+        # A friendly message instead of a bare traceback (leg-4/gemini); still an
+        # ImportError so `pytest.importorskip` skips cleanly without the [mcp] extra.
+        raise ImportError(
+            'file-observer-mcp needs the MCP SDK — install it with:  pip install "file-observer[mcp]"'
+        ) from _e
 
 from file_observer.scanner import (
     Scanner,

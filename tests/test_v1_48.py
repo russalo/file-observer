@@ -15,6 +15,7 @@ The load-bearing tests here are not the happy-path parses — they are:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import os
 import subprocess
 import sys
@@ -395,3 +396,137 @@ def test_origin_read_never_uses_the_unbounded_xattr_api():
     assert "create_string_buffer" in src, "the read must use a bounded ctypes buffer"
     # NOFOLLOW on both platforms — must not become a way around v1.8.1 containment.
     assert "lgetxattr" in src and "XATTR_NOFOLLOW" in src
+
+
+# --------------------------------------------------------------------------
+# #174 — MCP SDK 1.x AND 2.x support (v1.48.1)
+# --------------------------------------------------------------------------
+
+def test_mcp_server_imports_under_whichever_sdk_is_installed():
+    """2.0 renamed FastMCP -> MCPServer and moved its module. fo supports both.
+
+    Verified against a real mcp 2.0.0 install that this is a RENAME, not a redesign:
+    the constructor kwargs fo passes (name/instructions), `run(transport="stdio")`, and
+    the `.tool()` decorator are all unchanged, so one aliased import covers both SDKs.
+    """
+    mcp_server = pytest.importorskip("file_observer.mcp_server")
+    assert mcp_server.mcp is not None
+    cls = type(mcp_server.mcp).__name__
+    assert cls in {"FastMCP", "MCPServer"}, f"unexpected server class {cls}"
+
+
+def test_mcp_import_tries_2x_before_1x():
+    """Structural guard: the 2.x path must be tried FIRST.
+
+    On a machine where both resolve, the newer SDK is the right default and 1.x is the
+    compatibility branch — not the other way round. A future edit that flips the order
+    would silently pin everyone to the legacy import.
+    """
+    src = (Path(__file__).resolve().parent.parent
+           / "src" / "file_observer" / "mcp_server.py").read_text(encoding="utf-8")
+    # Check the IMPORT STATEMENTS, not raw text: the comment above them names
+    # `mcp.server.fastmcp` first while explaining the rename, so a naive index()
+    # comparison compares prose to code. (Second time this trap has bitten in this
+    # release — a structural guard must look at structure.)
+    imports = [ln.strip() for ln in src.splitlines()
+               if ln.strip().startswith(("from mcp.", "import mcp."))]
+    joined = " | ".join(imports)
+    assert "mcp.server.mcpserver" in joined and "mcp.server.fastmcp" in joined, \
+        f"both SDK import paths must be present, got: {joined}"
+    assert (next(i for i, s in enumerate(imports) if "mcpserver" in s)
+            < next(i for i, s in enumerate(imports) if "fastmcp" in s)), \
+        "the mcp 2.x import must be attempted before the 1.x fallback"
+
+
+def test_every_optional_extra_bounds_its_upper_major():
+    """#174's real lesson, operationalized.
+
+    An unbounded `>=X` let mcp 2.0.0 into a fresh CI install and broke four OS jobs on a
+    branch that touched no MCP code. Nothing warned us — so assert it structurally:
+    every pinned dependency in every extra must bound its upper major.
+
+    This is the same rule fo handed recall (`file-observer>=1.46,<2`) and had not applied
+    to itself.
+
+    SCOPE, deliberately narrow: this flags a dependency that declares a FLOOR but no
+    ceiling (`>=X` with no `<`) — "the floor was considered, the ceiling was not", which
+    is exactly what happened with mcp. A BARE dependency (`PyYAML`, `pypdf`) is
+    unbounded too, but requiring upper bounds on every dependency is a larger policy
+    call than this guard should make unilaterally; it is worth deciding separately
+    rather than smuggling in via a test.
+    """
+    import tomllib
+
+    root = Path(__file__).resolve().parent.parent
+    extras = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = extras["project"].get("optional-dependencies", {})
+
+    unbounded = []
+    for extra, deps in optional.items():
+        for dep in deps:
+            if dep.startswith("file-observer["):   # self-reference, not a third party
+                continue
+            # Strip the PEP 508 environment marker FIRST. A marker legitimately
+            # contains "<" (`foo>=1; python_version < "3.14"`), which a naive scan of
+            # the whole string reads as a version ceiling — a false negative that would
+            # let exactly the unbounded dep this guard exists to catch slip past
+            # (leg-2). Only the specifier part may vote.
+            specifier = dep.split(";", 1)[0]
+            if ">=" in specifier and "<" not in specifier:
+                unbounded.append(f"{extra}: {dep}")
+    assert not unbounded, (
+        "these dependencies have an unbounded upper major — a new major release can "
+        f"break a fresh install with no warning: {unbounded}"
+    )
+
+
+def test_extras_guard_is_not_fooled_by_an_environment_marker():
+    """The guard must read the SPECIFIER, not the whole PEP 508 string.
+
+    `foo>=1; python_version < "3.14"` has no ceiling, but the marker contributes a
+    "<" — so a whole-string scan calls it bounded and the guard silently stops
+    working. Reproduced here so the fix can't regress (leg-2).
+    """
+    def _unbounded(dep: str) -> bool:
+        specifier = dep.split(";", 1)[0]
+        return ">=" in specifier and "<" not in specifier
+
+    assert _unbounded('foo>=1; python_version < "3.14"'), \
+        "a marker's '<' must not count as a version ceiling"
+    assert _unbounded("bar>=2.0")
+    assert not _unbounded("baz>=1,<3")
+    assert not _unbounded('qux>=1,<3; sys_platform != "win32"')
+
+
+def test_missing_transitive_import_is_not_masked_as_a_missing_sdk():
+    """leg-2 Major: a bare `except ModuleNotFoundError` swallowed real defects.
+
+    If the 2.x module is present but its OWN import fails (a missing transitive
+    dependency, or a defect inside it), the old handler fell through to the 1.x
+    branch and could report "install the SDK" — replacing a precise error with a
+    misleading one. The fallback is now gated on `exc.name`.
+    """
+    src = (Path(__file__).resolve().parent.parent
+           / "src" / "file_observer" / "mcp_server.py").read_text(encoding="utf-8")
+    assert '_e2.name not in {"mcp", "mcp.server", "mcp.server.mcpserver"}' in src, (
+        "the 2.x fallback must be gated on the missing module's NAME, as a SET — see "
+        "test_absent_sdk_still_gives_the_friendly_message for why `!=` is wrong"
+    )
+    assert "raise\n" in src, "an unrelated ModuleNotFoundError must re-raise"
+
+
+def test_absent_sdk_still_gives_the_friendly_message():
+    """leg-4: the exc.name guard must not swallow the COMMON case.
+
+    With no MCP SDK installed, `from mcp.server.mcpserver import ...` raises
+    ModuleNotFoundError with `name == "mcp"` — the FIRST missing component, not the
+    full dotted path. A `!=` check against the full path re-raises a bare error and
+    skips the friendly "install the [mcp] extra" message, which `pytest.importorskip`
+    and every user rely on. My fix for the masking bug introduced exactly that
+    regression; verified against a clean venv before re-fixing.
+    """
+    src = (Path(__file__).resolve().parent.parent
+           / "src" / "file_observer" / "mcp_server.py").read_text(encoding="utf-8")
+    # both guards must accept the truncated names, not just the full dotted path
+    assert '{"mcp", "mcp.server", "mcp.server.mcpserver"}' in src
+    assert '{"mcp", "mcp.server", "mcp.server.fastmcp"}' in src
