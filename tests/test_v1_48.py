@@ -321,3 +321,57 @@ def test_cli_still_reports_version():
         capture_output=True, text=True, timeout=60,
     )
     assert "1.48.0" in (out.stdout + out.stderr)
+
+
+# --------------------------------------------------------------------------
+# leg-2 regressions (cross-model review, 2026-08-05) — two Major findings.
+# Both fixes get a guard so the class cannot recur silently.
+# --------------------------------------------------------------------------
+
+@requires_xattr
+def test_empty_attribute_counts_as_PRESENT_not_absent(tmp_path):
+    """leg-2 #1: `if raw:` conflated b"" with absent → a false negative.
+
+    The Linux path's entire semantic is PRESENCE, so a zero-length attribute is a
+    marker: the file was annotated. Reproduced before fixing — an empty attr read as
+    b'' and `bool(b'')` is False, so it was silently dropped.
+    """
+    if not _can_set_xattr(tmp_path):
+        pytest.skip("filesystem does not support user xattrs")
+    f = tmp_path / "empty_marker.bin"
+    f.write_bytes(b"x")
+    os.setxattr(str(f), "user.xdg.origin.url", b"")
+
+    origin = _json_rec(scan(str(tmp_path)), "empty_marker.bin")["origin"]
+    assert origin is not None, "an EMPTY attribute is still a PRESENT attribute"
+    assert origin["downloaded"] is True
+    assert origin["source"] == "xdg_origin"
+
+
+def test_origin_read_never_uses_the_unbounded_xattr_api():
+    """leg-2 #2: `os.getxattr(...)[:CAP]` allocates the WHOLE attribute first.
+
+    The cap was cosmetic — a 64 KiB attribute on XFS/btrfs would be fully
+    materialised before the slice could refuse it. The read now goes through libc
+    with a bounded buffer on BOTH posix paths, and an oversized attribute returns
+    ERANGE and is declined rather than truncated to a misleading prefix.
+
+    Structural guard (the fo AST-guard pattern): assert the unbounded API does not
+    appear in the origin read path, so a future edit can't quietly reintroduce it.
+    """
+    import inspect
+
+    from file_observer import scanner as s
+
+    full = inspect.getsource(s._read_origin_attr)
+    # Strip the docstring: it deliberately NAMES os.getxattr to explain why the code
+    # avoids it, and a naive text search trips on that explanation. Check the CODE.
+    doc = s._read_origin_attr.__doc__ or ""
+    src = full.replace(doc, "")
+    assert "os.getxattr(" not in src, (
+        "the origin read must not use os.getxattr — it allocates the entire attribute "
+        "before any slice, making _ORIGIN_ATTR_MAX_BYTES cosmetic"
+    )
+    assert "create_string_buffer" in src, "the read must use a bounded ctypes buffer"
+    # NOFOLLOW on both platforms — must not become a way around v1.8.1 containment.
+    assert "lgetxattr" in src and "XATTR_NOFOLLOW" in src

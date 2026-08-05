@@ -324,36 +324,53 @@ def _parse_zone_identifier(text: str) -> dict[str, Any] | None:
 
 
 def _read_origin_attr(path: Path, name: str) -> bytes | None:
-    """Read ONE allowlisted extended attribute, bounded, never raising.
+    """Read ONE allowlisted extended attribute into a BOUNDED buffer, never raising.
 
-    `os.getxattr` is Linux-only in CPython (AttributeError on macOS), so macOS goes
-    through libSystem via ctypes with XATTR_NOFOLLOW — read the LINK's own marker,
-    never the target's, so this cannot become a way around v1.8.1 containment.
+    Both POSIX paths go through libc via ctypes so the cap is REAL. `os.getxattr`
+    allocates the ENTIRE attribute and would only let us slice afterwards — the cap
+    would be cosmetic, and a large attribute on XFS/btrfs (64 KiB limits, vs ext4's
+    ~4 KiB) would be fully materialised before we could refuse it. Found by leg-2.
+
+    An attribute LARGER than the cap returns ERANGE and is treated as unread: fo
+    declines to observe it rather than truncating to a misleading prefix.
+
+    NOFOLLOW on both platforms — read the LINK's own marker, never the target's, so
+    this cannot become a way around v1.8.1 containment.
     """
     try:
-        if _MACOS:
-            import ctypes
-            import ctypes.util
+        import ctypes
+        import ctypes.util
 
-            libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
-            buf = ctypes.create_string_buffer(_ORIGIN_ATTR_MAX_BYTES)
-            XATTR_NOFOLLOW = 0x0001
-            size = libc.getxattr(
-                os.fsencode(str(path)), name.encode(), buf,
-                ctypes.c_size_t(_ORIGIN_ATTR_MAX_BYTES), ctypes.c_uint32(0),
-                ctypes.c_int(XATTR_NOFOLLOW),
-            )
-            if size is None or size < 0:
-                return None
-            return buf.raw[:size]
-        getxattr = getattr(os, "getxattr", None)
-        if getxattr is None:
+        libc_path = ctypes.util.find_library("c")
+        if libc_path is None:
             return None
-        # follow_symlinks=False mirrors XATTR_NOFOLLOW.
-        return getxattr(str(path), name, follow_symlinks=False)[:_ORIGIN_ATTR_MAX_BYTES]
+        libc = ctypes.CDLL(libc_path, use_errno=True)
+        buf = ctypes.create_string_buffer(_ORIGIN_ATTR_MAX_BYTES)
+        cpath = os.fsencode(str(path))
+        cname = name.encode("utf-8")
+
+        if _MACOS:
+            fn = getattr(libc, "getxattr", None)
+            if fn is None:
+                return None
+            fn.restype = ctypes.c_ssize_t
+            XATTR_NOFOLLOW = 0x0001
+            size = fn(cpath, cname, buf, ctypes.c_size_t(_ORIGIN_ATTR_MAX_BYTES),
+                      ctypes.c_uint32(0), ctypes.c_int(XATTR_NOFOLLOW))
+        else:
+            # Linux: lgetxattr is the NOFOLLOW variant (no options argument).
+            fn = getattr(libc, "lgetxattr", None)
+            if fn is None:
+                return None
+            fn.restype = ctypes.c_ssize_t
+            size = fn(cpath, cname, buf, ctypes.c_size_t(_ORIGIN_ATTR_MAX_BYTES))
+
+        if size is None or size < 0:
+            # -1 covers ENODATA (no such attribute — the NORMAL case), ENOTSUP (no
+            # xattr support), and ERANGE (oversized: declined by design).
+            return None
+        return buf.raw[:size]
     except (OSError, AttributeError, ValueError, OverflowError, MemoryError):
-        # ENOTSUP / ENODATA are the NORMAL case on most filesystems (RFC §3.7):
-        # silence, never an ErrorRecord, or every scan on ext4 sprays diagnostics.
         return None
     except Exception:
         return None
@@ -384,18 +401,20 @@ def observe_origin(path: Path) -> dict[str, Any] | None:
     try:
         if _MACOS:
             raw = _read_origin_attr(path, _XATTR_QUARANTINE)
-            if raw:
+            if raw is not None:
                 return _parse_quarantine(raw.decode("utf-8", errors="replace"))
             return None
         if _WINDOWS:
             body = _read_zone_identifier(path)
-            if body:
+            if body is not None:
                 return _parse_zone_identifier(body)
             return None
         # Linux: presence only. The URL is read to confirm the attribute exists and
         # is then DISCARDED unparsed (RFC §3.3) — it never reaches the manifest.
+        # `is not None`, NOT truthiness: an EMPTY attribute is still PRESENT, and
+        # presence is this path's entire semantic (leg-2 finding).
         raw = _read_origin_attr(path, _XATTR_XDG_ORIGIN)
-        if raw:
+        if raw is not None:
             return {
                 "downloaded": True,
                 "zone": None,
