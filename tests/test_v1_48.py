@@ -508,6 +508,25 @@ def test_missing_transitive_import_is_not_masked_as_a_missing_sdk():
     """
     src = (Path(__file__).resolve().parent.parent
            / "src" / "file_observer" / "mcp_server.py").read_text(encoding="utf-8")
-    assert "_e2.name != \"mcp.server.mcpserver\"" in src, \
-        "the 2.x fallback must be gated on the missing module's NAME"
+    assert '_e2.name not in {"mcp", "mcp.server", "mcp.server.mcpserver"}' in src, (
+        "the 2.x fallback must be gated on the missing module's NAME, as a SET — see "
+        "test_absent_sdk_still_gives_the_friendly_message for why `!=` is wrong"
+    )
     assert "raise\n" in src, "an unrelated ModuleNotFoundError must re-raise"
+
+
+def test_absent_sdk_still_gives_the_friendly_message():
+    """leg-4: the exc.name guard must not swallow the COMMON case.
+
+    With no MCP SDK installed, `from mcp.server.mcpserver import ...` raises
+    ModuleNotFoundError with `name == "mcp"` — the FIRST missing component, not the
+    full dotted path. A `!=` check against the full path re-raises a bare error and
+    skips the friendly "install the [mcp] extra" message, which `pytest.importorskip`
+    and every user rely on. My fix for the masking bug introduced exactly that
+    regression; verified against a clean venv before re-fixing.
+    """
+    src = (Path(__file__).resolve().parent.parent
+           / "src" / "file_observer" / "mcp_server.py").read_text(encoding="utf-8")
+    # both guards must accept the truncated names, not just the full dotted path
+    assert '{"mcp", "mcp.server", "mcp.server.mcpserver"}' in src
+    assert '{"mcp", "mcp.server", "mcp.server.fastmcp"}' in src

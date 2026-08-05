@@ -41,7 +41,13 @@ except ModuleNotFoundError as _e2:
     # branch or report "install the SDK" while the real failure was something else
     # entirely. Masking a real error with a misleading message is worse than the
     # traceback it replaces (leg-2).
-    if _e2.name != "mcp.server.mcpserver":
+    # The SET matters: when the SDK is absent ENTIRELY, Python reports the FIRST
+    # missing component — `name == "mcp"`, not the full dotted path. A `!=` check
+    # against the full path therefore re-raises a bare ModuleNotFoundError in the
+    # MOST COMMON case (no [mcp] extra installed), skipping the friendly message and
+    # breaking `pytest.importorskip`. My first cut had a set for the 1.x branch and
+    # not this one; that inconsistency WAS the bug (leg-4).
+    if _e2.name not in {"mcp", "mcp.server", "mcp.server.mcpserver"}:
         raise
     try:
         from mcp.server.fastmcp import FastMCP              # mcp 1.x
