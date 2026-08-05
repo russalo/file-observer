@@ -106,7 +106,13 @@ def test_manifest_carries_no_stability_annotation(tmp_path: Path):
 
     payload = manifest_to_json(m)
     assert '"stability"' not in payload, "manifest must not carry a stability annotation (--schema-only)"
-    assert json.loads(payload)["schema_version"] == "1.24"
+    # Assert against the LIVE constant, not a literal. A hardcoded "1.24" here is a
+    # net-current pin in a per-release file — the class v1.47.1 removed 16 of; this one
+    # survived because it is inline rather than inside a `test_version_axes` function.
+    # The behaviour under test is "no stability annotation in the manifest", and that
+    # does not depend on which schema version is current.
+    from file_observer.scanner import SCHEMA_VERSION
+    assert json.loads(payload)["schema_version"] == SCHEMA_VERSION
 
 
 def test_schema_annotates_promoted_namespaces_stable():
