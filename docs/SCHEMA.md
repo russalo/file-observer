@@ -254,6 +254,7 @@
 
 | trigger | layer | method | description |
 |---|---|---|---|
+| `ads_zone_identifier` | derived | `observe_origin` | download origin from the Windows Zone.Identifier alternate data stream |
 | `ai_session_full_file` | derived | `_extract_ai_session` | ai_session usage sums + producer-schema fingerprint extracted via a full-file bounded-deviation read (session logs exceed the baseline window; reason=ai_session_full_file_required) |
 | `bounded_deviation` | derived | `_<ext>_specialist` | specialist field extracted via a declared deviation read (e.g. ZIP central directory) |
 | `bounded_sample` | derived | `_<ext>_specialist` | specialist field extracted within the bounded sample |
@@ -300,6 +301,8 @@
 | `text_ratio_ok` | derived | `detect_binary` | text: printable-character ratio above threshold |
 | `tomllib` | derived | `extract_toml_keys` | document keys from tomllib |
 | `unicode_bom` | derived | `detect_binary` | treated as text via a UTF-16/UTF-32 BOM at offset 0 |
+| `xattr_quarantine` | derived | `observe_origin` | download origin from the macOS com.apple.quarantine extended attribute |
+| `xattr_xdg_origin` | derived | `observe_origin` | download origin from the Linux user.xdg.origin.url extended attribute (presence only) |
 | `xml_etree` | derived | `extract_xml_keys` | document keys from XML ElementTree |
 | `yaml_line_parse` | derived | `extract_yaml_keys` | document keys from YAML line parsing |
 

@@ -389,6 +389,40 @@ def _read_zone_identifier(path: Path) -> str | None:
         return None
 
 
+def _observe_origin_recording(path: Path, provenance: dict[str, Any]) -> dict[str, Any] | None:
+    """observe_origin + the `signal_provenance` entry every derived field owes.
+
+    Emitted ONLY when a marker was actually read: provenance records HOW a value was
+    derived, and there is no derivation to describe when nothing was observed (an
+    unconditional entry would also move every manifest's provenance, not just those
+    with markers).
+
+    The marker VALUE never enters detail — no URL, no agent. Provenance says which
+    channel was read, not what it contained.
+    """
+    obs = observe_origin(path)
+    if obs is None:
+        return None
+    # LITERAL triggers at the emit site, deliberately — not a dict lookup. The v1.13
+    # AST guard walks for literal `trigger=` strings, so a table-driven emit reads as a
+    # phantom registry key and the completeness check silently stops covering these.
+    # (It caught exactly that here.)
+    source = obs.get("source", "")
+    if source == "macos_quarantine":
+        provenance["origin"] = asdict(ProvenanceEntry(
+            layer="derived", method="observe_origin", trigger="xattr_quarantine",
+        ))
+    elif source == "windows_zone_identifier":
+        provenance["origin"] = asdict(ProvenanceEntry(
+            layer="derived", method="observe_origin", trigger="ads_zone_identifier",
+        ))
+    elif source == "xdg_origin":
+        provenance["origin"] = asdict(ProvenanceEntry(
+            layer="derived", method="observe_origin", trigger="xattr_xdg_origin",
+        ))
+    return obs
+
+
 def observe_origin(path: Path) -> dict[str, Any] | None:
     """Observe whether a file arrived from outside this machine. None when unknown.
 
@@ -719,6 +753,12 @@ PROVENANCE_TRIGGERS: dict[str, dict[str, str]] = {
     "html_title_tag":           {"layer": "derived", "method": "extract_html_title", "description": "title from an HTML <title> tag"},
     "yaml_line_parse":          {"layer": "derived", "method": "extract_yaml_keys", "description": "document keys from YAML line parsing"},
     "csv_header_row":           {"layer": "derived", "method": "extract_csv_headers", "description": "column headers from the CSV first row"},
+    # v1.48 download-origin — the trigger names the CHANNEL so a consumer can tell HOW the
+    # observation was made and on which platform. The marker VALUE never enters provenance
+    # detail (no URL, no agent) — same containment as the manifest field itself.
+    "xattr_quarantine":         {"layer": "derived", "method": "observe_origin", "description": "download origin from the macOS com.apple.quarantine extended attribute"},
+    "ads_zone_identifier":      {"layer": "derived", "method": "observe_origin", "description": "download origin from the Windows Zone.Identifier alternate data stream"},
+    "xattr_xdg_origin":         {"layer": "derived", "method": "observe_origin", "description": "download origin from the Linux user.xdg.origin.url extended attribute (presence only)"},
     "json_loads":               {"layer": "derived", "method": "extract_json_keys", "description": "document keys from json.loads"},
     "xml_etree":                {"layer": "derived", "method": "extract_xml_keys",  "description": "document keys from XML ElementTree"},
     "tomllib":                  {"layer": "derived", "method": "extract_toml_keys", "description": "document keys from tomllib"},
@@ -5376,7 +5416,9 @@ class Scanner:
             preservation=self._extract_preservation(path.suffix),
             # v1.48: bounded allowlist read; returns None on any failure, so a
             # filesystem without xattr support is silent rather than error spray.
-            origin=observe_origin(path),
+            # Provenance is emitted by the helper (leg-4: a derived observation must
+            # declare its method + trigger, like every other derived field).
+            origin=_observe_origin_recording(path, provenance),
             safety_flags=safety_flags,
             signal_provenance=provenance,
             errors=errors,

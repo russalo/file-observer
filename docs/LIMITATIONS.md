@@ -401,4 +401,4 @@ The Linux attribute is **best-effort**: `user.xdg.origin.url` is a freedesktop
 convention set inconsistently by Firefox, wget, and curl, and is not a contract.
 
 fo reads a **named allowlist** only and never enumerates extended attributes, so an
-attribute fo does not know about is never surfaced (see PUBLIC_CONTRACT §1.14).
+attribute fo does not know about is never surfaced (see PUBLIC_CONTRACT §1.15).

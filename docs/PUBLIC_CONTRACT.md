@@ -336,7 +336,7 @@ Committed 2026-07-12 (v1.42.0).
 ---
 
 
-### 1.14 What fo reads (the read-channel boundary)
+### 1.15 What fo reads (the read-channel boundary)
 
 fo reads: the file's **data fork**; **POSIX `stat`**; **platform-specific filesystem
 attributes** where they are load-bearing for observation or containment (e.g. NTFS

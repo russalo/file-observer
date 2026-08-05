@@ -273,10 +273,14 @@ def test_trusted_only_nulls_agent_but_keeps_the_flag(tmp_path):
 
     m = scan(str(tmp_path))
     safe = json.loads(manifest_to_json(m, trusted_only=True))
+    # No `if origin is not None` guard: _can_set_xattr already succeeded, so the marker
+    # IS present and origin MUST be populated. A guard here would let both assertions
+    # skip silently on a regression — a test that cannot fail (leg-4).
     origin = safe["files"][0]["origin"]
-    if origin is not None:  # xdg path may not populate agent at all
-        assert origin.get("agent") is None, "agent is file_derived; it must null in safe mode"
-        assert origin.get("downloaded") is not None, "downloaded is fo_derived; it must survive"
+    assert origin is not None, "the marker was set; safe mode must still carry the block"
+    assert origin.get("agent") is None, "agent is file_derived; it must null in safe mode"
+    assert origin.get("downloaded") is True, "downloaded is fo_derived; it must survive"
+    assert origin.get("source") == "xdg_origin", "source is a closed enum; it must survive"
 
 
 # --------------------------------------------------------------------------
@@ -309,10 +313,26 @@ def test_origin_is_deterministic_across_runs_and_workers(tmp_path):
 # Version axes
 # --------------------------------------------------------------------------
 
-def test_version_axes_for_this_release():
-    assert SCANNER_VERSION == "1.48.0"
-    assert LOGIC_VERSION == "1.25.0", "a new observation moves LOGIC"
-    assert SCHEMA_VERSION == "1.25", "a new provisional field is an additive contract change"
+def test_this_release_moved_the_right_axes():
+    """BEHAVIOUR, not net-current pins.
+
+    The first cut of this asserted the literal "1.48.0"/"1.25.0"/"1.25" — the exact
+    anti-pattern v1.47.1 removed 16 instances of, and which I ALSO fixed in test_v1_47
+    during this same release before reintroducing it here. Caught by leg-4.
+
+    A per-release file should assert what THIS release changed about the world, not
+    what the current version numbers happen to be; the single net-current gate lives
+    in test_packaging. So: assert the AXES MOVED relative to the release before, which
+    stays true forever and needs no edit at the next bump.
+    """
+    def _t(v):  # "1.25.0" -> (1, 25, 0)
+        return tuple(int(x) for x in v.split("."))
+
+    # v1.48 is a new OBSERVATION: LOGIC must have moved past v1.47.1's 1.24.6 ...
+    assert _t(LOGIC_VERSION) > _t("1.24.6"), "a new observation must move LOGIC"
+    # ... and it adds a provisional FIELD, so SCHEMA must have moved past 1.24.
+    assert _t(SCHEMA_VERSION) > _t("1.24"), "a new field is an additive contract change"
+    assert _t(SCANNER_VERSION) > _t("1.47.1")
 
 
 def test_cli_still_reports_version():
@@ -320,7 +340,7 @@ def test_cli_still_reports_version():
         [sys.executable, "-m", "file_observer.scanner", "--version"],
         capture_output=True, text=True, timeout=60,
     )
-    assert "1.48.0" in (out.stdout + out.stderr)
+    assert SCANNER_VERSION in (out.stdout + out.stderr)
 
 
 # --------------------------------------------------------------------------

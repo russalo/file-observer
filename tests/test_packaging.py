@@ -270,8 +270,8 @@ def test_canonical_submodule_constants_unchanged():
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
     assert SCANNER_VERSION == "1.48.0"
-    assert SCHEMA_VERSION == "1.25"  # v1.47.0 — promotion pass: presentation + audio provisional→stable (a promotion is a contract change even with no value change; v0.11/v1.10/v1.14/v1.23/v1.31 precedent). Prior 1.23 = v1.41.0 additive lexicon_match.metadata
-    assert LOGIC_VERSION == "1.25.0"  # v1.47.0 — FROZEN (designation-only; stability lives only in --schema, no observing logic changed). Prior bump 1.24.5→1.24.6 = v1.46.8 Windows reparse-tag fix
+    assert SCHEMA_VERSION == "1.25"   # 1.24->1.25 at v1.48.0 — the additive provisional `origin` field
+    assert LOGIC_VERSION == "1.25.0"  # 1.24.6->1.25.0 at v1.48.0 — a NEW OBSERVATION (not designation-only)
 
 
 def test_legacy_scanner_import_warns():
