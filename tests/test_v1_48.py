@@ -15,6 +15,7 @@ The load-bearing tests here are not the happy-path parses — they are:
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import os
 import subprocess
 import sys
@@ -395,3 +396,79 @@ def test_origin_read_never_uses_the_unbounded_xattr_api():
     assert "create_string_buffer" in src, "the read must use a bounded ctypes buffer"
     # NOFOLLOW on both platforms — must not become a way around v1.8.1 containment.
     assert "lgetxattr" in src and "XATTR_NOFOLLOW" in src
+
+
+# --------------------------------------------------------------------------
+# #174 — MCP SDK 1.x AND 2.x support (v1.48.1)
+# --------------------------------------------------------------------------
+
+def test_mcp_server_imports_under_whichever_sdk_is_installed():
+    """2.0 renamed FastMCP -> MCPServer and moved its module. fo supports both.
+
+    Verified against a real mcp 2.0.0 install that this is a RENAME, not a redesign:
+    the constructor kwargs fo passes (name/instructions), `run(transport="stdio")`, and
+    the `.tool()` decorator are all unchanged, so one aliased import covers both SDKs.
+    """
+    mcp_server = pytest.importorskip("file_observer.mcp_server")
+    assert mcp_server.mcp is not None
+    cls = type(mcp_server.mcp).__name__
+    assert cls in {"FastMCP", "MCPServer"}, f"unexpected server class {cls}"
+
+
+def test_mcp_import_tries_2x_before_1x():
+    """Structural guard: the 2.x path must be tried FIRST.
+
+    On a machine where both resolve, the newer SDK is the right default and 1.x is the
+    compatibility branch — not the other way round. A future edit that flips the order
+    would silently pin everyone to the legacy import.
+    """
+    src = (Path(__file__).resolve().parent.parent
+           / "src" / "file_observer" / "mcp_server.py").read_text(encoding="utf-8")
+    # Check the IMPORT STATEMENTS, not raw text: the comment above them names
+    # `mcp.server.fastmcp` first while explaining the rename, so a naive index()
+    # comparison compares prose to code. (Second time this trap has bitten in this
+    # release — a structural guard must look at structure.)
+    imports = [ln.strip() for ln in src.splitlines()
+               if ln.strip().startswith(("from mcp.", "import mcp."))]
+    joined = " | ".join(imports)
+    assert "mcp.server.mcpserver" in joined and "mcp.server.fastmcp" in joined, \
+        f"both SDK import paths must be present, got: {joined}"
+    assert (next(i for i, s in enumerate(imports) if "mcpserver" in s)
+            < next(i for i, s in enumerate(imports) if "fastmcp" in s)), \
+        "the mcp 2.x import must be attempted before the 1.x fallback"
+
+
+def test_every_optional_extra_bounds_its_upper_major():
+    """#174's real lesson, operationalized.
+
+    An unbounded `>=X` let mcp 2.0.0 into a fresh CI install and broke four OS jobs on a
+    branch that touched no MCP code. Nothing warned us — so assert it structurally:
+    every pinned dependency in every extra must bound its upper major.
+
+    This is the same rule fo handed recall (`file-observer>=1.46,<2`) and had not applied
+    to itself.
+
+    SCOPE, deliberately narrow: this flags a dependency that declares a FLOOR but no
+    ceiling (`>=X` with no `<`) — "the floor was considered, the ceiling was not", which
+    is exactly what happened with mcp. A BARE dependency (`PyYAML`, `pypdf`) is
+    unbounded too, but requiring upper bounds on every dependency is a larger policy
+    call than this guard should make unilaterally; it is worth deciding separately
+    rather than smuggling in via a test.
+    """
+    import tomllib
+
+    root = Path(__file__).resolve().parent.parent
+    extras = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = extras["project"].get("optional-dependencies", {})
+
+    unbounded = []
+    for extra, deps in optional.items():
+        for dep in deps:
+            if dep.startswith("file-observer["):   # self-reference, not a third party
+                continue
+            if ">=" in dep and "<" not in dep:
+                unbounded.append(f"{extra}: {dep}")
+    assert not unbounded, (
+        "these dependencies have an unbounded upper major — a new major release can "
+        f"break a fresh install with no warning: {unbounded}"
+    )

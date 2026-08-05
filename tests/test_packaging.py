@@ -269,7 +269,7 @@ def test_canonical_submodule_constants_unchanged():
     a release's BEHAVIOR there, not the live version constant.)"""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.48.0"
+    assert SCANNER_VERSION == "1.48.1"
     assert SCHEMA_VERSION == "1.25"   # 1.24->1.25 at v1.48.0 — the additive provisional `origin` field
     assert LOGIC_VERSION == "1.25.0"  # 1.24.6->1.25.0 at v1.48.0 — a NEW OBSERVATION (not designation-only)
 
