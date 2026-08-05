@@ -466,9 +466,48 @@ def test_every_optional_extra_bounds_its_upper_major():
         for dep in deps:
             if dep.startswith("file-observer["):   # self-reference, not a third party
                 continue
-            if ">=" in dep and "<" not in dep:
+            # Strip the PEP 508 environment marker FIRST. A marker legitimately
+            # contains "<" (`foo>=1; python_version < "3.14"`), which a naive scan of
+            # the whole string reads as a version ceiling — a false negative that would
+            # let exactly the unbounded dep this guard exists to catch slip past
+            # (leg-2). Only the specifier part may vote.
+            specifier = dep.split(";", 1)[0]
+            if ">=" in specifier and "<" not in specifier:
                 unbounded.append(f"{extra}: {dep}")
     assert not unbounded, (
         "these dependencies have an unbounded upper major — a new major release can "
         f"break a fresh install with no warning: {unbounded}"
     )
+
+
+def test_extras_guard_is_not_fooled_by_an_environment_marker():
+    """The guard must read the SPECIFIER, not the whole PEP 508 string.
+
+    `foo>=1; python_version < "3.14"` has no ceiling, but the marker contributes a
+    "<" — so a whole-string scan calls it bounded and the guard silently stops
+    working. Reproduced here so the fix can't regress (leg-2).
+    """
+    def _unbounded(dep: str) -> bool:
+        specifier = dep.split(";", 1)[0]
+        return ">=" in specifier and "<" not in specifier
+
+    assert _unbounded('foo>=1; python_version < "3.14"'), \
+        "a marker's '<' must not count as a version ceiling"
+    assert _unbounded("bar>=2.0")
+    assert not _unbounded("baz>=1,<3")
+    assert not _unbounded('qux>=1,<3; sys_platform != "win32"')
+
+
+def test_missing_transitive_import_is_not_masked_as_a_missing_sdk():
+    """leg-2 Major: a bare `except ModuleNotFoundError` swallowed real defects.
+
+    If the 2.x module is present but its OWN import fails (a missing transitive
+    dependency, or a defect inside it), the old handler fell through to the 1.x
+    branch and could report "install the SDK" — replacing a precise error with a
+    misleading one. The fallback is now gated on `exc.name`.
+    """
+    src = (Path(__file__).resolve().parent.parent
+           / "src" / "file_observer" / "mcp_server.py").read_text(encoding="utf-8")
+    assert "_e2.name != \"mcp.server.mcpserver\"" in src, \
+        "the 2.x fallback must be gated on the missing module's NAME"
+    assert "raise\n" in src, "an unrelated ModuleNotFoundError must re-raise"

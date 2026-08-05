@@ -84,3 +84,40 @@ jobs:
           pip uninstall -y python-magic
       - name: Run test suite (no python-magic → pure-Python MIME fallback)
         run: python -m pytest tests/ -q
+
+  test-mcp-majors:
+    # v1.48.1 (#174) claims BOTH MCP SDK majors work. An untested claim is a wish:
+    # the default resolve now picks 2.x, so without this the 1.x branch is exercised
+    # nowhere in CI and could rot silently — and the whole point of the aliased import
+    # is that neither branch is allowed to break. Pin each major explicitly.
+    name: test (mcp ${{ matrix.label }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Explicit specs, not arithmetic in a template: `$(( x + 1 ))` inside a
+        # workflow expression is clever, and clever is how a CI job quietly stops
+        # testing what it claims to.
+        include:
+          - label: "1.x"
+            spec: "mcp>=1,<2"
+          - label: "2.x"
+            spec: "mcp>=2,<3"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install with the MCP SDK major pinned
+        env:
+          MCP_SPEC: ${{ matrix.spec }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,mcp]"
+          pip install "$MCP_SPEC"
+      - name: Show which SDK resolved
+        run: python -c "import mcp, importlib.metadata as m; print('mcp', m.version('mcp'))"
+      - name: Run the MCP-facing tests
+        run: python -m pytest tests/test_v1_37.py tests/test_v1_39.py tests/test_v1_46_3.py tests/test_v1_48.py -q

@@ -34,10 +34,20 @@ from pathlib import Path
 # and the 1.x path is the compatibility branch rather than the other way round.
 try:
     from mcp.server.mcpserver import MCPServer as FastMCP   # mcp >= 2.0
-except ModuleNotFoundError:
+except ModuleNotFoundError as _e2:
+    # Fall back ONLY when the 2.x module itself is absent. A bare
+    # `except ModuleNotFoundError` also swallows a missing TRANSITIVE import or a
+    # defect *inside* the 2.x module — and would then either silently run the 1.x
+    # branch or report "install the SDK" while the real failure was something else
+    # entirely. Masking a real error with a misleading message is worse than the
+    # traceback it replaces (leg-2).
+    if _e2.name != "mcp.server.mcpserver":
+        raise
     try:
         from mcp.server.fastmcp import FastMCP              # mcp 1.x
     except ModuleNotFoundError as _e:
+        if _e.name not in {"mcp", "mcp.server", "mcp.server.fastmcp"}:
+            raise
         # A friendly message instead of a bare traceback (leg-4/gemini); still an
         # ImportError so `pytest.importorskip` skips cleanly without the [mcp] extra.
         raise ImportError(
