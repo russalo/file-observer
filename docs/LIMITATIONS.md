@@ -379,3 +379,26 @@ chronological, so `first` is read from the file head and `last` from the tail. T
 bug — please report it (see [SECURITY.md](../SECURITY.md) for security-relevant
 reports). For what consumers *can* rely on, see
 [PUBLIC_CONTRACT.md](PUBLIC_CONTRACT.md).*
+
+## Download-origin markers describe the file here, not its history (v1.48)
+
+The `origin` block reads filesystem-held download markers (macOS `com.apple.quarantine`,
+Windows `Zone.Identifier`, Linux `user.xdg.origin.url`). These are **not part of the
+file's bytes**, and they are lost by ordinary operations: `cp` without
+`--preserve=xattr`, `rsync` without `-X`, `tar` without `--xattrs`, and every `zip`.
+
+**Presence is meaningful; absence is not evidence.** `origin: null` means fo did not
+observe a marker — never that the file was not downloaded. A tree that was archived and
+restored, or copied between machines, will usually have none.
+
+This also means two scans of "the same files" can legitimately differ. `modified_at`
+already had that property, but an mtime change is visible and expected, whereas a
+quarantine flag vanishing because someone rsynced a directory is not. Pillar 1 still
+holds — identical inputs produce identical outputs — but "identical inputs" includes
+filesystem-held annotations, not only the bytes.
+
+The Linux attribute is **best-effort**: `user.xdg.origin.url` is a freedesktop
+convention set inconsistently by Firefox, wget, and curl, and is not a contract.
+
+fo reads a **named allowlist** only and never enumerates extended attributes, so an
+attribute fo does not know about is never surfaced (see PUBLIC_CONTRACT §1.15).

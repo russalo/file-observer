@@ -143,6 +143,8 @@ class TestProvisionalRegistryMatchesContract:
             # (§2.4, permanently-informational — the signature vocabulary intentionally stays fluid).
             ("FileRecord", "format_signatures"),
             ("FileRecord", "is_polyglot"),
+            # v1.48: download-origin — provisional on arrival, like every new field.
+            ("FileRecord", "origin"),
         })
 
 
