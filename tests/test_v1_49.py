@@ -283,3 +283,45 @@ def test_chatlog_method_version_bumped():
     cannot tell that the rules producing their signal changed."""
     from file_observer.scanner import CHATLOG_METHOD_VERSION
     assert CHATLOG_METHOD_VERSION >= 12
+
+
+def test_leg1_probe_prompt_template_detects_and_that_PREDATES_v149(tmp_path):
+    """leg-1 self-review of the seam case C opens.
+
+    A two-message prompt template (`user`/`assistant` + prose) DOES detect. Probed
+    deliberately, because case C is the one place this release relaxes a false-positive
+    defence, and a relaxation deserves an adversarial look at what else gets through.
+
+    It is NOT a regression: a THREE-message prompt template already detected on main,
+    verified by running the pre-v1.49 scanner against the same shape. Case C makes a
+    2-message file behave like the 3-message file already did — consistency, not a new
+    hole. Whether fo should treat prompt templates as chatlog-shaped at all is a
+    separate, pre-existing question and out of this release's scope.
+
+    Also probed and correctly REJECTED (roles outside the conversational set):
+    en/es translation pairs, primary/replica host docs, user/admin role descriptions —
+    each with fully utterance-shaped content, so they exercise the role gate alone.
+    """
+    body = json.dumps([
+        {"role": "user", "content": "Summarise the document I provide."},
+        {"role": "assistant", "content": "Certainly, please share the document."},
+    ])
+    assert _detect(tmp_path, "prompt_template.json", body) is True
+
+
+def test_leg1_probe_role_gate_rejects_nonconversational_pairs(tmp_path):
+    """The role gate must carry the weight when content shape cannot.
+
+    All three have fully utterance-shaped content, so ONLY the role check can reject
+    them. If someone widens the conversational role set later, this fails loudly.
+    """
+    for name, roles in (
+        ("i18n.json", ("en", "es")),
+        ("hosts.json", ("primary", "replica")),
+        ("roledocs.json", ("user", "admin")),   # 'user' conversational, 'admin' not
+    ):
+        body = json.dumps([
+            {"role": roles[0], "content": "This sentence is unambiguously utterance shaped."},
+            {"role": roles[1], "content": "So is this one, with punctuation and length."},
+        ])
+        assert _detect(tmp_path, name, body) is False, f"{name} must not detect"
