@@ -43,7 +43,7 @@ class TestVersionSurfaces:
         # count in detection + signals); 11 = v1.34.0 session axes (first/last_timestamp
         # + cwd — new signals + recognized-key set/normalization feed the rules_hash).
         # (Global SCANNER/LOGIC/SCHEMA move each release; pinned in test_packaging.)
-        assert CHATLOG_METHOD_VERSION == 11
+        assert CHATLOG_METHOD_VERSION == 12
         # content_shape present from schema 1.3 on (tuple compare — string ">=" breaks at 1.10)
         assert tuple(int(x) for x in SCHEMA_VERSION.split(".")) >= (1, 3)
 

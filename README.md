@@ -46,7 +46,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
 ```json
 {
   "schema_version": "1.25",
-  "context": { "scanner_version": "1.48.1", "logic_version": "1.25.0", "...": "…" },
+  "context": { "scanner_version": "1.49.0", "logic_version": "1.26.0", "...": "…" },
   "files": [
     {
       "path": "docs/report.pdf",
@@ -78,7 +78,7 @@ Every derived field carries a `signal_provenance` entry; every vector an `identi
 |---|---|
 | **Package** | `file-observer` |
 | **CLI** | `file-observer` or `fo` (shorthand) |
-| **Version** | `1.48.1` |
+| **Version** | `1.49.0` |
 | **Schema** | `1.25` |
 | **Python** | `>= 3.12` (tested on Linux, macOS, Windows) |
 | **License** | [AGPL-3.0](https://github.com/russalo/file-observer/blob/main/LICENSE) (commercial license available) |
@@ -179,7 +179,7 @@ The image bundles `libmagic` + all optional specialists. (Builds from the [`Dock
 **GitHub Action** — scan a repo in CI and capture the manifest as an artifact:
 
 ```yaml
-- uses: russalo/file-observer@v1.48.1     # pin a release tag
+- uses: russalo/file-observer@v1.49.0     # pin a release tag
   id: scan
   with:
     path: .                                # directory to scan (default ".")
@@ -381,7 +381,8 @@ File Observer has run cleanly — **zero fatal errors** — across 12 real-world
 | [PUBLIC_CONTRACT.md](docs/PUBLIC_CONTRACT.md) | Consumer stability commitments — what you can rely on |
 | [LIMITATIONS.md](docs/LIMITATIONS.md) | What File Observer deliberately doesn't do |
 | [CONVENTIONS.md](docs/CONVENTIONS.md) | Internal naming, versioning, and tracking |
-| [v1.48.0 RFC Specification](docs/v1.48.0_RFC_Specification.md) | Current release spec — **Download-origin observation (xattr / ADS)**. A new provisional `origin` block records whether a file *arrived from outside the machine* — the signal a file's own content cannot carry, and which survives a document-management pipeline rewriting the file. Reads a **named allowlist** (`com.apple.quarantine`, Windows `Zone.Identifier`, `user.xdg.origin.url`), never an enumeration. Surfaces the **flag and the zone, never the URL** — the same line fo draws at `gps_present`. `LOGIC` 1.24.6→1.25.0, SCHEMA 1.24→1.25; every manifest's checksum moves once (the v1.36/v1.45 ungated class). v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.49.0 RFC Specification](docs/v1.49.0_RFC_Specification.md) | Current release spec — **Chatlog: the JSON message floor becomes conditional on content shape.** A two-message session now detects when the roles are recognised conversational values AND the content is utterance-shaped — the floor is qualified, not lowered. Grounded on LongMemEval (0/7 at two turns, 100% at ≥3). **Strictly additive** (`is_chatlog` False→True only, the v1.29 precedent). Two further changes were specified and **falsified during implementation** — the RFC keeps them as documented residuals with the measurements that killed them. `LOGIC` 1.25.0→1.26.0, SCHEMA 1.25 frozen, chatlog mv 11→12. v1.0.0 RFC remains the binding schema-freeze contract. |
+| [v1.48.0 RFC Specification](docs/v1.48.0_RFC_Specification.md) | Prior release spec — **Download-origin observation (xattr / ADS)**. A new provisional `origin` block records whether a file *arrived from outside the machine* — the signal a file's own content cannot carry, and which survives a document-management pipeline rewriting the file. Reads a **named allowlist** (`com.apple.quarantine`, Windows `Zone.Identifier`, `user.xdg.origin.url`), never an enumeration. Surfaces the **flag and the zone, never the URL** — the same line fo draws at `gps_present`. `LOGIC` 1.24.6→1.25.0, SCHEMA 1.24→1.25; every manifest's checksum moves once (the v1.36/v1.45 ungated class). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.47.0 RFC Specification](docs/v1.47.0_RFC_Specification.md) | Prior release spec — **Promotion pass: the `presentation` + `audio` namespaces → stable** (the third promotion pass, and the pair v1.31 deferred as "season next pass"). Designation-only: every extracted value is byte-identical (stability lives only in `--schema`); `manifest_checksum` moves for every manifest only because `schema_version` (1.23→1.24) is in the preimage, as on any SCHEMA bump. `LOGIC_VERSION` frozen 1.24.6, SCHEMA 1.23→1.24. Held: the chatlog family (alpha-locked), `fact_block`/`ai_session`/`lexicon_match` (too young), `format_signatures`/`is_polyglot` (held-by-design). v1.0.0 RFC remains the binding schema-freeze contract. |
 | [v1.46.0 RFC Specification](docs/v1.46.0_RFC_Specification.md) | **Native-Windows / NTFS hardening** (from a native-NTFS shakedown). (A) reparse-aware discovery containment — discovery walks with `os.walk` and **prunes NTFS junctions/reparse-point dirs before descending** (Windows-only), so a crafted out-of-tree or cyclic junction can't escape the tree, double-count, or hang the scan; POSIX byte-identical (v1.8.1 file-symlink containment retained); (B) pin `.csv → text/csv` (restores `csv_headers` on the Windows no-libmagic path); (C) byte-safe `--watch`/`--schema` stdout. A+B are cross-platform routing-LOGIC changes (Linux real-corpus output byte-identical); `LOGIC_VERSION` 1.23.0→1.24.0, SCHEMA 1.23 unchanged. (Patches v1.46.1–v1.46.8 refined it — the shipped reparse-prune now gates on the name-surrogate tag bit; see HISTORY.) |
 | [v1.45.0 RFC Specification](docs/v1.45.0_RFC_Specification.md) | **Decouple the human summary from the determinism contract + refresh it.** The per-scan `summary` is a *derived view* of already-checksummed data, yet it was inside `manifest_checksum` — so every prose refresh cost a `LOGIC_VERSION` bump. v1.45 excludes the whole `summary` from the checksum (a one-time bump, every checksum moves once), after which summary refreshes are free forever; the summary stays one coherent readable field (a sidecar would fragment it). Consequence: the summary becomes a **non-sealed, unsigned derived view** — trust the sealed machine fields. Rides free in the same release: the summary now surfaces the lexicon vector, `fact_block` count, and `ai_session` token sums (gated on presence; tokens counted, never priced). `LOGIC_VERSION` 1.22.0→1.23.0 (one-time), SCHEMA 1.23 unchanged. |
