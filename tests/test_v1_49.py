@@ -325,3 +325,27 @@ def test_leg1_probe_role_gate_rejects_nonconversational_pairs(tmp_path):
             {"role": roles[1], "content": "So is this one, with punctuation and length."},
         ])
         assert _detect(tmp_path, name, body) is False, f"{name} must not detect"
+
+
+def test_leg2_refutation_field_names_cannot_satisfy_the_role_gate():
+    """leg-2 flagged the role gate as a false-positive hole. REFUTED, then pinned.
+
+    The claim was that `CHATLOG_JSONL_ROLE_KEYS` holds field NAMES, so a role VALUE of
+    "role"/"speaker" could pass. It holds role VALUES — `{"user","assistant","human"}` —
+    and is disjoint from the field-name set. The name invites the misreading, which is
+    why this assertion exists: it makes the refutation executable instead of a comment
+    someone has to trust.
+    """
+    from file_observer.scanner import CHATLOG_JSONL_ROLE_KEYS, CHATLOG_ROLE_FIELD_KEYS
+    overlap = set(CHATLOG_JSONL_ROLE_KEYS) & set(CHATLOG_ROLE_FIELD_KEYS)
+    assert not overlap, f"a field NAME must never be accepted as a role VALUE: {overlap}"
+
+
+def test_leg2_refutation_two_object_array_keyed_by_field_names_is_rejected(tmp_path):
+    """The end-to-end form of the same refutation: roles literally named after the
+    field keys must not satisfy the relaxed two-turn gate."""
+    body = json.dumps([
+        {"role": "role", "content": "This sentence is unambiguously utterance shaped."},
+        {"role": "speaker", "content": "So is this one, with punctuation and length."},
+    ])
+    assert _detect(tmp_path, "fieldnames.json", body) is False
