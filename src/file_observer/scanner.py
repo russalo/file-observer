@@ -2360,7 +2360,7 @@ CHATLOG_RULES_DEFINITION = (
     "version_tag_header(>=2)->reject),"
     "h3_header_re(5+)|section_divider_re(3+)[require nonstoplist_cosignal_distinct>=2],"
     "json_conversation(role_keys{type,role,from,speaker,author}+content_keys{text,value,content,message,body},"
-    "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2 AND prose_turns>=1);"
+    "line/array/tree,embedded_speaker_labels(prose_composite),require msgs>=3 AND distinct_speakers>=2 AND prose_turns>=1 OR msgs==2 AND distinct_normalized_roles==2 AND all_roles_recognized AND all_turns_utterance);"
     "extract:turn_count,speaker_labels(freq>=3,nonspeaker_ci),section_markers,"
     "turn_char_stats,speaker_turn_counts,speaker_turn_chars,alternation,content_shape{utterance_ratio,density},"
     "reference_tokens(at_mentions,wiki_links,code_fence_blocks,url_count),"
@@ -7722,6 +7722,42 @@ class Scanner:
         fires = len(pairs) >= FACT_BLOCK_MIN_PAIRS and ratio >= FACT_BLOCK_MIN_RATIO
         return {"fires": fires, "pairs": pairs, "pair_count": len(pairs), "duplicate_keys": dup}
 
+    def _json_two_turn_qualified(self, pairs: list[tuple[str, str]]) -> bool:
+        """v1.49 §3.3 — the SINGLE definition of when a 2-object JSON payload counts.
+
+        THIS IS DELIBERATELY SHARED between detection (`_detect_json_conversation`)
+        and extraction (`_extract_chatlog_metadata`'s ``jsonl_mode`` gate). Those two
+        sites previously carried INDEPENDENT ``>= 3`` thresholds, so relaxing only
+        detection produced ``is_chatlog=True`` with ``turn_count=0`` and empty speaker
+        counts (leg-4/codex P1, reproduced before fixing). That is a WRONG VALUE, not
+        an honest null — Pillar 4 reserves ``null`` for "not observed within bounds",
+        whereas ``0`` asserts a two-turn conversation has no turns, and the corpus
+        chatlog vector aggregates it. One predicate makes the drift impossible rather
+        than merely fixed.
+
+        Qualification is stronger in KIND than the count it replaces: the roles must be
+        recognised conversational VALUES and every turn's content must be
+        utterance-shaped. A two-element config array (``primary``/``replica`` ->
+        ``localhost``) fails on the roles; one with ``user``/``assistant`` -> ``8080``
+        fails on the content.
+        """
+        if len(pairs) != 2:
+            return False
+        # Normalise BEFORE the distinctness test (leg-4/codex P2): raw "user" and
+        # "USER" are two distinct STRINGS but one role, and `roles_ok` lowercases —
+        # so an un-normalised check would admit a single-role stream as a dialogue.
+        roles = [str(sp).lower() for sp, _ in pairs]
+        if len(set(roles)) != 2:
+            return False
+        # Both sets hold role VALUES ("user"/"assistant"/"human"/"gpt"/…), NOT field
+        # names; they are disjoint from CHATLOG_ROLE_FIELD_KEYS, so a value of
+        # "role"/"speaker" cannot pass. leg-2 misread the constant's name and filed
+        # this as a false-positive hole — pinned by test_v1_49 rather than argued.
+        if not all(r in CHATLOG_CONVERSATIONAL_TYPE_VALUES
+                   or r in CHATLOG_JSONL_ROLE_KEYS for r in roles):
+            return False
+        return all(txt and self._is_utterance(txt) for _, txt in pairs)
+
     def _detect_chatlog_pattern(self, text: str) -> bool:
         """Content-based detection of chatlog / journal / vault structure.
 
@@ -7816,19 +7852,8 @@ class Scanner:
         # A two-element config array (`primary`/`replica` -> `localhost`) fails on the
         # roles; one with `user`/`assistant` -> `8080` fails on the content. Both are
         # asserted as falsifiers, because this is the one place the FP floor is relaxed.
-        if len(speakers) == 2 and len(set(speakers)) == 2:
-            # NOTE both sets hold role VALUES ("user"/"assistant"/"human"/"gpt"/…),
-            # NOT field names. leg-2 read `CHATLOG_JSONL_ROLE_KEYS` as a set of field
-            # keys and flagged this as a false-positive hole — it isn't (the sets are
-            # disjoint from CHATLOG_ROLE_FIELD_KEYS, and a value of "role"/"speaker"
-            # cannot pass), but the name invites that misreading, so it is called out
-            # here rather than left for the next reader to re-derive.
-            roles_ok = all(str(sp).lower() in CHATLOG_CONVERSATIONAL_TYPE_VALUES
-                           or str(sp).lower() in CHATLOG_JSONL_ROLE_KEYS
-                           for sp in speakers)
-            content_ok = all(txt and self._is_utterance(txt) for _, txt in pairs)
-            if roles_ok and content_ok:
-                return True
+        if self._json_two_turn_qualified(pairs):
+            return True
         # Regex fallback ONLY when the parser extracted nothing — a truncated/
         # large single-JSON it couldn't read (e.g. a multi-MB ShareGPT file).
         # Gated on `not speakers` so it can't override the parser on readable
@@ -8377,7 +8402,10 @@ class Scanner:
         # v1.2: generalized conversational-JSON extraction (mirrors detection —
         # line-delimited messages, arrays, nested trees, embedded dialogue).
         json_pairs = self._extract_json_conversation(text)
-        jsonl_mode = len(json_pairs) >= 3
+        # Shares `_json_two_turn_qualified` with detection ON PURPOSE — see that
+        # method: independent thresholds here are exactly what emitted
+        # `is_chatlog=True` with `turn_count=0` (leg-4/codex P1).
+        jsonl_mode = len(json_pairs) >= 3 or self._json_two_turn_qualified(json_pairs)
         turn_lengths_seq: list[tuple[str, int]] = []
         speaker_seq: list[str] = []
 

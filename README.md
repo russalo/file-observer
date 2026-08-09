@@ -63,7 +63,7 @@ That's the human-readable summary. The full manifest is structured JSON — here
     }
   ],
   "vectors_collected": [
-    { "vector_id": "chatlog", "method_version": 11, "identity_digest": "a3f1c2…", "...": "…" }
+    { "vector_id": "chatlog", "method_version": 12, "identity_digest": "a3f1c2…", "...": "…" }
   ],
   "manifest_checksum": "7d2bafef…",
   "manifest_signature": { "algorithm": "hmac-sha256", "key_id": "default", "value": "…" }

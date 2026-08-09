@@ -349,3 +349,71 @@ def test_leg2_refutation_two_object_array_keyed_by_field_names_is_rejected(tmp_p
         {"role": "speaker", "content": "So is this one, with punctuation and length."},
     ])
     assert _detect(tmp_path, "fieldnames.json", body) is False
+
+
+# --- leg-4 findings: detection/extraction coherence + role normalisation ---------
+
+def _chatlog_meta(tmp_path, name, payload):
+    """Scan with specialists ON and return (is_chatlog, chatlog metadata)."""
+    from file_observer.scanner import Scanner, ScannerConfig
+    d = tmp_path / name.replace(".", "_")
+    d.mkdir()
+    (d / name).write_text(json.dumps(payload))
+    rec = Scanner(d, ScannerConfig(enable_specialists=True)).scan().files[0]
+    return rec.is_chatlog, (rec.specialist_metadata or {}).get("chatlog") or {}
+
+
+_TWO_TURN = [
+    {"role": "user", "content": "Could you explain how the retry budget works here?"},
+    {"role": "assistant", "content": "It resets whenever the connection is re-established."},
+]
+
+
+def test_p1_detected_two_turn_session_also_EXTRACTS_its_turns(tmp_path):
+    """leg-4/codex P1: detection and extraction must not disagree.
+
+    Detection and `_extract_chatlog_metadata` carried INDEPENDENT `>= 3` thresholds,
+    so relaxing only detection emitted is_chatlog=True with turn_count=0 and empty
+    speaker counts — a WRONG VALUE, not an honest null (Pillar 4 reserves null for
+    "not observed within bounds"; 0 asserts a two-turn conversation has no turns),
+    and the corpus chatlog vector aggregates it. Reproduced before fixing.
+    """
+    is_chatlog, meta = _chatlog_meta(tmp_path, "two.json", _TWO_TURN)
+    assert is_chatlog is True
+    assert meta.get("turn_count") == 2, "detected as a chatlog but its turns were not extracted"
+    assert meta.get("speaker_turn_counts") == {"user": 1, "assistant": 1}
+
+
+def test_p2_role_distinctness_is_checked_on_NORMALISED_roles(tmp_path):
+    """leg-4/codex P2: "user" and "USER" are two distinct strings but ONE role.
+
+    The whitelist lowercases, so an un-normalised distinctness check would admit a
+    single-role stream as a two-party dialogue.
+    """
+    payload = [dict(_TWO_TURN[0]), dict(_TWO_TURN[1])]
+    payload[1]["role"] = "USER"
+    is_chatlog, _ = _chatlog_meta(tmp_path, "casing.json", payload)
+    assert is_chatlog is False
+
+
+def test_two_turn_falsifiers_still_hold(tmp_path):
+    """The relaxed floor must stay stronger in KIND than the count it replaced."""
+    bad_roles = [{"role": "primary", "content": "localhost"},
+                 {"role": "replica", "content": "localhost"}]
+    bad_content = [{"role": "user", "content": "8080"},
+                   {"role": "assistant", "content": "9090"}]
+    assert _chatlog_meta(tmp_path, "cfgroles.json", bad_roles)[0] is False
+    assert _chatlog_meta(tmp_path, "cfgvals.json", bad_content)[0] is False
+
+
+def test_p2_conditional_floor_is_recorded_in_the_rules_fingerprint():
+    """leg-4/codex P2: rule data that gates output MUST be in the rules_hash.
+
+    Otherwise the emitted `rules_hash` claims the activation logic is unchanged while
+    it demonstrably changed. The method_version bump moves identity_digest, but
+    rules_hash is a contractually SEPARATE signal. This is the recurring class the
+    v1.6 provenance table and the v1.30.2 reference_tokens pattern both hit.
+    """
+    from file_observer.scanner import CHATLOG_RULES_DEFINITION
+    assert "msgs==2" in CHATLOG_RULES_DEFINITION
+    assert "all_turns_utterance" in CHATLOG_RULES_DEFINITION
