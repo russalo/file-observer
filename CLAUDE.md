@@ -96,16 +96,31 @@ The project uses Tether for human-AI collaboration. The workbench serves editabl
   - Short: `origin-core` (works inside tailnet via search-domain)
   - IPv4: `100.89.175.30`
 
-**After a server reboot**, the workbench must be restarted:
+**After a server reboot — the HUB auto-starts, the WORKBENCH does not.** That distinction
+is the whole procedure:
+
+- **Hub (:8800)** — returns on its own via `workbench-hub.service` (installed, and
+  `systemctl is-enabled` reports enabled). Nothing to do.
+- **Scanner instance (:8801)** — **NOT** restored, so the POST below is required after
+  **every** reboot. `hub.py` holds its instance registry in a module-level in-memory dict
+  and launches instances as `subprocess.Popen` children (they die with the hub); `main()`
+  only calls `serve_forever()`, and while `workbench.json` is *written*, it is never read
+  back at startup to relaunch anything.
+
 ```bash
-cd /srv/projects/pkplab/tether
-nohup python3 hub.py --port 8800 > /tmp/workbench-hub.log 2>&1 &
 curl -s -X POST http://localhost:8800/api/start \
   -H 'Content-Type: application/json' \
   -d '{"project": "scanner", "data_dir": "/srv/projects/pkplab/scanner/scratch/workbench", "port": 8801}'
 ```
 
-**Future:** systemd unit for auto-start on boot (pattern: `/etc/systemd/system/blog.service` on origin-core). Manual restart is acceptable while iterating.
+If the hub itself is down (should not happen now the unit is enabled), start it first:
+```bash
+cd /srv/projects/pkplab/tether && nohup python3 hub.py --port 8800 > /tmp/workbench-hub.log 2>&1 &
+```
+
+Verified against `hub.py` by tailnet-Claude, 2026-08-15. The unit is Tether/infra's lane,
+not this repo's. Workbench data lives in `scratch/workbench/` — real disk, survives reboot;
+`/tmp` does not.
 
 ## Chatlog home
 
