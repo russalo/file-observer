@@ -36,7 +36,7 @@ This is the running index of all scanner versions, their specifications, and the
 
 ## 1.x Versions
 
-Ascending — the newest release is the last row. RFCs are per-minor; patch releases (`.x`) are HISTORY-only and reuse their minor's RFC.
+Ascending — the newest release is the last row. RFCs are per-minor; patch releases (`.x`) are HISTORY-only and reuse their minor's RFC. The **Compliance** column tracks whether a `COMPLIANCE-vX.md` report was written — _(pending review)_ there means "no compliance report", NOT that the release is pending; every row in this table has shipped.
 
 | Version | Schema | Date | Notable | Spec | Compliance |
 |---|---|---|---|---|---|

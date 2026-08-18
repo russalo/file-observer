@@ -100,6 +100,8 @@ def import_mcp_server():
         try:
             _importlib.import_module("mcp")
         except ModuleNotFoundError as e:   # pragma: no cover — CI-misconfiguration path
+            if e.name != "mcp":
+                raise   # a TRANSITIVE dep of the SDK is missing — surface it, don't relabel it
             pytest.fail(
                 "FO_REQUIRE_MCP is set but the `mcp` SDK is not importable — the MCP test "
                 "suites would have SKIPPED silently. Install the [mcp] extra in this job. "
