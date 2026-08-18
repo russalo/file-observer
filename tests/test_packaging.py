@@ -328,7 +328,8 @@ def test_license_metadata_is_spdx_and_license_file_is_verbatim_agpl():
     dual-licensing terms live in LICENSING.md. pyproject uses the PEP 639 SPDX expression,
     NOT the deprecated `License ::` classifier (setuptools>=77 rejects mixing them)."""
     import hashlib
-    lic = (_ROOT / "LICENSE").read_bytes()
+    # normalise CRLF: a Windows checkout with core.autocrlf rewrites the file (the CI matrix caught it)
+    lic = (_ROOT / "LICENSE").read_bytes().replace(b"\r\n", b"\n")
     assert hashlib.sha256(lic).hexdigest() == "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0", \
         "LICENSE is no longer the verbatim GNU AGPL-3.0 text (GitHub/scanners will stop detecting it)"
     assert lic.lstrip().startswith(b"GNU AFFERO GENERAL PUBLIC LICENSE")

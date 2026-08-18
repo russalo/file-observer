@@ -20,7 +20,9 @@ from file_observer.scanner import (
     Scanner, ScannerConfig, manifest_to_json,
 )
 
-mcp_server = pytest.importorskip("file_observer.mcp_server", reason="mcp SDK not installed ([mcp] extra)", exc_type=ImportError)
+pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")  # skip on the OPTIONAL SDK only — a broken
+# file_observer.mcp_server must FAIL, not skip (Codex P1, PR #179)
+import file_observer.mcp_server as mcp_server
 
 BENIGN_LEXICON = {
     "lexicon_id": "benign-mcp-v1",

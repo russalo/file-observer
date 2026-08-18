@@ -409,7 +409,9 @@ def test_mcp_server_imports_under_whichever_sdk_is_installed():
     the constructor kwargs fo passes (name/instructions), `run(transport="stdio")`, and
     the `.tool()` decorator are all unchanged, so one aliased import covers both SDKs.
     """
-    mcp_server = pytest.importorskip("file_observer.mcp_server", exc_type=ImportError)
+    pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")  # skip on the OPTIONAL SDK only — a broken
+    # file_observer.mcp_server must FAIL, not skip (Codex P1, PR #179)
+    import file_observer.mcp_server as mcp_server
     assert mcp_server.mcp is not None
     cls = type(mcp_server.mcp).__name__
     assert cls in {"FastMCP", "MCPServer"}, f"unexpected server class {cls}"
