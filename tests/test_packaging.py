@@ -1,8 +1,8 @@
 """Packaging / import-surface tests (v1.0.1).
 
 The package was renamed ``scanner`` -> ``file_observer`` in v1.0.1. The canonical
-import path must work; the legacy ``scanner`` path must keep working but emit a
-DeprecationWarning. The rename does not touch the manifest schema.
+import path must work; the legacy ``scanner`` shim was REMOVED in v1.50.0 and must not
+reappear. The rename does not touch the manifest schema.
 """
 
 import importlib
@@ -246,7 +246,7 @@ def test_cli_version_flag():
         assert result.stdout.strip() == f"file-observer {SCANNER_VERSION}", f"{flag} → {result.stdout!r}"
 
 
-@pytest.mark.parametrize("module", ["file_observer.scanner", "scanner.scanner"])
+@pytest.mark.parametrize("module", ["file_observer.scanner"])
 def test_module_cli_entrypoint(module):
     """`python -m <module>` runs the CLI (guards the legacy shim regression)."""
     import subprocess
@@ -269,30 +269,102 @@ def test_canonical_submodule_constants_unchanged():
     a release's BEHAVIOR there, not the live version constant.)"""
     from file_observer.scanner import SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION
 
-    assert SCANNER_VERSION == "1.49.0"
+    assert SCANNER_VERSION == "1.50.0"
     assert SCHEMA_VERSION == "1.25"   # 1.24->1.25 at v1.48.0 — the additive provisional `origin` field
     assert LOGIC_VERSION == "1.26.0"  # 1.25.0->1.26.0 at v1.49.0 — chatlog detection routing (the conditional JSON floor)
 
 
-def test_legacy_scanner_import_warns():
-    """Importing the legacy 'scanner' package works but is deprecated."""
+def test_legacy_scanner_shim_is_gone():
+    """v1.50.0 REMOVED the deprecated `scanner` import shim (v1.0.1). The generic top-level
+    name must no longer be installed by this package: an `import scanner` that resolves to
+    fo would mean the shim crept back (or a stray `src/scanner/` reappeared)."""
     import sys
-
-    # Force a fresh import so the module-level warning fires.
     sys.modules.pop("scanner", None)
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        scanner = importlib.import_module("scanner")
-    assert any(issubclass(w.category, DeprecationWarning) for w in caught)
-    # Shim re-exports the same public API object.
-    from file_observer import Scanner
+    sys.modules.pop("scanner.scanner", None)
+    try:
+        mod = importlib.import_module("scanner")
+    except ModuleNotFoundError:
+        return  # the expected outcome
+    # Some OTHER package named `scanner` may exist in the env; that's fine — but it must not be ours.
+    assert "file_observer" not in (getattr(mod, "__file__", "") or ""), \
+        "the deprecated `scanner` shim is being shipped again (removed in v1.50.0)"
+    assert getattr(mod, "Scanner", None) is not importlib.import_module("file_observer").Scanner
 
-    assert scanner.Scanner is Scanner
+
+# ---------------------------------------------------------------------------
+# v1.50.0 — public-face guards. Each pins one thing a PyPI / GitHub reader meets
+# BEFORE the first scan, so the classes found by the 2026-08-18 outsider audit can't
+# silently recur.
+# ---------------------------------------------------------------------------
+
+_ROOT = Path(__file__).resolve().parent.parent
+_RELATIVE_LINK = re.compile(r"\]\((?!https?://|mailto:|#)[^)\s]+\)")
 
 
-def test_legacy_submodule_path_still_resolves():
-    """`from scanner.scanner import Scanner` (old docs/tests) still works."""
-    from scanner.scanner import Scanner as LegacyScanner
-    from file_observer.scanner import Scanner as CanonicalScanner
+def test_readme_has_no_relative_links():
+    """PyPI renders the README verbatim — a relative link (`docs/TUTORIAL.md`) 404s on the
+    project page. 48 of them did. Every link must be absolute (or an in-page anchor)."""
+    readme = (_ROOT / "README.md").read_text(encoding="utf-8")
+    bad = _RELATIVE_LINK.findall(readme)
+    assert not bad, f"README relative links (break on PyPI): {bad[:5]}"
 
-    assert LegacyScanner is CanonicalScanner
+
+def test_py_typed_marker_shipped():
+    """`Typing :: Typed` is claimed in the classifiers → the PEP 561 marker must exist in the
+    package AND be declared as package-data so it lands in the wheel (a bare file in src/
+    is not enough for a non-editable install)."""
+    import file_observer
+    pkg_dir = Path(file_observer.__file__).resolve().parent
+    assert (pkg_dir / "py.typed").exists(), "py.typed missing from the file_observer package"
+    pyproj = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "Typing :: Typed" in pyproj["project"]["classifiers"]
+    pkg_data = pyproj.get("tool", {}).get("setuptools", {}).get("package-data", {})
+    assert "py.typed" in pkg_data.get("file_observer", []), \
+        "py.typed must be listed under [tool.setuptools.package-data] to reach the wheel"
+
+
+def test_license_metadata_is_spdx_and_license_file_is_verbatim_agpl():
+    """GitHub's license detector + every license scanner keys on the LICENSE file being a
+    recognised text. Ours is the verbatim AGPL-3.0 (sha256 of gnu.org's agpl-3.0.txt); the
+    dual-licensing terms live in LICENSING.md. pyproject uses the PEP 639 SPDX expression,
+    NOT the deprecated `License ::` classifier (setuptools>=77 rejects mixing them)."""
+    import hashlib
+    lic = (_ROOT / "LICENSE").read_bytes()
+    assert hashlib.sha256(lic).hexdigest() == "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0", \
+        "LICENSE is no longer the verbatim GNU AGPL-3.0 text (GitHub/scanners will stop detecting it)"
+    assert lic.lstrip().startswith(b"GNU AFFERO GENERAL PUBLIC LICENSE")
+    assert (_ROOT / "LICENSING.md").exists(), "the dual-licensing terms doc moved/vanished"
+    pyproj = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert pyproj["license"] == "AGPL-3.0-or-later"
+    assert "LICENSE" in pyproj["license-files"] and "LICENSING.md" in pyproj["license-files"]
+    assert not any(c.startswith("License ::") for c in pyproj["classifiers"]), \
+        "deprecated License:: classifier alongside an SPDX expression"
+
+
+def test_ci_matrix_covers_every_claimed_python_version():
+    """A `Programming Language :: Python :: 3.X` classifier is a promise; the CI matrix is
+    the evidence. Every claimed minor must be tested somewhere in tests.yml."""
+    pyproj = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    claimed = {c.rsplit("::", 1)[1].strip() for c in pyproj["classifiers"]
+               if c.startswith("Programming Language :: Python :: 3.")}
+    wf = (_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    tested = set(re.findall(r'"(3\.\d+)"', wf))
+    missing = claimed - tested
+    assert not missing, f"classifiers claim Python {sorted(missing)} but tests.yml never runs it"
+
+
+def test_sdist_excludes_tests_tree():
+    """setuptools' default sdist finder shipped tests/test_*.py WITHOUT tests/fixtures/ (18 MB)
+    → an unrunnable test tree for downstream packagers. MANIFEST.in must prune it."""
+    manifest_in = (_ROOT / "MANIFEST.in").read_text(encoding="utf-8")
+    assert re.search(r"^prune tests\s*$", manifest_in, re.M), "MANIFEST.in must `prune tests`"
+
+
+def test_python_dash_m_entry_point():
+    """`python -m file_observer` must behave like the `file-observer` console script."""
+    import subprocess, sys
+    from file_observer.scanner import SCANNER_VERSION
+    out = subprocess.run([sys.executable, "-m", "file_observer", "--version"],
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == f"file-observer {SCANNER_VERSION}"

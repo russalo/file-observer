@@ -1,0 +1,6 @@
+# The sdist is the installable source, not the development checkout.
+# tests/ is EXCLUDED: setuptools' default sdist finder pulled in tests/test_*.py but not
+# tests/fixtures/ (18 MB), which shipped an unrunnable test tree to downstream packagers.
+# The suite runs from a git checkout (see CONTRIBUTING.md).
+prune tests
+include LICENSE LICENSING.md

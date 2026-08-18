@@ -25,7 +25,7 @@ from file_observer.scanner import (
 )
 
 # the MCP server needs the optional `mcp` SDK ([mcp] extra) — skip when absent.
-mcp_server = pytest.importorskip("file_observer.mcp_server", reason="mcp SDK not installed ([mcp] extra)")
+mcp_server = pytest.importorskip("file_observer.mcp_server", reason="mcp SDK not installed ([mcp] extra)", exc_type=ImportError)
 
 REPO = Path(__file__).resolve().parent.parent
 FIXTURES = REPO / "tests" / "fixtures"

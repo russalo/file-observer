@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 
-mcp_server = pytest.importorskip("file_observer.mcp_server", reason="mcp SDK not installed ([mcp] extra)")
+mcp_server = pytest.importorskip("file_observer.mcp_server", reason="mcp SDK not installed ([mcp] extra)", exc_type=ImportError)
 
 
 def _fn(tool):
