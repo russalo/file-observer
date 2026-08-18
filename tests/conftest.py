@@ -77,3 +77,33 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "posix_fs" in item.keywords:
                 item.add_marker(skip_posix)
+
+
+# ---------------------------------------------------------------------------
+# v1.50.0 — the MCP-facing test modules need the OPTIONAL `mcp` SDK. Without it they
+# SKIP; that is correct for a contributor who didn't install `[mcp]`. But a skip is
+# INVISIBLE in a green CI run — and every CI job installs `[dev]` (which includes
+# `[mcp]`), so a skip there means the environment is misbuilt, not that the feature
+# is optional. `FO_REQUIRE_MCP=1` (set in tests.yml) turns the skip into a hard
+# failure so the MCP suites can never silently stop running. (Russell: "make sure it
+# doesn't fail silently", PR #179.) A fault INSIDE `file_observer.mcp_server` always
+# fails — only the SDK's absence is ever a skip (Codex P1, PR #179).
+# ---------------------------------------------------------------------------
+import importlib as _importlib
+import os as _os
+
+
+def import_mcp_server():
+    """Return `file_observer.mcp_server`, skipping ONLY when the optional `mcp` SDK is
+    absent — unless FO_REQUIRE_MCP is set, in which case a missing SDK is a FAILURE."""
+    if _os.environ.get("FO_REQUIRE_MCP"):
+        try:
+            _importlib.import_module("mcp")
+        except ModuleNotFoundError as e:   # pragma: no cover — CI-misconfiguration path
+            pytest.fail(
+                "FO_REQUIRE_MCP is set but the `mcp` SDK is not importable — the MCP test "
+                "suites would have SKIPPED silently. Install the [mcp] extra in this job. "
+                f"({e})", pytrace=False)
+    else:
+        pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")
+    return _importlib.import_module("file_observer.mcp_server")

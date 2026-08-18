@@ -13,12 +13,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
+
+from tests.conftest import import_mcp_server
 
 
-pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")  # skip on the OPTIONAL SDK only — a broken
-# file_observer.mcp_server must FAIL, not skip (Codex P1, PR #179)
-import file_observer.mcp_server as mcp_server
+mcp_server = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
 
 
 def _fn(tool):

@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import import_mcp_server
+
 from file_observer.scanner import (
     FIELD_TRUST,
     Scanner,
@@ -221,9 +223,7 @@ def test_cli_trusted_only_stdout(planted_tree: Path):
 
 # --- 8. MCP surface ------------------------------------------------------------------
 def test_mcp_scan_file_trusted_only(planted_tree: Path):
-    pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")  # skip on the OPTIONAL SDK only — a broken
-    # file_observer.mcp_server must FAIL, not skip (Codex P1, PR #179)
-    import file_observer.mcp_server as mcp
+    mcp = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
     md = planted_tree / f"{FN_CANARY}_notes.md"
     normal = mcp.scan_file(str(md), specialists=True)
     trusted = mcp.scan_file(str(md), specialists=True, trusted_only=True)
@@ -238,9 +238,7 @@ def test_mcp_scan_summary_trusted_only_nulls_path_and_summary(planted_tree: Path
     """scan_summary builds a custom dict (not via the manifest projection); in trusted-only
     it must still null the directory `path` (consistency with meta.source_dir) and the
     `summary` prose, keeping only counts + fo/operator-derived signal."""
-    pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")  # skip on the OPTIONAL SDK only — a broken
-    # file_observer.mcp_server must FAIL, not skip (Codex P1, PR #179)
-    import file_observer.mcp_server as mcp
+    mcp = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
     out = json.loads(mcp.scan_summary(str(planted_tree), specialists=True, trusted_only=True))
     assert out["trusted_only"] is True
     assert out["path"] is None            # directory-path string nulled
@@ -420,9 +418,7 @@ def test_trusted_only_serialization_does_not_mutate_manifest(manifest_level_tree
 def test_mcp_guard_trusted_only_no_path_leak(manifest_level_tree: Path):
     """Codex P2: the MCP max_files guard fires BEFORE the scan and returned the resolved
     directory path in its message — in trusted-only that re-exposes a file-derived path."""
-    pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")  # skip on the OPTIONAL SDK only — a broken
-    # file_observer.mcp_server must FAIL, not skip (Codex P1, PR #179)
-    import file_observer.mcp_server as mcp
+    mcp = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
     summ = mcp.scan_summary(str(manifest_level_tree), specialists=True, max_files=1, trusted_only=True)
     doc = json.loads(summ)
     assert doc.get("guarded") is True and doc.get("trusted_only") is True

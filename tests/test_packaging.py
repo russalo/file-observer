@@ -368,3 +368,22 @@ def test_python_dash_m_entry_point():
                          capture_output=True, text=True, timeout=60)
     assert out.returncode == 0, out.stderr
     assert out.stdout.strip() == f"file-observer {SCANNER_VERSION}"
+
+
+def test_ci_makes_mcp_skips_fail_loudly():
+    """A skipped MCP suite is invisible in a green run. tests.yml must set FO_REQUIRE_MCP so
+    conftest.import_mcp_server FAILS (not skips) when the SDK is missing in CI, and must
+    report skips (-rs) so a legitimate one is at least visible in the log."""
+    wf = (_ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    assert re.search(r'^\s*FO_REQUIRE_MCP:\s*"1"', wf, re.M), "tests.yml must set FO_REQUIRE_MCP=1"
+    assert "-rs" in wf, "pytest runs in CI should report skips (-rs)"
+    # and the switch actually works: with it set and mcp absent, the helper must FAIL
+    import subprocess, sys
+    code = ("import sys, os; os.environ['FO_REQUIRE_MCP']='1'; sys.modules['mcp']=None\n"
+            "sys.path.insert(0, %r)\nimport pytest\nfrom tests.conftest import import_mcp_server\n"
+            "try:\n    import_mcp_server()\nexcept BaseException as e:\n"
+            "    print(type(e).__name__); raise SystemExit(0)\nprint('NO-EXCEPTION'); raise SystemExit(1)\n"
+            % str(_ROOT))
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0 and "Failed" in out.stdout, \
+        f"FO_REQUIRE_MCP did not turn the missing-SDK skip into a failure: {out.stdout!r} {out.stderr!r}"

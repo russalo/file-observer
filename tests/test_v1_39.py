@@ -15,14 +15,14 @@ import json
 
 import pytest
 
+from tests.conftest import import_mcp_server
+
 from file_observer.scanner import (
     SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
     Scanner, ScannerConfig, manifest_to_json,
 )
 
-pytest.importorskip("mcp", reason="mcp SDK not installed ([mcp] extra)")  # skip on the OPTIONAL SDK only — a broken
-# file_observer.mcp_server must FAIL, not skip (Codex P1, PR #179)
-import file_observer.mcp_server as mcp_server
+mcp_server = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
 
 BENIGN_LEXICON = {
     "lexicon_id": "benign-mcp-v1",
