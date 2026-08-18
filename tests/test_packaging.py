@@ -8,7 +8,6 @@ reappear. The rename does not touch the manifest schema.
 import importlib
 import re
 import tomllib
-import warnings
 from pathlib import Path
 
 import pytest

@@ -230,7 +230,7 @@ pip install python-magic-bin  # Windows (or rely on the pure-Python fallback)
 ### Scan
 
 ```bash
-# Quick scan
+# Quick scan (`fo`, `file-observer`, and `python -m file_observer` are the same entry point)
 fo ./project
 
 # Manifest straight to stdout — pipe-friendly (no file written)
