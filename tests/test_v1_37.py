@@ -19,13 +19,15 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import import_mcp_server
+
 from file_observer.scanner import (
     SCANNER_VERSION, LOGIC_VERSION, SCHEMA_VERSION,
     Scanner, ScannerConfig, manifest_to_json,
 )
 
 # the MCP server needs the optional `mcp` SDK ([mcp] extra) — skip when absent.
-mcp_server = pytest.importorskip("file_observer.mcp_server", reason="mcp SDK not installed ([mcp] extra)")
+mcp_server = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
 
 REPO = Path(__file__).resolve().parent.parent
 FIXTURES = REPO / "tests" / "fixtures"

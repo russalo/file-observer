@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.conftest import import_mcp_server
+
 from file_observer.scanner import (
     RECEIPT_DOC_VERSION,
     Scanner,
@@ -123,7 +125,7 @@ def test_cli_receipt_stdout(tree: Path):
 
 # --- 9. MCP ---------------------------------------------------------------------------
 def test_mcp_receipt(tree: Path):
-    mcp = pytest.importorskip("file_observer.mcp_server")
+    mcp = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
     out = json.loads(mcp.scan_directory(str(tree), specialists=True, receipt=True))
     assert out["receipt_doc_version"] == RECEIPT_DOC_VERSION and len(out["receipts"]) == 2
     one = json.loads(mcp.scan_file(str(tree / "alpha.md"), specialists=True, receipt=True))
@@ -144,7 +146,7 @@ def test_receipt_path_posix_normalized():
 def test_mcp_scan_file_receipt_binds_callers_path(tree: Path):
     """leg-4/gemini HIGH + Codex: the MCP scan_file receipt binds to the caller's path reference
     (posix), NOT the resolved absolute str(fp) — so receipt_ids are stable/portable."""
-    mcp = pytest.importorskip("file_observer.mcp_server")
+    mcp = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
     p = str(tree / "alpha.md")
     out = json.loads(mcp.scan_file(p, specialists=True, receipt=True))
     assert out["receipts"][0]["path_id"] == sha256(Path(p).as_posix().encode()).hexdigest()

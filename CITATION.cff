@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use File Observer in research or a pipeline you describe, please cite it."
+title: "File Observer"
+type: software
+authors:
+  - family-names: Pfister
+    given-names: Russell
+repository-code: "https://github.com/russalo/file-observer"
+url: "https://pypi.org/project/file-observer/"
+license: AGPL-3.0-or-later
+abstract: "A one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."

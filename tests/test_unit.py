@@ -1096,7 +1096,7 @@ class TestPngMetadata:
 class TestMsgMetadata:
     def test_msg_without_olefile_returns_none(self, scanner: Scanner) -> None:
         """When olefile is not available, msg extraction returns None."""
-        import scanner.scanner as mod
+        import file_observer.scanner as mod
         original = mod.olefile
         try:
             mod.olefile = None
@@ -1513,15 +1513,15 @@ class TestMarkdownMimetypeRegistration:
 
     def test_mdx_mimetype_registered(self) -> None:
         import mimetypes
-        # Importing scanner.scanner must trigger the mimetypes.add_type calls.
-        import scanner.scanner  # noqa: F401
+        # Importing file_observer.scanner must trigger the mimetypes.add_type calls.
+        import file_observer.scanner  # noqa: F401
         guessed, _ = mimetypes.guess_type("foo.mdx")
         assert guessed is not None, ".mdx must resolve to a MIME type via stdlib mimetypes"
         assert guessed.startswith("text/"), f".mdx should resolve to a text/* MIME, got {guessed!r}"
 
     def test_md_mimetype_registered(self) -> None:
         import mimetypes
-        import scanner.scanner  # noqa: F401
+        import file_observer.scanner  # noqa: F401
         guessed, _ = mimetypes.guess_type("foo.md")
         assert guessed is not None, ".md must resolve to a MIME type via stdlib mimetypes"
         assert guessed.startswith("text/"), f".md should resolve to a text/* MIME, got {guessed!r}"
@@ -2346,7 +2346,7 @@ class TestDocxMetadata:
 
 class TestDocMetadata:
     def test_doc_without_olefile_returns_none(self, scanner: Scanner, tmp_path: Path) -> None:
-        import scanner.scanner as mod
+        import file_observer.scanner as mod
         (tmp_path / "fake.doc").write_bytes(b"fake content")
         original = mod.olefile
         try:
@@ -2383,7 +2383,7 @@ class TestDocMetadata:
         # If olefile is available and fixtures have OLE properties, we should get metadata
         # (metadata may still be null if a sample is too small — so the routing asserts below are
         # the reliable regression signal, not the presence of extracted values).
-        import scanner.scanner as mod
+        import file_observer.scanner as mod
         if mod.olefile:
             # At least verify no crashes; metadata may be null if sample too small
             for f in manifest.files:
@@ -2666,7 +2666,7 @@ class TestXlsSpecialist:
         assert rec.specialist_metadata is None
 
     def test_xls_without_olefile(self, scanner: Scanner, tmp_path: Path) -> None:
-        import scanner.scanner as mod
+        import file_observer.scanner as mod
         (tmp_path / "fake.xls").write_bytes(b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
         original = mod.olefile
         try:

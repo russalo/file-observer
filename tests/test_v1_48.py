@@ -22,6 +22,8 @@ import sys
 
 import pytest
 
+from tests.conftest import import_mcp_server
+
 from file_observer import scan
 from file_observer.scanner import (
     FIELD_TRUST,
@@ -409,7 +411,7 @@ def test_mcp_server_imports_under_whichever_sdk_is_installed():
     the constructor kwargs fo passes (name/instructions), `run(transport="stdio")`, and
     the `.tool()` decorator are all unchanged, so one aliased import covers both SDKs.
     """
-    mcp_server = pytest.importorskip("file_observer.mcp_server")
+    mcp_server = import_mcp_server()  # skips ONLY on the absent optional SDK; FO_REQUIRE_MCP=1 makes that a failure (conftest)
     assert mcp_server.mcp is not None
     cls = type(mcp_server.mcp).__name__
     assert cls in {"FastMCP", "MCPServer"}, f"unexpected server class {cls}"

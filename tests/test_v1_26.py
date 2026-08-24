@@ -92,8 +92,6 @@ def test_scan_to_json_is_manifest_to_json_of_a_scan(tmp_path):
 def test_public_api_exports():
     assert "scan" in file_observer.__all__
     assert "scan_to_json" in file_observer.__all__
-    # legacy shim re-exports too
-    from scanner import scan as legacy_scan  # noqa: F401
 
 
 def test_version_surfaces():
