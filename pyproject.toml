@@ -1,14 +1,15 @@
 [build-system]
-requires = ["setuptools>=65", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "file-observer"
-version = "1.49.0"
+version = "1.50.0"
 description = "Not a file watcher — a one-shot, read-only scan that emits a deterministic JSON manifest of what's in a directory before you ingest it."
 readme = "README.md"
 requires-python = ">=3.12"
-license = {text = "AGPL-3.0-or-later"}
+license = "AGPL-3.0-or-later"
+license-files = ["LICENSE", "LICENSING.md"]
 authors = [
     {name = "Russell Pfister", email = "russalo@russalo.com"},
 ]
@@ -22,11 +23,11 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "Intended Audience :: System Administrators",
-    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: File Formats",
     "Topic :: System :: Filesystems",
     "Topic :: Software Development :: Libraries :: Python Modules",
@@ -75,6 +76,9 @@ file-observer-mcp = "file_observer.mcp_server:main"   # v1.37: the MCP server (s
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+file_observer = ["py.typed"]
 
 [tool.pytest.ini_options]
 # Safety net: no single test may run >120s. A genuine hang (e.g. a Windows-only

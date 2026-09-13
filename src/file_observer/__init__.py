@@ -1,7 +1,7 @@
 """File Observer — deterministic file observation engine.
 
-Canonical import package. (The legacy ``scanner`` package re-exports these
-names with a DeprecationWarning for backward compatibility.)
+Canonical import package (``scanner`` -> ``file_observer`` in v1.0.1; the deprecated
+``scanner`` shim was removed in v1.50.0).
 """
 
 from .scanner import (
