@@ -29,10 +29,10 @@ jobs:
     permissions:
       contents: read   # lint-only: no write access needed (leg-4/CodeRabbit)
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false   # no git ops after checkout — don't leave a token on disk
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install ruff
@@ -61,10 +61,10 @@ jobs:
           - os: ubuntu-latest
             python: "3.14"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false   # no git ops after checkout — don\'t leave a token on disk
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - name: Install libmagic (Linux)
@@ -93,10 +93,10 @@ jobs:
     name: test (ubuntu, no python-magic — forced fallback)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false   # no git ops after checkout — don\'t leave a token on disk
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install package + dev deps, then remove python-magic
@@ -126,10 +126,10 @@ jobs:
           - label: "2.x"
             spec: "mcp>=2,<3"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install with the MCP SDK major pinned
