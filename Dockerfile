@@ -5,7 +5,7 @@
 #
 # (the default command is `--stdout .`, so it scans the mounted /data and prints the
 # manifest; pass your own args to override, e.g. `… ghcr.io/russalo/file-observer /data --specialists --stdout`.)
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # libmagic1 sharpens content-based MIME detection. file-observer runs WITHOUT it (the
 # pure-Python fallback, since v1.3), but this is the widest-coverage install — and small.
