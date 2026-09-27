@@ -158,6 +158,8 @@ pip install "file-observer[mcp]"       # MCP server (use it from an AI agent —
 pip install "file-observer[dev]"       # Full dev environment
 ```
 
+> **Windows on ARM:** the core install and `pip install "file-observer[yaml,msg,security,watch]"` work out of the box; `[pdf]`/`[mcp]`/`[all]` need the MSVC C++ Build Tools until the `cryptography` dependency ships an arm64 wheel ([details](https://github.com/russalo/file-observer/blob/main/docs/LIMITATIONS.md#windows-on-arm-arm64-one-extra-cant-install-without-build-tools)).
+
 **No install at all** — run it straight from PyPI with [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/):
 
 ```bash
