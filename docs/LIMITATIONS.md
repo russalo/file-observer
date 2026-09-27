@@ -161,6 +161,12 @@ When an optional dependency is missing, the related signals are reduced or
 skipped — the scan still completes. The manifest's `context` records dependency
 versions so that any variance is explainable.
 
+## Windows on ARM (arm64): one extra can't install without build tools
+
+The **core package is pure-Python** and installs and runs natively on Windows-ARM (verified on native arm64 CPython 3.13: `pip install file-observer` → a clean scan). Most optional extras also resolve to native `win_arm64` wheels — `[yaml]`, `[watch]`, and the MCP SDK's own dependencies all have them. **The exception is `cryptography`,** which has no `win_arm64` wheel at time of writing: `pip` then tries to build it from source (Rust + OpenSSL), which needs the MSVC C++ Build Tools and fails without them (`error: linker 'link.exe' not found`). Because `cryptography` is pulled by **`[pdf]`** (directly, for AES-encrypted PDFs) and by **`[mcp]`** (transitively, via `pyjwt[crypto]`), the commands `pip install "file-observer[pdf]"`, `[mcp]`, and `[all]` all fail on a stock Windows-ARM box.
+
+**Workarounds:** install the core package, or the crypto-free extras — `pip install "file-observer[yaml,msg,security,watch]"` — which resolve to native wheels; or, only if you specifically need the `[pdf]`/`[mcp]` extras there, build `cryptography` from source — which needs a full toolchain (the MSVC C++ Build Tools **and** a Rust toolchain **and** OpenSSL) and is involved, so the crypto-free set above is the recommended path until the wheel lands. This is an upstream wheel gap, not a File Observer limitation, and clears on its own once `cryptography` publishes a `win_arm64` wheel. (Linux on ARM64 and x86 are unaffected — `cryptography` ships manylinux aarch64 wheels; the gap is Windows-arm64-specific.)
+
 ## Determinism is scoped to the ScanContext
 
 Identical inputs plus an identical `ScanContext` produce an identical manifest
