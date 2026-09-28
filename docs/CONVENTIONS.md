@@ -122,7 +122,7 @@ When LOGIC_VERSION or SCHEMA_VERSION bump, those constants update independently 
 - `docs/PUBLIC_CONTRACT.md` — consumer-facing stability commitments
 - `docs/STANDARDS_TRACKING.md` — awareness of adjacent standards, formats, obligations
 - `docs/SPEC.md` — historical v0.1 base contract (do not modify)
-- `CLAUDE.md` — agent instructions (root, not docs/)
+- `CLAUDE.md` — agent instructions (root, not docs/; **local/untracked** — agent context, gitignored: maintained locally, not shipped in the repo)
 
 ### 2.4 Scratch / Working Notes
 
@@ -261,7 +261,7 @@ Required before merge:
 - [ ] `docs/COMPLIANCE-v{VERSION}.md` — compliance report
 - [ ] `README.md` (repo root) — version, schema, feature table updated
 - [ ] `docs/HISTORY.md` — new version row added; "Drafts in Flight" updated
-- [ ] `CLAUDE.md` — spec references and roadmap updated
+- [ ] `CLAUDE.md` — spec references and roadmap updated (**local/untracked** agent-context file: maintained locally each release, not a repo deliverable — fresh clones do not receive it)
 - [ ] `docs/CONVENTIONS.md` (this file) — updated only if a *convention* changed (naming, version rules, promotion path). The output-surface inventory is no longer hand-maintained here — it lives in the auto-generated `docs/SCHEMA.md` (next item)
 - [ ] **`docs/SCHEMA.md` regenerated** (since v1.13) — any change to the output surface (a new field, vector, specialist, safety_flag, error code, or provenance trigger) MUST be reflected in the generated schema doc + its source registry (`ERROR_CODES` / `SAFETY_FLAGS` / `PROVENANCE_TRIGGERS` / `SPECIALIST_FIELDS`). Regenerate: `python -m file_observer.scanner --schema --schema-format md > docs/SCHEMA.md`. The drift-guard test (`test_committed_schema_md_matches_generated`) fails if it's stale; the completeness tests fail if a registry is missing an emitted value. (Regenerating `docs/SCHEMA.md` is required for *any* new surface value; it is NOT the same as a `SCHEMA_VERSION` bump — see §1.3, that's only for new fields/namespaces/vectors.)
 - [ ] `docs/PUBLIC_CONTRACT.md` — updated only if a public contract field changed
