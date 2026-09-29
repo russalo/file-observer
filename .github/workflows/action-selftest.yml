@@ -21,7 +21,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]   # the cross-platform venv layout (python/Scripts) is real (v1.15 lesson)
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Run the File Observer action against this repo
         id: fo
