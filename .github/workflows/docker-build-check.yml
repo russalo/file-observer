@@ -1,0 +1,51 @@
+name: docker build check
+
+# Builds the container image (no push) so a change that breaks it is caught at PR
+# time, not deferred to the next release (which is the only place the image was
+# built before — docker-publish.yml runs on release only). Two triggers, two jobs of it:
+#   - pull_request / push  → catches OUR changes breaking the build (Dockerfile, deps, source, packaging).
+#     Event-triggered: fires exactly when the image could break; no cadence applies.
+#   - schedule (weekly)    → catches UPSTREAM base-image drift (python:3.x-slim changing
+#     under us) with no change from us. This is the only part a cadence governs.
+# Advisory, not a required ruleset check: the pull_request trigger is path-filtered, so
+# making it required would leave it "expected but never ran" on every non-Dockerfile PR
+# and block merges. It shows on the PR when it's relevant; that's the point.
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'MANIFEST.in'
+      - 'src/**'
+      - '.github/workflows/docker-build-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.dockerignore'
+      - 'pyproject.toml'
+      - 'MANIFEST.in'
+      - 'src/**'
+  schedule:
+    - cron: '0 12 * * 1'   # weekly, Monday 12:00 UTC — upstream base-image drift
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build image (no push)
+        run: docker build -t file-observer:ci-check .
+      - name: Smoke test — the built image runs and reports its version
+        run: |
+          out=$(docker run --rm file-observer:ci-check --version)
+          echo "$out"
+          echo "$out" | grep -Eq '^file-observer [0-9]+\.[0-9]+\.[0-9]+$'
