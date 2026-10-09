@@ -1,0 +1,43 @@
+name: Dependabot auto-merge
+
+# Enables auto-merge on Dependabot PRs that are PATCH or MINOR updates, so they land
+# on their own once the branch ruleset's required checks pass — the maintainer only
+# has to look at MAJOR bumps (and Docker base-image bumps, see below).
+#
+# Safe-by-construction: pull_request_target runs with a write token but this job
+# NEVER checks out or executes the PR's code — it only calls `gh pr merge --auto`.
+# The merge itself still waits on every required status check in the `main` ruleset;
+# auto-merge cannot bypass a red check or an unresolved thread.
+#
+# Requires repo setting "Allow auto-merge" = on (Settings → General, or
+# `gh api -X PATCH repos/russalo/file-observer -F allow_auto_merge=true`).
+
+on: pull_request_target
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Auto-merge patch + minor. MAJOR bumps are held for manual review.
+      # The Docker base image is the shipped container's runtime — a deliberate call —
+      # so Docker updates are also held for manual review even when patch/minor.
+      - name: Enable auto-merge (patch/minor, non-Docker)
+        if: |
+          steps.meta.outputs.package-ecosystem != 'docker' &&
+          (steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+           steps.meta.outputs.update-type == 'version-update:semver-minor')
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
