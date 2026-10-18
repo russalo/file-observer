@@ -67,4 +67,8 @@ Thumbs.db
 build/
 .coverage
 .ruff_cache/
+
+# Agent orientation files (per-session state; never committed)
 CLAUDE.md
+POST-COMPACTION.md
+PRECOMPACTION-PROTOCOL.md
